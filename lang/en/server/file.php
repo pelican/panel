@@ -26,6 +26,7 @@ return [
             'minimize' => 'Minimize',
             'expand' => 'Expand',
             'close' => 'Close',
+            'cancel' => 'Cancel',
             'retry' => 'Retry',
             'retry_failed' => 'Retry failed uploads',
             'files_failed' => ':count failed',

@@ -183,6 +183,12 @@
         },
 
         async finishRun() {
+            if (this.totalFiles === 0) {
+                this.isUploading = false;
+                this.isMinimized = false;
+                return;
+            }
+
             Livewire.dispatch('server-files-uploaded');
 
             const uploaded = this.newlyUploaded;
@@ -250,6 +256,13 @@
             fileData.error = null;
         },
 
+        cancelUpload(index) {
+            const fileData = this.uploadQueue[index];
+            if (!fileData || (fileData.status !== 'pending' && fileData.status !== 'uploading')) return;
+            if (fileData.xhr) fileData.xhr.abort();
+            this.uploadQueue.splice(index, 1);
+        },
+
         async uploadFile(fileData) {
             fileData.status = 'uploading';
             try {
@@ -265,6 +278,7 @@
 
                 return new Promise((resolve, reject) => {
                     const xhr = new XMLHttpRequest();
+                    fileData.xhr = xhr;
                     const formData = new FormData();
                     formData.append('files', fileData.file);
 
@@ -304,6 +318,10 @@
                         fileData.error = 'Network error';
                         reject(new Error('Network error'));
                     };
+
+                    xhr.addEventListener('abort', () => {
+                        reject(new Error('Upload aborted'));
+                    });
 
                     xhr.open('POST', url.toString());
                     xhr.send(formData);
@@ -474,29 +492,40 @@
                                          x-text="formatBytes(fileData.size)"></div>
                                 </td>
                                 <td class="px-4 py-4 sm:px-6">
-                                    <div x-show="fileData.status === 'uploading' || fileData.status === 'complete'"
-                                         class="flex justify-between items-center text-sm gap-2">
-                                            <span class="font-medium text-gray-700 dark:text-gray-300"
-                                                  x-text="`${fileData.progress}%`"></span>
-                                        <span x-show="fileData.status === 'uploading' && fileData.speed > 0"
-                                              class="text-gray-500 dark:text-gray-400"
-                                              x-text="formatSpeed(fileData.speed)"></span>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div x-show="fileData.status === 'uploading' || fileData.status === 'complete'"
+                                             class="flex flex-1 justify-between items-center text-sm gap-2">
+                                                <span class="font-medium text-gray-700 dark:text-gray-300"
+                                                      x-text="`${fileData.progress}%`"></span>
+                                            <span x-show="fileData.status === 'uploading' && fileData.speed > 0"
+                                                  class="text-gray-500 dark:text-gray-400"
+                                                  x-text="formatSpeed(fileData.speed)"></span>
+                                        </div>
+                                        <span x-show="fileData.status === 'pending'"
+                                              class="text-sm text-gray-500 dark:text-gray-400">
+                                                —
+                                            </span>
+                                        <button
+                                            type="button"
+                                            x-show="fileData.status === 'error'"
+                                            @click="retryUpload(index)"
+                                            :disabled="hasActiveUploads"
+                                            title="{{ trans('server/file.actions.upload.retry') }}"
+                                            class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-danger-600 hover:bg-danger-50 dark:text-danger-400 dark:hover:bg-danger-500/10 disabled:opacity-50 disabled:pointer-events-none"
+                                        >
+                                            <x-filament::icon icon="tabler-refresh" class="w-4 h-4" />
+                                            {{ trans('server/file.actions.upload.retry') }}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            x-show="fileData.status === 'pending' || fileData.status === 'uploading'"
+                                            @click="cancelUpload(index)"
+                                            title="{{ trans('server/file.actions.upload.cancel') }}"
+                                            class="p-1 rounded-md text-danger-600 hover:bg-danger-50 dark:text-danger-400 dark:hover:bg-danger-500/10"
+                                        >
+                                            <x-filament::icon icon="tabler-x" class="w-4 h-4" />
+                                        </button>
                                     </div>
-                                    <span x-show="fileData.status === 'pending'"
-                                          class="text-sm text-gray-500 dark:text-gray-400">
-                                            —
-                                        </span>
-                                    <button
-                                        type="button"
-                                        x-show="fileData.status === 'error'"
-                                        @click="retryUpload(index)"
-                                        :disabled="hasActiveUploads"
-                                        title="{{ trans('server/file.actions.upload.retry') }}"
-                                        class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-danger-600 hover:bg-danger-50 dark:text-danger-400 dark:hover:bg-danger-500/10 disabled:opacity-50 disabled:pointer-events-none"
-                                    >
-                                        <x-filament::icon icon="tabler-refresh" class="w-4 h-4" />
-                                        {{ trans('server/file.actions.upload.retry') }}
-                                    </button>
                                 </td>
                             </tr>
                         </template>
