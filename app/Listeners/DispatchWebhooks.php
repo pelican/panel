@@ -61,7 +61,7 @@ class DispatchWebhooks
 
         /** @var WebhookConfiguration $webhookConfig */
         foreach ($webhooks as $webhookConfig) {
-            $webhookConfig->run($eventName, [$webhookData]);
+            $webhookConfig->run($eventName, $webhookData);
         }
     }
 
@@ -92,7 +92,7 @@ class DispatchWebhooks
         }
 
         foreach ($matchingHooks as $webhookConfig) {
-            $webhookConfig->run($eventName, [$webhookData]);
+            $webhookConfig->run($eventName, $webhookData);
         }
     }
 
@@ -139,7 +139,7 @@ class DispatchWebhooks
         }
 
         foreach ($webhooks as $webhookConfig) {
-            $webhookConfig->run($eventName, [$webhookData]);
+            $webhookConfig->run($eventName, $webhookData);
         }
     }
 
@@ -214,7 +214,7 @@ class DispatchWebhooks
         }
 
         foreach ($matchingHooks as $webhookConfig) {
-            $webhookConfig->run($eventName, [$webhookData]);
+            $webhookConfig->run($eventName, $webhookData);
         }
     }
 

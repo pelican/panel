@@ -1,7 +1,5 @@
 <?php
 
-use App\Enums\WebhookType;
-use App\Models\WebhookConfiguration;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -19,13 +17,14 @@ return new class extends Migration
             $table->json('payload')->nullable()->after('type');
         });
 
-        foreach (WebhookConfiguration::all() as $webhookConfig) {
-            $type = str($webhookConfig->endpoint)->contains('discord.com') ? WebhookType::Discord->value : WebhookType::Regular->value;
+        DB::table('webhook_configurations')
+            ->whereNull('type')
+            ->where('endpoint', 'like', '%discord.com%')
+            ->update(['type' => 'discord']);
 
-            DB::table('webhook_configurations')
-                ->where('id', $webhookConfig->id)
-                ->update(['type' => $type]);
-        }
+        DB::table('webhook_configurations')
+            ->whereNull('type')
+            ->update(['type' => 'regular']);
     }
 
     /**

@@ -168,6 +168,7 @@ class ApiKey extends PersonalAccessToken
         Mount::RESOURCE_NAME,
         Role::RESOURCE_NAME,
         Plugin::RESOURCE_NAME,
+        WebhookConfiguration::RESOURCE_NAME,
     ];
 
     /** @var string[] */

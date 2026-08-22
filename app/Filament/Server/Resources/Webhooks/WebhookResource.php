@@ -2,8 +2,10 @@
 
 namespace App\Filament\Server\Resources\Webhooks;
 
+use App\Enums\TablerIcon;
 use App\Enums\WebhookScope;
-use App\Enums\WebhookType;
+use App\Extensions\Webhooks\WebhookForm;
+use App\Facades\WebhookTypes;
 use App\Filament\Server\Resources\Webhooks\Pages\CreateWebhook;
 use App\Filament\Server\Resources\Webhooks\Pages\EditWebhook;
 use App\Filament\Server\Resources\Webhooks\Pages\ListWebhooks;
@@ -15,34 +17,25 @@ use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanCustomizeRelations;
 use App\Traits\Filament\CanModifyForm;
 use App\Traits\Filament\CanModifyTable;
-use Exception;
-use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ReplicateAction;
 use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
-use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\CheckboxList;
-use Filament\Forms\Components\ColorPicker;
-use Filament\Forms\Components\KeyValue;
-use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\ToggleButtons;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Group;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
-use Filament\Support\Components\Component;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
-use Livewire\Component as Livewire;
 use Livewire\Features\SupportEvents\HandlesEvents;
 
 class WebhookResource extends Resource
@@ -93,7 +86,10 @@ class WebhookResource extends Resource
         return $table
             ->columns([
                 IconColumn::make('type')
-                    ->label(trans('admin/webhook.type')),
+                    ->label(trans('admin/webhook.type'))
+                    ->icon(fn (?string $state) => WebhookTypes::get($state)?->getIcon() ?? TablerIcon::PuzzleOff)
+                    ->color(fn (?string $state) => WebhookTypes::get($state)?->getColor() ?? 'gray')
+                    ->tooltip(fn (?string $state) => WebhookTypes::get($state)?->getLabel() ?? trans('admin/webhook.unavailable_type')),
                 TextColumn::make('name')
                     ->label(trans('admin/webhook.name')),
                 TextColumn::make('endpoint')
@@ -124,7 +120,7 @@ class WebhookResource extends Resource
             ->persistFiltersInSession()
             ->filters([
                 SelectFilter::make('type')
-                    ->options(WebhookType::class)
+                    ->options(fn () => WebhookTypes::getOptions())
                     ->attribute('type'),
             ]);
     }
@@ -133,42 +129,21 @@ class WebhookResource extends Resource
     {
         return $schema
             ->components([
-                ToggleButtons::make('type')
-                    ->label(trans('admin/webhook.type'))
-                    ->live()
-                    ->inline()
-                    ->options(WebhookType::class)
-                    ->default(WebhookType::Regular),
+                WebhookForm::typeSelector(),
                 TextInput::make('endpoint')
                     ->label(trans('admin/webhook.endpoint'))
                     ->required()
-                    ->afterStateUpdated(fn (?string $state, Set $set) => $set('type', $state && str($state)->contains('discord.com') ? WebhookType::Discord : WebhookType::Regular)),
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(fn (?string $state, Get $get, Set $set) => $set('type', WebhookTypes::detectFor($state, $get('type')))),
                 TextInput::make('name')
                     ->label(trans('admin/webhook.name'))
                     ->columnSpanFull()
                     ->required(),
-                Section::make(trans('admin/webhook.regular'))
-                    ->hidden(fn (Get $get) => $get('type') === WebhookType::Discord)
-                    ->schema(fn () => self::getRegularFields())
-                    ->headerActions([
-                        Action::make('reset_headers')
-                            ->label(trans('admin/webhook.reset_headers'))
-                            ->color('danger')
-                            ->icon('heroicon-o-trash')
-                            ->action(fn (Set $set) => $set('headers', [
-                                'X-Webhook-Event' => '{{event}}',
-                            ])),
-                    ])
-                    ->formBefore(),
-                Section::make(trans('admin/webhook.discord'))
-                    ->hidden(fn (Get $get) => $get('type') === WebhookType::Regular)
-                    ->afterStateUpdated(fn (Livewire $livewire) => $livewire->dispatch('refresh-widget'))
-                    ->schema(fn () => self::getDiscordFields())
-                    ->poll('15s')
-                    ->view('filament.components.webhooksection')
-                    ->aside()
-                    ->formBefore()
-                    ->columnSpanFull(),
+                Group::make()
+                    ->columnSpanFull()
+                    ->schema(fn (Get $get) => [
+                        WebhookForm::payloadSection($get('type'), WebhookScope::Server),
+                    ]),
                 Section::make(trans('admin/webhook.events'))
                     ->schema([
                         CheckboxList::make('events')
@@ -183,161 +158,9 @@ class WebhookResource extends Resource
             ]);
     }
 
-    /** @return Component[]
-     * @throws Exception
-     */
-    private static function getRegularFields(): array
-    {
-        return [
-            KeyValue::make('headers')
-                ->label(trans('admin/webhook.headers'))
-                ->default(fn () => [
-                    'X-Webhook-Event' => '{{event}}',
-                ]),
-        ];
-    }
-
-    /** @return Component[]
-     * @throws Exception
-     */
-    private static function getDiscordFields(): array
-    {
-        return [
-            Section::make(trans('admin/webhook.discord_message.profile'))
-                ->collapsible()
-                ->schema([
-                    TextInput::make('username')
-                        ->live(debounce: 500)
-                        ->label(trans('admin/webhook.discord_message.username')),
-                    TextInput::make('avatar_url')
-                        ->live(debounce: 500)
-                        ->label(trans('admin/webhook.discord_message.avatar_url')),
-                ]),
-            Section::make(trans('admin/webhook.discord_message.message'))
-                ->collapsible()
-                ->schema([
-                    TextInput::make('content')
-                        ->label(trans('admin/webhook.discord_message.message'))
-                        ->live(debounce: 500)
-                        ->required(fn (Get $get) => empty($get('embeds'))),
-                    TextInput::make('thread_name')
-                        ->label(trans('admin/webhook.discord_message.forum_thread')),
-                    CheckboxList::make('flags')
-                        ->label(trans('admin/webhook.discord_embed.flags'))
-                        ->options([
-                            (1 << 2) => trans('admin/webhook.discord_message.supress_embeds'),        // Discord flag: SUPPRESS_EMBEDS (4)
-                            (1 << 12) => trans('admin/webhook.discord_message.supress_notifications'), // Discord flag: SUPPRESS_NOTIFICATIONS (4096)
-                        ])
-                        ->descriptions([
-                            (1 << 2) => trans('admin/webhook.discord_message.supress_embeds_text'),
-                            (1 << 12) => trans('admin/webhook.discord_message.supress_notifications_text'),
-                        ]),
-                    CheckboxList::make('allowed_mentions')
-                        ->label(trans('admin/webhook.discord_embed.allowed_mentions'))
-                        ->options([
-                            'roles' => trans('admin/webhook.discord_embed.roles'),
-                            'users' => trans('admin/webhook.discord_embed.users'),
-                            'everyone' => trans('admin/webhook.discord_embed.everyone'),
-                        ]),
-                ]),
-            Repeater::make('embeds')
-                ->live(debounce: 500)
-                ->itemLabel(fn (array $state) => $state['title'] ?? '')
-                ->addActionLabel(trans('admin/webhook.discord_embed.add_embed'))
-                ->required(fn (Get $get) => empty($get('content')))
-                ->reorderable()
-                ->collapsible()
-                ->maxItems(10)
-                ->schema([
-                    Section::make(trans('admin/webhook.discord_embed.author'))
-                        ->collapsible()
-                        ->collapsed()
-                        ->schema([
-                            TextInput::make('author.name')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.author'))
-                                ->required(fn (Get $get) => filled($get('author.url')) || filled($get('author.icon_url'))),
-                            TextInput::make('author.url')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.author_url')),
-                            TextInput::make('author.icon_url')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.author_icon_url')),
-                        ]),
-                    Section::make(trans('admin/webhook.discord_embed.body'))
-                        ->collapsible()
-                        ->collapsed()
-                        ->schema([
-                            TextInput::make('title')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.title'))
-                                ->required(fn (Get $get) => $get('name') === null),
-                            Textarea::make('name')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.body'))
-                                ->required(fn (Get $get) => $get('title') === null),
-                            ColorPicker::make('color')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.color'))
-                                ->hex(),
-                            TextInput::make('url')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.url')),
-                        ]),
-                    Section::make(trans('admin/webhook.discord_embed.images'))
-                        ->collapsible()
-                        ->collapsed()
-                        ->schema([
-                            TextInput::make('image.url')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.image_url')),
-                            TextInput::make('thumbnail.url')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.image_thumbnail')),
-                        ]),
-                    Section::make(trans('admin/webhook.discord_embed.footer'))
-                        ->collapsible()
-                        ->collapsed()
-                        ->schema([
-                            TextInput::make('footer.text')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.footer')),
-                            Checkbox::make('has_timestamp')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.has_timestamp')),
-                            TextInput::make('footer.icon_url')
-                                ->live(debounce: 500)
-                                ->label(trans('admin/webhook.discord_embed.footer_icon_url')),
-                        ]),
-                    Section::make(trans('admin/webhook.discord_embed.fields'))
-                        ->collapsible()->collapsed()
-                        ->schema([
-                            Repeater::make('fields')
-                                ->reorderable()
-                                ->addActionLabel(trans('admin/webhook.discord_embed.add_field'))
-                                ->collapsible()
-                                ->schema([
-                                    TextInput::make('name')
-                                        ->live(debounce: 500)
-                                        ->label(trans('admin/webhook.discord_embed.field_name'))
-                                        ->required(),
-                                    Textarea::make('value')
-                                        ->live(debounce: 500)
-                                        ->label(trans('admin/webhook.discord_embed.field_value'))
-                                        ->rows(4)
-                                        ->required(),
-                                    Checkbox::make('inline')
-                                        ->live(debounce: 500)
-                                        ->label(trans('admin/webhook.discord_embed.inline_field')),
-                                ]),
-                        ]),
-                ]),
-        ];
-    }
-
     public static function sendHelpBanner(): void
     {
-        AlertBanner::make('discord_webhook_help')
+        AlertBanner::make('webhook_help')
             ->title(trans('admin/webhook.help'))
             ->body(trans('admin/webhook.help_text'))
             ->icon('tabler-question-mark')

@@ -195,3 +195,25 @@ Route::prefix('/plugins')->group(function () {
     Route::post('/{plugin:id}/enable', [Application\Plugins\PluginController::class, 'enable']);
     Route::post('/{plugin:id}/disable', [Application\Plugins\PluginController::class, 'disable']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Webhook Controller Routes
+|--------------------------------------------------------------------------
+|
+| Endpoint: /api/application/webhooks
+|
+*/
+Route::prefix('/webhooks')->group(function () {
+    Route::get('/', [Application\Webhooks\WebhookController::class, 'index'])->name('api.application.webhooks');
+    Route::get('/types', [Application\Webhooks\WebhookController::class, 'types'])->name('api.application.webhooks.types');
+    Route::get('/events', [Application\Webhooks\WebhookController::class, 'events'])->name('api.application.webhooks.events');
+    Route::get('/{webhook:id}', [Application\Webhooks\WebhookController::class, 'view'])->name('api.application.webhooks.view');
+
+    Route::post('/', [Application\Webhooks\WebhookController::class, 'store']);
+    Route::post('/{webhook:id}/test', [Application\Webhooks\WebhookController::class, 'test']);
+
+    Route::patch('/{webhook:id}', [Application\Webhooks\WebhookController::class, 'update']);
+
+    Route::delete('/{webhook:id}', [Application\Webhooks\WebhookController::class, 'delete']);
+});
