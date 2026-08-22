@@ -49,6 +49,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route as RouteFacade;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 
 class ListFiles extends ListRecords
 {
@@ -619,14 +620,6 @@ class ListFiles extends ListRecords
         };
     }
 
-    public function getUploadSizeLimit(): int
-    {
-        /** @var Server $server */
-        $server = Filament::getTenant();
-
-        return $server->node->upload_size * 1024 * 1024;
-    }
-
     /**
      * @throws ConnectionException
      * @throws FileExistsException
@@ -657,17 +650,10 @@ class ListFiles extends ListRecords
         }
     }
 
-    /**
-     * @param  string[]  $files
-     */
-    public function logUploadedFiles(array $files): void
+    #[On('server-files-uploaded')]
+    public function refreshAfterUpload(): void
     {
-        $filesCollection = collect($files);
-
-        Activity::event('server:files.uploaded')
-            ->property('directory', $this->path)
-            ->property('files', $filesCollection)
-            ->log();
+        // Triggered by the FileUploadManager so the table reloads after uploads finish.
     }
 
     private function getDaemonFileRepository(): DaemonFileRepository

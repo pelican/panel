@@ -6,6 +6,8 @@
                 this.$dispatch('server-file-upload', files.map(f => ({
                     file: f,
                     path: '',
+                    basePath: @js($this->path),
+                    serverUuid: @js(\Filament\Facades\Filament::getTenant()->uuid),
                 })));
             }
             e.target.value = '';

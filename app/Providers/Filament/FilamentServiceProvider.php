@@ -63,6 +63,12 @@ class FilamentServiceProvider extends ServiceProvider
             fn () => Blade::render('@livewire(\App\Livewire\AlertBannerContainer::class)'),
         );
 
+        // Persisted across SPA navigation, so file uploads keep running when switching pages.
+        FilamentView::registerRenderHook(
+            PanelsRenderHook::BODY_END,
+            fn () => Blade::render('@persist("file-upload-manager") @livewire(\App\Livewire\FileUploadManager::class) @endpersist'),
+        );
+
         $appName = config('app.name', 'Pelican');
 
         if (strtolower($appName) !== 'pelican') {
