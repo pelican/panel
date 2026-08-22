@@ -23,6 +23,12 @@ return [
             'failed' => 'Failed to upload files',
             'header' => 'Uploading Files',
             'error' => 'An error occurred while uploading',
+            'minimize' => 'Minimize',
+            'expand' => 'Expand',
+            'close' => 'Close',
+            'retry' => 'Retry',
+            'retry_failed' => 'Retry failed uploads',
+            'files_failed' => ':count failed',
         ],
         'rename' => [
             'title' => 'Rename',
