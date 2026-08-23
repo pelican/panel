@@ -110,6 +110,45 @@ it('does not expose the wings daemon token on the view page', function () {
         ->assertDontSee($node->daemon_token_id);
 });
 
+it('redacts the daemon token in the config preview on the view page', function () {
+    $node = Node::factory()->create();
+
+    [$viewer] = generateTestAccount([]);
+    $viewer->syncRoles(nodeRole('Node Viewer', [
+        RolePermissionModels::Node->viewAny(),
+        RolePermissionModels::Node->view(),
+    ]));
+
+    $this->actingAs($viewer);
+    livewire(ViewNode::class, ['record' => $node->getKey()])
+        ->assertSuccessful()
+        ->assertSee('/etc/pelican/config.yml')
+        ->assertDontSee($node->daemon_token)
+        ->assertDontSee($node->daemon_token_id);
+
+    expect($node->getYamlConfiguration(true))
+        ->toContain(Node::REDACTED)
+        ->not->toContain($node->daemon_token)
+        ->and($node->getYamlConfiguration())
+        ->toContain($node->daemon_token);
+});
+
+it('keeps the real daemon token in the config preview on the edit page', function () {
+    $node = Node::factory()->create();
+
+    [$editor] = generateTestAccount([]);
+    $editor->syncRoles(nodeRole('Node Editor', [
+        RolePermissionModels::Node->viewAny(),
+        RolePermissionModels::Node->view(),
+        RolePermissionModels::Node->update(),
+    ]));
+
+    $this->actingAs($editor);
+    livewire(EditNode::class, ['record' => $node->getKey()])
+        ->assertSuccessful()
+        ->assertSee($node->daemon_token);
+});
+
 it('shows the view row action only when the user cannot edit', function () {
     $node = Node::factory()->create();
 

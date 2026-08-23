@@ -614,7 +614,6 @@ class NodeResource extends Resource
             Tab::make('config_file')
                 ->label(trans('admin/node.tabs.config_file'))
                 ->icon(TablerIcon::Code)
-                ->hidden(fn (string $operation) => $operation === 'view')
                 ->schema([
                     TextEntry::make('instructions')
                         ->label(trans('admin/node.instructions'))
@@ -623,7 +622,7 @@ class NodeResource extends Resource
                     CodeEntry::make('config')
                         ->label('/etc/pelican/config.yml')
                         ->grammar(Grammar::Yaml)
-                        ->state(fn (Node $node) => $node->getYamlConfiguration())
+                        ->state(fn (Node $node, string $operation) => $node->getYamlConfiguration($operation === 'view'))
                         ->copyable()
                         ->disabled()
                         ->columnSpanFull(),
@@ -689,9 +688,14 @@ class NodeResource extends Resource
                                                 ->warning()
                                                 ->send();
 
+                                            return;
                                         }
+
                                         Notification::make()->success()->title(trans('admin/node.token_reset'))->send();
-                                        $livewire->refreshFormData(['daemon_token_id', 'daemon_token']);
+
+                                        // The service saves a replicate, so the record still holds the old
+                                        // token until it is reloaded, and the config preview renders it.
+                                        $livewire->getRecord()->refresh();
                                     })
                                     ->hidden(fn (string $operation) => $operation === 'view'),
                             ])->fullWidth(),

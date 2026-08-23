@@ -923,7 +923,7 @@ class ServerResource extends Resource
                                             ->label(trans('admin/server.transfer'))
                                             ->disabled(fn (Server $server) => user()?->accessibleNodes()->count() <= 1 || $server->isInConflictState())
                                             ->modalHeading(trans('admin/server.transfer'))
-                                            ->schema(self::transferServer())
+                                            ->schema(static::transferServer())
                                             ->action(function (TransferServerService $transfer, BackupAdapterService $backupService, Server $server, $data) {
                                                 try {
                                                     $selectedBackupUuids = Arr::get($data, 'backups', []);
@@ -999,7 +999,7 @@ class ServerResource extends Resource
      *
      * @throws Exception
      */
-    private static function transferServer(): array
+    protected static function transferServer(): array
     {
         return [
             Select::make('node_id')
