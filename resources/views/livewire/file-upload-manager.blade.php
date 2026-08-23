@@ -130,7 +130,7 @@
             } catch (error) {
                 console.error('Upload error:', error);
                 new window.FilamentNotification()
-                        .title('{{ preg_replace("/'/", "\\'", trans('server/file.actions.upload.error')) }}')
+                    .title(@js(trans('server/file.actions.upload.error')))
                     .danger()
                     .send();
                 if (this.uploadQueue.length === 0) {
@@ -219,7 +219,7 @@
 
             if (this.failedCount === 0) {
                 new window.FilamentNotification()
-                    .title('{{ preg_replace("/'/", "\\'", trans('server/file.actions.upload.success')) }}')
+                    .title(@js(trans('server/file.actions.upload.success')))
                     .success()
                     .send();
 
@@ -230,7 +230,7 @@
                 }, 1000);
             } else {
                 new window.FilamentNotification()
-                    .title('{{ preg_replace("/'/", "\\'", trans('server/file.actions.upload.failed')) }}')
+                    .title(@js(trans('server/file.actions.upload.failed')))
                     .danger()
                     .send();
             }
