@@ -30,6 +30,12 @@ return [
             'retry' => 'Retry',
             'retry_failed' => 'Retry failed uploads',
             'files_failed' => ':count failed',
+            'limit_exceeded' => 'File :name exceeds the upload limit.',
+            'upload_failed' => 'Upload failed (:status)',
+            'network_error' => 'Network error',
+            'token_failed' => 'Failed to get upload token',
+            'of' => 'of',
+            'header_separator' => '-',
         ],
         'rename' => [
             'title' => 'Rename',

@@ -63,7 +63,7 @@
                     uploadSizeLimits[f.serverUuid] ??= await $wire.getUploadSizeLimit(f.serverUuid);
                     if (f.file.size > uploadSizeLimits[f.serverUuid]) {
                         new window.FilamentNotification()
-                            .title(`File ${f.file.name} exceeds the upload limit.`)
+                            .title(@js(trans('server/file.actions.upload.limit_exceeded')).replace(':name', f.file.name))
                             .danger()
                             .send();
                         continue;
@@ -310,15 +310,15 @@
                             resolve();
                         } else {
                             fileData.status = 'error';
-                            fileData.error = `Upload failed (${xhr.status})`;
+                            fileData.error = @js(trans('server/file.actions.upload.upload_failed')).replace(':status', xhr.status);
                             reject(new Error(fileData.error));
                         }
                     };
 
                     xhr.onerror = () => {
                         fileData.status = 'error';
-                        fileData.error = 'Network error';
-                        reject(new Error('Network error'));
+                        fileData.error = @js(trans('server/file.actions.upload.network_error'));
+                        reject(new Error(fileData.error));
                     };
 
                     xhr.addEventListener('abort', () => {
@@ -330,7 +330,7 @@
                 });
             } catch (err) {
                 fileData.status = 'error';
-                fileData.error = 'Failed to get upload token';
+                fileData.error = @js(trans('server/file.actions.upload.token_failed'));
                 throw err;
             }
         },
@@ -391,9 +391,9 @@
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <div class="flex items-center justify-between gap-4">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                        {{ trans('server/file.actions.upload.header') }} -
+                        {{ trans('server/file.actions.upload.header') }} {{ trans('server/file.actions.upload.header_separator') }}
                         <span class="text-lg text-gray-600 dark:text-gray-400">
-                            <span x-text="completedCount"></span> of <span x-text="totalFiles"></span>
+                            <span x-text="completedCount"></span> <span x-text="@js(trans('server/file.actions.upload.of'))"></span> <span x-text="totalFiles"></span>
                         </span>
                     </h3>
                     <div class="flex items-center gap-1">
@@ -627,7 +627,7 @@
                 ></div>
             </div>
             <div class="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <span><span x-text="completedCount"></span> of <span x-text="totalFiles"></span></span>
+                <span><span x-text="completedCount"></span> <span x-text="@js(trans('server/file.actions.upload.of'))"></span> <span x-text="totalFiles"></span></span>
                 <span x-show="failedCount > 0" class="text-danger-600 dark:text-danger-400" x-text="failedCountText()"></span>
                 <span x-text="`${overallProgress}%`"></span>
             </div>
