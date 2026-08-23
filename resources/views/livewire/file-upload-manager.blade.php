@@ -256,11 +256,13 @@
             fileData.speed = 0;
             fileData.uploadedBytes = 0;
             fileData.error = null;
+            fileData.cancelled = false;
         },
 
         cancelUpload(index) {
             const fileData = this.uploadQueue[index];
             if (!fileData || (fileData.status !== 'pending' && fileData.status !== 'uploading')) return;
+            fileData.cancelled = true;
             if (fileData.xhr) fileData.xhr.abort();
             this.uploadQueue.splice(index, 1);
         },
@@ -269,6 +271,7 @@
             fileData.status = 'uploading';
             try {
                 const uploadUrl = await this.fetchUploadUrl(fileData.serverUuid);
+                if (fileData.cancelled) throw new Error('Upload cancelled');
                 const url = new URL(uploadUrl);
                 let basePath = fileData.basePath || '/';
 
