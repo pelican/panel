@@ -90,12 +90,14 @@ class WebhookTypeService
     }
 
     /**
-     * Detection is only a convenience for a type that has not been chosen yet, so it
-     * never overwrites a deliberate selection or a type provided by a plugin.
+     * Detection is only a convenience, so it never overwrites a deliberate selection
+     * or a type provided by a plugin. A non-default current type is deliberate unless
+     * it is exactly what detection produced for the previous endpoint; only then does
+     * the new endpoint refresh it.
      */
-    public function detectFor(?string $endpoint, ?string $currentType): string
+    public function detectFor(?string $endpoint, ?string $previousEndpoint, ?string $currentType): string
     {
-        if (filled($currentType) && $currentType !== self::Default) {
+        if (filled($currentType) && $currentType !== self::Default && $currentType !== $this->detect($previousEndpoint)) {
             return $currentType;
         }
 

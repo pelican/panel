@@ -27,11 +27,13 @@ class FallbackSchema extends RegularSchema
             return $eventData;
         }
 
-        $payload = json_encode($webhookConfiguration->payload);
-        if ($payload === false) {
-            return $eventData;
-        }
+        $payload = $webhookConfiguration->payload;
+        array_walk_recursive($payload, function (&$value) use ($webhookConfiguration, $eventData) {
+            if (is_string($value)) {
+                $value = $webhookConfiguration->replaceVars($eventData, $value);
+            }
+        });
 
-        return json_decode($webhookConfiguration->replaceVars($eventData, $payload), true) ?? $eventData;
+        return $payload;
     }
 }

@@ -175,7 +175,7 @@ class WebhookResource extends Resource
                                             ->label(trans('admin/webhook.endpoint'))
                                             ->required()
                                             ->live(onBlur: true)
-                                            ->afterStateUpdated(fn (?string $state, Get $get, Set $set) => $set('type', WebhookTypes::detectFor($state, $get('type')))),
+                                            ->afterStateUpdated(fn (?string $state, ?string $old, Get $get, Set $set) => $set('type', WebhookTypes::detectFor($state, $old, $get('type')))),
                                     ]),
                             ]),
                         Tab::make(trans('admin/webhook.payload'))

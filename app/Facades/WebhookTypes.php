@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static array<string, string|BackedEnum|null> getIcons()
  * @method static array<string, string|null> getColors()
  * @method static string detect(?string $endpoint)
- * @method static string detectFor(?string $endpoint, ?string $currentType)
+ * @method static string detectFor(?string $endpoint, ?string $previousEndpoint, ?string $currentType)
  *
  * @see WebhookTypeService
  */

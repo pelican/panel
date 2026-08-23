@@ -19,12 +19,14 @@ return new class extends Migration
 
         DB::table('webhook_configurations')
             ->whereNull('type')
-            ->where('endpoint', 'like', '%discord.com%')
-            ->update(['type' => 'discord']);
+            ->get(['id', 'endpoint'])
+            ->each(function ($webhook) {
+                $host = parse_url((string) $webhook->endpoint, PHP_URL_HOST) ?: '';
 
-        DB::table('webhook_configurations')
-            ->whereNull('type')
-            ->update(['type' => 'regular']);
+                DB::table('webhook_configurations')
+                    ->where('id', $webhook->id)
+                    ->update(['type' => preg_match('/(^|\.)discord(app)?\.com$/', $host) ? 'discord' : 'regular']);
+            });
     }
 
     /**
