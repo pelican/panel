@@ -11,6 +11,9 @@
         <testsuite name="Unit">
             <directory>./tests/Unit</directory>
         </testsuite>
+        <testsuite name="Filament">
+            <directory>./tests/Filament</directory>
+        </testsuite>
     </testsuites>
     <php>
         <env name="APP_ENV" value="testing"/>

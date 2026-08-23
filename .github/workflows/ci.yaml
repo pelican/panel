@@ -78,6 +78,12 @@ jobs:
         env:
           CREATE_SNAPSHOTS: "false"
 
+      # Panel/authorization tests, nothing database specific, so the sqlite job covers them.
+      - name: Filament tests
+        run: vendor/bin/pest tests/Filament --parallel --do-not-fail-on-phpunit-warning
+        env:
+          CREATE_SNAPSHOTS: "false"
+
   mysql:
     name: MySQL
     runs-on: ubuntu-latest
