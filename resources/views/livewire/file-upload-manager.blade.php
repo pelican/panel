@@ -58,22 +58,24 @@
 
             try {
                 const uploadSizeLimits = {};
-                for (const {
-                        file,
-                        serverUuid
-                    }
-                    of filesWithPaths) {
-                    uploadSizeLimits[serverUuid] ??= await $wire.getUploadSizeLimit(serverUuid);
-                    if (file.size > uploadSizeLimits[serverUuid]) {
+                const acceptedFiles = [];
+                for (const f of filesWithPaths) {
+                    uploadSizeLimits[f.serverUuid] ??= await $wire.getUploadSizeLimit(f.serverUuid);
+                    if (f.file.size > uploadSizeLimits[f.serverUuid]) {
                         new window.FilamentNotification()
-                            .title(`File ${file.name} exceeds the upload limit.`)
+                            .title(`File ${f.file.name} exceeds the upload limit.`)
                             .danger()
                             .send();
-                        if (this.uploadQueue.length === 0) {
-                            this.isUploading = false;
-                        }
-                        return;
+                        continue;
                     }
+                    acceptedFiles.push(f);
+                }
+
+                if (acceptedFiles.length === 0) {
+                    if (this.uploadQueue.length === 0) {
+                        this.isUploading = false;
+                    }
+                    return;
                 }
 
                 const folderScopes = {};
@@ -82,7 +84,7 @@
                         basePath,
                         serverUuid
                     }
-                    of filesWithPaths) {
+                    of acceptedFiles) {
                     if (!path) continue;
                     const key = `${serverUuid}|${basePath}`;
                     const scope = folderScopes[key] ??= {
@@ -108,7 +110,7 @@
                     }
                 }
 
-                for (const f of filesWithPaths) {
+                for (const f of acceptedFiles) {
                     this.uploadQueue.push({
                         file: f.file,
                         name: f.file.name,
