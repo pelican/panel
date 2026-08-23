@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Application\Servers;
 
 use App\Enums\SuspendAction;
 use App\Exceptions\DisplayException;
+use App\Exceptions\Http\Server\NodeNotViableException;
 use App\Exceptions\Model\DataValidationException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Servers\ServerWriteRequest;
@@ -13,6 +14,7 @@ use App\Services\Servers\ReinstallServerService;
 use App\Services\Servers\SuspensionService;
 use App\Services\Servers\TransferServerService;
 use Dedoc\Scramble\Attributes\Group;
+use Dedoc\Scramble\Attributes\Response as ResponseDoc;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Response;
 use Illuminate\Support\Arr;
@@ -80,7 +82,10 @@ class ServerManagementController extends ApplicationApiController
      * Start transfer
      *
      * Starts a transfer of a server to a new node.
+     *
+     * @throws NodeNotViableException
      */
+    #[ResponseDoc(status: 406, description: 'Node was not viable')]
     public function startTransfer(ServerWriteRequest $request, Server $server): Response
     {
         $validatedData = $request->validate([
@@ -90,21 +95,14 @@ class ServerManagementController extends ApplicationApiController
             'allocation_additional.*' => 'integer|exists:allocations,id',
         ]);
 
-        if ($this->transferServerService->handle($server, Arr::get($validatedData, 'node_id'), Arr::get($validatedData, 'allocation_id'), Arr::get($validatedData, 'allocation_additional', []))) {
-            /**
-             * Transfer started
-             *
-             * @status 204
-             */
-            return $this->returnNoContent();
-        }
+        $this->transferServerService->handle($server, Arr::get($validatedData, 'node_id'), Arr::get($validatedData, 'allocation_id'), Arr::get($validatedData, 'allocation_additional', []));
 
         /**
-         * Node was not viable
+         * Transfer started
          *
-         * @status 406
+         * @status 204
          */
-        return $this->returnNotAcceptable();
+        return $this->returnNoContent();
     }
 
     /**
