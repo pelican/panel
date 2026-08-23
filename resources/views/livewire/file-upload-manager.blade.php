@@ -8,7 +8,7 @@
         'failed' => trans('server/file.actions.upload.failed'),
         'partialFailure' => trans('server/file.actions.upload.partial_failure'),
         'tooLarge' => trans('server/file.actions.upload.too_large'),
-        'uploadFailed' => trans('server/file.actions.upload.failed'),
+        'uploadFailed' => trans('server/file.actions.upload.error'),
         'networkError' => trans('server/file.actions.upload.network_error'),
         'tokenFailed' => trans('server/file.actions.upload.token_failed'),
         'sessionExpired' => trans('server/file.actions.upload.session_expired'),
@@ -50,9 +50,12 @@
             <div class="flex items-center justify-between gap-4 border-b border-gray-200 px-6 py-4 dark:border-gray-700">
                 <h3 id="file-upload-heading" class="text-lg font-semibold text-gray-950 dark:text-white">
                     {{ trans('server/file.actions.upload.header') }}
-                    <span x-show="!confirming" class="text-gray-600 dark:text-gray-400" aria-live="polite">
-                        <span x-text="finishedCount"></span> of <span x-text="queue.length"></span>
-                    </span>
+                    <span
+                        x-show="!confirming"
+                        class="text-gray-600 dark:text-gray-400"
+                        aria-live="polite"
+                        x-text="@js(trans('server/file.actions.upload.progress')).replace(':done', finishedCount).replace(':total', queue.length)"
+                    ></span>
                 </h3>
 
                 <div class="flex items-center gap-2">
@@ -107,7 +110,7 @@
             <div x-show="!confirming" class="flex-1 overflow-y-auto">
                 <table class="w-full divide-y divide-gray-200 dark:divide-white/5">
                     <tbody class="divide-y divide-gray-200 bg-white dark:divide-white/5 dark:bg-gray-900">
-                        <template x-for="entry in queue" :key="entry.name + entry.path + entry.size">
+                        <template x-for="entry in queue" :key="entry.id">
                             <tr class="transition duration-75 hover:bg-gray-50 dark:hover:bg-white/5">
                                 <td class="px-4 py-4 sm:px-6">
                                     <div class="flex flex-col gap-y-1">

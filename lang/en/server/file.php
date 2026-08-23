@@ -23,6 +23,7 @@ return [
             'failed' => 'Failed to upload files',
             'header' => 'Uploading Files',
             'error' => 'An error occurred while uploading',
+            'progress' => ':done of :total',
             'partial_failure' => ':failed of :total files failed to upload',
             'too_large' => ':name exceeds the upload limit of :limit',
             'network_error' => 'Network error',

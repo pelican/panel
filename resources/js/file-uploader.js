@@ -2,6 +2,9 @@ const MAX_CONCURRENT = 3;
 const LARGE_BATCH = 500;
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 
+// Queue rows are keyed on this, since the same file can legitimately be queued twice.
+let nextEntryId = 0;
+
 /**
  * Everything below `/plugins` and friends is relative to the server root, so keep the leading
  * slash but drop empty and self segments picked up from the dragged folder names.
@@ -161,6 +164,8 @@ document.addEventListener('alpine:init', () => {
                 const tooLarge = limit !== null && item.file.size > limit;
 
                 this.queue.push({
+                    id: ++nextEntryId,
+                    reported: false,
                     file: item.file,
                     name: item.file.name,
                     path: item.path ?? '',
@@ -312,8 +317,16 @@ document.addEventListener('alpine:init', () => {
         },
 
         async uploadSizeLimit(serverUuid) {
-            if (!(serverUuid in this.sizeLimits)) {
-                this.sizeLimits[serverUuid] = await this.call('getUploadSizeLimit', serverUuid);
+            if (this.sizeLimits[serverUuid] === undefined) {
+                const limit = await this.call('getUploadSizeLimit', serverUuid);
+
+                // A failed lookup must not be cached, otherwise every later upload for this
+                // server skips the size check for as long as the component lives.
+                if (limit === null) {
+                    return null;
+                }
+
+                this.sizeLimits[serverUuid] = limit;
             }
 
             return this.sizeLimits[serverUuid];
@@ -362,6 +375,7 @@ document.addEventListener('alpine:init', () => {
         retry(entry) {
             this.stopped = false;
             this.stopReason = null;
+            entry.reported = false;
             entry.status = 'pending';
             entry.error = null;
             entry.progress = 0;
@@ -375,14 +389,26 @@ document.addEventListener('alpine:init', () => {
         async finish() {
             this.releaseUnload();
 
-            const uploaded = this.queue.filter((entry) => entry.status === 'complete');
+            // A batch ending in failure leaves its rows on screen and a later drop appends to
+            // the same queue, so only entries that have not been reported yet belong to this
+            // batch. Without that the earlier files are logged to the activity log twice and
+            // counted again in the notification.
+            const batch = this.queue.filter((entry) => !entry.reported);
+
+            if (!batch.length) {
+                return;
+            }
+
+            batch.forEach((entry) => (entry.reported = true));
+
+            const uploaded = batch.filter((entry) => entry.status === 'complete');
 
             if (uploaded.length) {
                 await this.logUploaded(uploaded);
                 this.$wire.dispatch('server-files-uploaded');
             }
 
-            this.notify();
+            this.notify(batch);
 
             if (!this.failed.length) {
                 this.closeTimer = setTimeout(() => this.close(), 1000);
@@ -405,17 +431,17 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        notify() {
-            const failed = this.failed.length;
+        notify(batch) {
+            const failed = batch.filter((entry) => entry.status === 'error').length;
 
             if (!failed) {
                 return new window.FilamentNotification().title(config.success).success().send();
             }
 
             const title =
-                failed === this.queue.length
+                failed === batch.length
                     ? config.failed
-                    : config.partialFailure.replace(':failed', failed).replace(':total', this.queue.length);
+                    : config.partialFailure.replace(':failed', failed).replace(':total', batch.length);
 
             new window.FilamentNotification().title(title).danger().send();
         },
