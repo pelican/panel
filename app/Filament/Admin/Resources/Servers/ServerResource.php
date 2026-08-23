@@ -96,7 +96,11 @@ class ServerResource extends Resource
 
     public static function getNavigationGroup(): ?string
     {
-        return user()?->getCustomization(CustomizationKey::TopNavigation) ? false : trans('admin/dashboard.server');
+        if (user()?->getCustomization(CustomizationKey::TopNavigation) === 'topbar') {
+            return null;
+        }
+
+        return trans('admin/dashboard.server');
     }
 
     public static function getNavigationBadge(): ?string
@@ -199,7 +203,7 @@ class ServerResource extends Resource
                                 ->prefixIcon(TablerIcon::Server)
                                 ->label(trans('admin/server.name'))
                                 ->suffixAction(Action::make('hint_random')
-                                    ->tooltip('Random')
+                                    ->tooltip(trans('admin/server.random'))
                                     ->icon('tabler-dice-' . random_int(1, 6))
                                     ->action(function (Set $set, Get $get) {
                                         $egg = Egg::find($get('egg_id'));
@@ -527,8 +531,8 @@ class ServerResource extends Resource
                                 ]),
 
                             Hidden::make('io')
-                                ->helperText('The IO performance relative to other running containers')
-                                ->label('Block IO Proportion'),
+                                ->helperText(trans('admin/server.block_io_helper'))
+                                ->label(trans('admin/server.block_io')),
 
                             Grid::make()
                                 ->columns(4)

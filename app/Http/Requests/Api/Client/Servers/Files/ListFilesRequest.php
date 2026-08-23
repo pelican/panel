@@ -19,6 +19,7 @@ class ListFilesRequest extends ClientApiRequest
     public function rules(): array
     {
         return [
+            /** Directory to list, relative to the server root. Defaults to the server root. */
             'directory' => 'sometimes|nullable|string',
         ];
     }

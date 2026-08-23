@@ -20,5 +20,6 @@ return [
     'password' => 'A megadott jelszó helytelen.',
     'throttle' => 'Túl sok bejelentkezési próbálkozás. Kérlek próbáld újra :seconds másodperc múlva.',
     '2fa_must_be_enabled' => 'Az adminisztrátor előírta, hogy a Panel használatához a fiókodhoz kötelező bekapcsolni a kétlépcsős azonosítást.',
+    'password_login_disabled' => 'Jelszavas belépés le van tiltva. Kérlek használd az OAuth-ot a belépéshez',
 
 ];

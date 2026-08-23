@@ -7,6 +7,11 @@ use Filament\Schemas\Components\Component;
 interface HasPluginSettings
 {
     /**
+     * @return array<string, mixed>
+     */
+    public function getSettingsFormData(): array;
+
+    /**
      * @return Component[]
      */
     public function getSettingsForm(): array;

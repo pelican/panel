@@ -23,7 +23,10 @@ class AllocationFactory extends Factory
     {
         return [
             'ip' => $this->faker->unique()->ipv4(),
-            'port' => $this->faker->unique()->numberBetween(1024, 65535),
+            // stay above the ports some tests hardcode (e.g. 5000-5005) on the
+            // same node and ip, otherwise the unique (node_id, ip, port) index
+            // makes those tests randomly fail
+            'port' => $this->faker->unique()->numberBetween(10000, 65535),
             'node_id' => Node::factory(),
         ];
     }

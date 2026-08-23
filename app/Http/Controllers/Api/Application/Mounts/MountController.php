@@ -125,6 +125,9 @@ class MountController extends ApplicationApiController
     /**
      * List assigned eggs
      *
+     * Return the eggs the selected mount is assigned to. Servers may only use the mount when
+     * their egg appears in this list.
+     *
      * @return array<array-key, mixed>
      */
     public function getEggs(GetEggsRequest $request, Mount $mount): array
@@ -137,6 +140,9 @@ class MountController extends ApplicationApiController
     /**
      * List assigned nodes
      *
+     * Return the nodes the selected mount is assigned to. The mount is only available to servers
+     * that live on one of these nodes.
+     *
      * @return array<array-key, mixed>
      */
     public function getNodes(GetNodesRequest $request, Mount $mount): array
@@ -148,6 +154,8 @@ class MountController extends ApplicationApiController
 
     /**
      * List assigned servers
+     *
+     * Return the servers that currently have the selected mount attached.
      *
      * @return array<array-key, mixed>
      */

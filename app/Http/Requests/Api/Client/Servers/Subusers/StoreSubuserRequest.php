@@ -14,8 +14,11 @@ class StoreSubuserRequest extends SubuserRequest
     public function rules(): array
     {
         return [
+            /** Email address of the person to invite. An account is created for them if they do not have one. */
             'email' => 'required|email|between:1,255',
+            /** Permissions the subuser is granted on this server. */
             'permissions' => 'required|array',
+            /** A permission key, such as `control.console` or `file.read`. */
             'permissions.*' => 'string',
         ];
     }

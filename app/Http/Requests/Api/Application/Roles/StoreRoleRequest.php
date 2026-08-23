@@ -19,6 +19,7 @@ class StoreRoleRequest extends ApplicationApiRequest
     public function rules(?array $rules = null): array
     {
         return [
+            /** Name of the role. */
             'name' => 'required|string',
         ];
     }

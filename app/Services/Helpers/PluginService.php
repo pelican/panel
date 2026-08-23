@@ -310,7 +310,7 @@ class PluginService
         $downloadUrl = $plugin->getDownloadUrlForUpdate();
         throw_unless($downloadUrl, new Exception('No download url found.'));
 
-        $this->downloadPluginFromUrl($downloadUrl, true);
+        $this->downloadPluginFromUrl($downloadUrl, $plugin->id);
 
         Plugin::refreshRows();
         $plugin = $plugin->refresh();
@@ -343,15 +343,22 @@ class PluginService
     }
 
     /** @throws Exception */
-    public function downloadPluginFromFile(UploadedFile $file, bool $cleanDownload = false): void
+    public function downloadPluginFromFile(UploadedFile $file, ?string $expectedId = null): string
     {
         // Validate file size to prevent zip bombs
         $maxSize = config('panel.plugin.max_import_size');
-        throw_if($file->getSize() > $maxSize, new Exception("Zip file too large. ($maxSize  MiB)"));
+        $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
+        throw_if($file->getSize() > $maxSize, new Exception("Zip file too large. ($maxSizeLabel MiB)"));
 
         $zip = new ZipArchive();
 
         throw_unless($zip->open($file->getPathname()), new Exception('Could not open zip file.'));
+
+        // The check above only sees the compressed bytes, which say nothing about what the
+        // archive expands to — a small, highly compressible zip can still fill the plugins
+        // volume. Total the uncompressed entry sizes while walking the entries and bail as
+        // soon as they exceed the same limit, before anything is written to disk.
+        $uncompressedSize = 0;
 
         // Validate zip contents before extraction
         for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -360,15 +367,27 @@ class PluginService
                 $zip->close();
                 throw new Exception('Zip file contains invalid path traversal sequences.');
             }
+
+            $stat = $zip->statIndex($i) ?: [];
+            $uncompressedSize += $stat['size'] ?? 0;
+
+            if ($uncompressedSize > $maxSize) {
+                $zip->close();
+                throw new Exception("Zip file contents too large. ($maxSizeLabel MiB)");
+            }
         }
 
-        $pluginName = str($file->getClientOriginalName())->basename()->before('.zip')->toString();
+        // Extract into a temporary directory that lives on the same filesystem as the plugins
+        // directory (named as a dotfile so plugin discovery ignores it). Deriving the id from
+        // the extracted plugin.json — rather than the upload filename — means a renamed zip
+        // still imports, and keeping temp + target on one volume makes every move below an
+        // atomic same-filesystem rename instead of a cross-device copy that can fail.
+        $tmpDir = (new TemporaryDirectory(base_path('plugins')))
+            ->name('.import-' . Str::random(16))
+            ->deleteWhenDestroyed()
+            ->create();
 
-        if ($cleanDownload) {
-            File::deleteDirectory(plugin_path($pluginName));
-        }
-
-        $extractPath = $zip->locateName($pluginName . '/plugin.json') !== false ? base_path('plugins') : plugin_path($pluginName);
+        $extractPath = $tmpDir->path('contents');
 
         if (!$zip->extractTo($extractPath)) {
             $zip->close();
@@ -376,10 +395,80 @@ class PluginService
         }
 
         $zip->close();
+
+        // Locate plugin.json, either at the archive root (flat zip) or one level deep
+        // (single top-level folder). Prefer the shallowest match.
+        $manifest = $this->locatePluginManifest($extractPath);
+        throw_if($manifest === null, new Exception(trans('admin/plugin.notifications.import_no_manifest')));
+
+        $data = File::json($manifest, JSON_THROW_ON_ERROR);
+        $id = $data['id'] ?? null;
+        throw_if(!is_string($id) || trim($id) === '', new Exception(trans('admin/plugin.notifications.import_no_manifest')));
+
+        // The id becomes the install directory name and must equal it once installed (see
+        // Plugin::getRows()), so guard against anything that isn't a safe slug — e.g. an id of
+        // "../../evil" that would escape the plugins directory when passed to plugin_path().
+        $pluginName = Str::lower(trim($id));
+        throw_unless(preg_match('/^[a-z0-9][a-z0-9._-]*$/', $pluginName), new Exception(trans('admin/plugin.notifications.import_invalid_id')));
+
+        // When updating a known plugin, the archive must be for that same plugin — reject a
+        // mismatched id before moving anything, so an update can't overwrite a different plugin.
+        throw_if($expectedId !== null && $pluginName !== $expectedId, new Exception(trans('admin/plugin.notifications.import_id_mismatch', ['expected' => $expectedId, 'actual' => $pluginName])));
+
+        $target = plugin_path($pluginName);
+        $source = dirname($manifest);
+
+        // Importing over an existing plugin replaces it. Set the current install aside as a
+        // rollback until the new copy is in place, so a failed move can't leave nothing behind.
+        // The backup is a dotfile so discovery ignores it during the swap; temp, target and
+        // backup all sit under plugins/, so each move is a same-filesystem rename.
+        $rollback = null;
+        if (File::isDirectory($target)) {
+            $rollback = plugin_path('.' . $pluginName . '.bak');
+            File::deleteDirectory($rollback);
+            throw_unless(File::moveDirectory($target, $rollback), new Exception('Could not set the existing plugin aside.'));
+        }
+
+        // Move the folder containing plugin.json to plugins/<id> so the layout is correct
+        // regardless of the archive's internal folder name.
+        if (!File::moveDirectory($source, $target)) {
+            if ($rollback !== null) {
+                File::moveDirectory($rollback, $target);
+            }
+
+            throw new Exception('Could not move plugin into place.');
+        }
+
+        if ($rollback !== null) {
+            File::deleteDirectory($rollback);
+        }
+
+        return $pluginName;
+    }
+
+    /**
+     * Find a plugin.json inside an extracted archive, either at its root or within a single
+     * top-level directory. Returns the absolute path to the manifest, or null if none exists.
+     */
+    private function locatePluginManifest(string $path): ?string
+    {
+        $rootManifest = join_paths($path, 'plugin.json');
+        if (File::exists($rootManifest)) {
+            return $rootManifest;
+        }
+
+        foreach (File::directories($path) as $directory) {
+            $manifest = join_paths($directory, 'plugin.json');
+            if (File::exists($manifest)) {
+                return $manifest;
+            }
+        }
+
+        return null;
     }
 
     /** @throws Exception */
-    public function downloadPluginFromUrl(string $url, bool $cleanDownload = false): void
+    public function downloadPluginFromUrl(string $url, ?string $expectedId = null): string
     {
         $basename = pathinfo($url, PATHINFO_BASENAME);
         $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
@@ -389,11 +478,12 @@ class PluginService
 
         // Validate file size to prevent zip bombs
         $maxSize = config('panel.plugin.max_import_size');
-        throw_if(strlen($content) > $maxSize, new InvalidFileUploadException("Zip file too large. ($maxSize  MiB)"));
+        $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
+        throw_if(strlen($content) > $maxSize, new InvalidFileUploadException("Zip file too large. ($maxSizeLabel MiB)"));
 
         throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
 
-        $this->downloadPluginFromFile(new UploadedFile($tmpPath, $basename, 'application/zip'), $cleanDownload);
+        return $this->downloadPluginFromFile(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
     }
 
     public function deletePlugin(Plugin $plugin): void

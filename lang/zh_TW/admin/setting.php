@@ -121,7 +121,6 @@ return [
             'removed_from_server' => '已從伺服器移除',
             'server_installed' => '伺服器已安裝',
             'server_reinstalled' => '伺服器已重新安裝',
-            'backup_completed' => '備份已完成',
         ],
         'connections' => [
             'title' => '連線',

@@ -21,6 +21,7 @@ class SendCommandRequest extends ClientApiRequest
     public function rules(): array
     {
         return [
+            /** Command to write to the server's console, without a trailing newline. */
             'command' => 'required|string|min:1',
         ];
     }

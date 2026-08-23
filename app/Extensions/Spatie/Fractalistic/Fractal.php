@@ -44,4 +44,17 @@ class Fractal extends SpatieFractal
 
         return parent::createData();
     }
+
+    /**
+     * Perform the transformation to array.
+     *
+     * @return array<mixed>
+     *
+     * @throws InvalidTransformation
+     * @throws NoTransformerSpecified
+     */
+    public function toArray(): array
+    {
+        return parent::toArray() ?? [];
+    }
 }

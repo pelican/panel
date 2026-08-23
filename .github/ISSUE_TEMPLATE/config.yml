@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: Feature Request
-    url: https://github.com/pelican-dev/panel/discussions
+    url: https://github.com/pelican/panel/discussions
     about: Suggest a new feature or improvement for the software.
   - name: Installation Help
     url: https://pelican.dev/discord

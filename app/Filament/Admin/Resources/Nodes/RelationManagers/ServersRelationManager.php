@@ -4,8 +4,13 @@ namespace App\Filament\Admin\Resources\Nodes\RelationManagers;
 
 use App\Enums\ServerResourceType;
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Resources\Eggs\Pages\EditEgg;
+use App\Filament\Admin\Resources\Servers\Pages\EditServer;
+use App\Filament\Admin\Resources\Users\Pages\EditUser;
+use App\Filament\Components\Actions\ViewConsoleAction;
 use App\Models\Server;
 use BackedEnum;
+use Filament\Actions\EditAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -25,29 +30,27 @@ class ServersRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->searchable(false)
-            ->heading('')
+            ->heading(null)
             ->columns([
                 TextColumn::make('user.username')
                     ->label(trans('admin/node.table.owner'))
-                    ->url(fn (Server $server): string => route('filament.admin.resources.users.edit', ['record' => $server->user]))
+                    ->url(fn (Server $server) => user()?->can('update', $server->user) ? EditUser::getUrl(['record' => $server->user]) : null)
                     ->searchable(),
                 TextColumn::make('name')
                     ->label(trans('admin/node.table.name'))
-                    ->url(fn (Server $server): string => route('filament.admin.resources.servers.edit', ['record' => $server]))
+                    ->url(fn (Server $server) => user()?->can('update', $server) ? EditServer::getUrl(['record' => $server]) : null)
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('egg.name')
                     ->label(trans('admin/node.table.egg'))
-                    ->url(fn (Server $server): string => route('filament.admin.resources.eggs.edit', ['record' => $server->user]))
+                    ->url(fn (Server $server) => user()?->can('update', $server->egg) ? EditEgg::getUrl(['record' => $server->egg]) : null)
                     ->sortable(),
                 SelectColumn::make('allocation.id')
                     ->label(trans('admin/node.primary_allocation'))
                     ->disabled(fn (Server $server) => $this->isReadOnly() || $server->allocations->count() <= 1)
                     ->options(fn (Server $server) => $server->allocations->take(1)->mapWithKeys(fn ($allocation) => [$allocation->id => $allocation->address]))
                     ->selectablePlaceholder(fn (Server $server) => $server->allocations->count() <= 1)
-                    ->placeholder(trans('admin/server.none'))
-                    ->sortable(),
+                    ->placeholder(trans('admin/server.none')),
                 TextColumn::make('cpu')
                     ->label(trans('admin/node.cpu'))
                     ->state(fn (Server $server) => $server->formatResource(ServerResourceType::CPULimit)),
@@ -61,13 +64,22 @@ class ServersRelationManager extends RelationManager
                     ->counts('databases')
                     ->label(trans('admin/node.databases'))
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable()
+                    ->toggledHiddenByDefault(),
                 TextColumn::make('backups_count')
                     ->counts('backups')
                     ->label(trans('admin/node.backups'))
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable()
+                    ->toggledHiddenByDefault(),
             ])
-            ->emptyStateHeading(trans('admin/server.no_servers'));
+            ->emptyStateHeading(trans('admin/server.no_servers'))
+            ->recordActions([
+                ViewConsoleAction::make(),
+                EditAction::make()
+                    ->url(fn (Server $server) => EditServer::getUrl(['record' => $server], panel: 'admin')),
+            ]);
     }
 }

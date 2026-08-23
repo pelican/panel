@@ -12,6 +12,7 @@ return [
     'cron' => 'Cron',
     'status' => 'Статус',
     'schedule_status' => [
+        'new' => 'Создать',
         'inactive' => 'Неактивен',
         'processing' => 'В процессе',
         'active' => 'Активен',

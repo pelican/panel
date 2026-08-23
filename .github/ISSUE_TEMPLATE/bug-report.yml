@@ -56,7 +56,7 @@ body:
   attributes:
     label: Docker Image
     description: The specific Docker image you are using for the game(s) above.
-    placeholder: ghcr.io/pelican-dev/yolks:java_17
+    placeholder: ghcr.io/pelican-eggs/yolks:java_17
 
 - type: textarea
   id: panel-logs
@@ -74,7 +74,7 @@ body:
 - type: checkboxes
   attributes:
     label: Is there an existing issue for this?
-    description: Please [search here](https://github.com/pelican-dev/panel/issues) to see if an issue already exists for your problem.
+    description: Please [search here](https://github.com/pelican/panel/issues) to see if an issue already exists for your problem.
     options:
     - label: I have searched the existing issues before opening this issue.
       required: true

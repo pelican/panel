@@ -112,7 +112,7 @@ final class S3BackupSchema extends BackupAdapterSchema
             'ContentType' => 'application/x-gzip',
         ];
 
-        $storageClass = $backup->backupHost->configuration['storage_class'];
+        $storageClass = $backup->backupHost->configuration['storage_class'] ?? null;
         if (!is_null($storageClass)) {
             $params['StorageClass'] = $storageClass;
         }
@@ -128,7 +128,7 @@ final class S3BackupSchema extends BackupAdapterSchema
 
         // Retrieve configured part size
         $maxPartSize = config('backups.max_part_size', BackupRemoteUploadController::DEFAULT_MAX_PART_SIZE);
-        if ($maxPartSize <= 0) {
+        if ($maxPartSize < BackupRemoteUploadController::MIN_MAX_PART_SIZE || $maxPartSize > BackupRemoteUploadController::MAX_MAX_PART_SIZE) {
             $maxPartSize = BackupRemoteUploadController::DEFAULT_MAX_PART_SIZE;
         }
 
@@ -141,12 +141,15 @@ final class S3BackupSchema extends BackupAdapterSchema
             )->getUri()->__toString();
         }
 
+        $maxConcurrentUploads = config('backups.max_concurrent_uploads', BackupRemoteUploadController::MAX_CONCURRENT_UPLOADS);
+
         // Set the upload_id on the backup in the database.
         $backup->update(['upload_id' => $params['UploadId']]);
 
         return [
             'parts' => $parts,
             'part_size' => $maxPartSize,
+            'max_concurrent_uploads' => $maxConcurrentUploads,
         ];
     }
 

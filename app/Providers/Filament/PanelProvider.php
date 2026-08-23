@@ -7,6 +7,7 @@ use App\Filament\Pages\Auth\EditProfile;
 use App\Filament\Pages\Auth\Login;
 use App\Http\Middleware\LanguageMiddleware;
 use App\Http\Middleware\PreventRequestForgery;
+use App\Http\Middleware\RedirectIfNotInstalled;
 use App\Http\Middleware\RequireTwoFactorAuthentication;
 use App\Http\Middleware\SetSecurityHeaders;
 use Filament\Actions\Action;
@@ -72,6 +73,7 @@ abstract class PanelProvider extends BasePanelProvider
                 DispatchServingFilamentEvent::class,
                 LanguageMiddleware::class,
                 SetSecurityHeaders::class,
+                RedirectIfNotInstalled::class,
             ])
             ->authMiddleware([
                 Authenticate::class,

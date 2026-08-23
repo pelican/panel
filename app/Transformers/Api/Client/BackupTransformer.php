@@ -20,6 +20,7 @@ class BackupTransformer extends BaseClientTransformer
             'uuid' => $backup->uuid,
             'is_successful' => $backup->is_successful,
             'is_locked' => $backup->is_locked,
+            'is_scheduled' => $backup->is_scheduled,
             'name' => $backup->name,
             'ignored_files' => $backup->ignored_files,
             'checksum' => $backup->checksum,

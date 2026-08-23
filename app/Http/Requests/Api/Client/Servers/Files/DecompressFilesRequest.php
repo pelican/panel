@@ -20,7 +20,9 @@ class DecompressFilesRequest extends ClientApiRequest
     public function rules(): array
     {
         return [
+            /** Directory the archive lives in, relative to the server root. Its contents are extracted here. */
             'root' => 'sometimes|nullable|string',
+            /** Name of the archive, relative to `root`. */
             'file' => 'required|string',
         ];
     }

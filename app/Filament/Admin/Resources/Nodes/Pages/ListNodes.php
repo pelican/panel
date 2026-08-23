@@ -28,11 +28,10 @@ class ListNodes extends ListRecords
     public function table(Table $table): Table
     {
         return $table
-            ->searchable(false)
             ->checkIfRecordIsSelectableUsing(fn (Node $node) => $node->servers_count <= 0)
             ->columns([
                 TextColumn::make('uuid')
-                    ->label('UUID')
+                    ->label(trans('admin/node.table.uuid'))
                     ->searchable()
                     ->hidden(),
                 NodeHealthColumn::make('health'),
@@ -48,7 +47,7 @@ class ListNodes extends ListRecords
                     ->searchable(),
                 IconColumn::make('scheme')
                     ->visibleFrom('xl')
-                    ->label('SSL')
+                    ->label(trans('admin/node.table.ssl'))
                     ->trueIcon(TablerIcon::Lock)
                     ->falseIcon(TablerIcon::LockOpenOff)
                     ->state(fn (Node $node) => $node->scheme === 'https'),

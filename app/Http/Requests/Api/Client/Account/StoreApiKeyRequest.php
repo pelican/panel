@@ -16,8 +16,11 @@ class StoreApiKeyRequest extends ClientApiRequest
         $rules = ApiKey::getRules();
 
         return [
+            /** Note describing what the key is for. */
             'description' => $rules['memo'],
+            /** IP addresses the key may be used from. Leave empty to allow any address. */
             'allowed_ips' => [...$rules['allowed_ips'], 'max:50'],
+            /** An IPv4 or IPv6 address the key may be used from. */
             'allowed_ips.*' => 'string',
         ];
     }

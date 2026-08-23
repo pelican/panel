@@ -57,8 +57,7 @@ class DeleteBackupTest extends ClientApiIntegrationTestCase
 
         $this->actingAs($user)->deleteJson($this->link($backup))->assertStatus(Response::HTTP_NO_CONTENT);
 
-        $backup->refresh();
-        $this->assertSoftDeleted($backup);
+        $this->assertModelMissing($backup);
 
         $this->assertActivityFor('server:backup.delete', $user, [$backup, $backup->server]);
 

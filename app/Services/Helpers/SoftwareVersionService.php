@@ -16,7 +16,7 @@ class SoftwareVersionService
 
         return cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
             try {
-                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican-dev/panel/releases/latest')->throw()->json();
+                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/panel/releases/latest')->throw()->json();
 
                 return $response['body'];
             } catch (Exception) {
@@ -34,7 +34,7 @@ class SoftwareVersionService
 
         return cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
             try {
-                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican-dev/panel/releases/latest')->throw()->json();
+                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/panel/releases/latest')->throw()->json();
 
                 return trim($response['tag_name'], 'v');
             } catch (Exception) {
@@ -52,7 +52,7 @@ class SoftwareVersionService
 
         return cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
             try {
-                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican-dev/wings/releases/latest')->throw()->json();
+                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/wings/releases/latest')->throw()->json();
 
                 return trim($response['tag_name'], 'v');
             } catch (Exception) {

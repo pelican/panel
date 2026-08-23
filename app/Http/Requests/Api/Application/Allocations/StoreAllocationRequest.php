@@ -16,9 +16,13 @@ class StoreAllocationRequest extends ApplicationApiRequest
     public function rules(): array
     {
         return [
+            /** IP address on the node the allocations are created for. */
             'ip' => 'required|string',
+            /** Friendly hostname shown in place of the IP address in the Panel. */
             'alias' => 'sometimes|nullable|string|max:255',
+            /** Ports to create allocations for on the given IP address. */
             'ports' => 'required|array',
+            /** A single port or an inclusive range such as `25565-25570`. */
             'ports.*' => 'string',
         ];
     }

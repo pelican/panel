@@ -8,6 +8,7 @@ return [
     'actions' => [
         'open' => 'Open',
         'download' => 'Download',
+        'connect_sftp' => 'Open current folder in SFTP',
         'copy' => [
             'title' => 'Copy',
             'notification' => 'File Copied',

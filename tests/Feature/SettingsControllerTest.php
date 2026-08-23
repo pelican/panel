@@ -82,7 +82,7 @@ test('unauthorized user cannot change docker image in use by server', function (
 
     $this->actingAs($user)
         ->put("/api/client/servers/$server->uuid/settings/docker-image", [
-            'docker_image' => 'ghcr.io/pelican-dev/yolks:java_21',
+            'docker_image' => 'ghcr.io/pelican-eggs/yolks:java_21',
         ])
         ->assertStatus(Response::HTTP_FORBIDDEN);
 

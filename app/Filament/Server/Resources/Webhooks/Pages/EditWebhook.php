@@ -6,6 +6,7 @@ use App\Filament\Server\Resources\Webhooks\WebhookResource;
 use App\Models\WebhookConfiguration;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
+use App\Traits\Filament\MutatesWebhookFormData;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
@@ -15,6 +16,7 @@ class EditWebhook extends EditRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;
+    use MutatesWebhookFormData;
 
     protected static string $resource = WebhookResource::class;
 
@@ -37,5 +39,15 @@ class EditWebhook extends EditRecord
     protected function getFormActions(): array
     {
         return [];
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        return $this->mutateWebhookDataBeforeSave($data);
+    }
+
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        return $this->mutateWebhookDataBeforeFill($data);
     }
 }

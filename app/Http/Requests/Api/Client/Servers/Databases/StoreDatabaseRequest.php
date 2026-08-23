@@ -26,6 +26,7 @@ class StoreDatabaseRequest extends ClientApiRequest implements ClientPermissions
         Assert::isInstanceOf($server, Server::class);
 
         return [
+            /** Name of the database to create. The final name is prefixed with the server ID, and must not already be in use by this server. */
             'database' => [
                 'required',
                 'alpha_dash',
@@ -39,6 +40,7 @@ class StoreDatabaseRequest extends ClientApiRequest implements ClientPermissions
                         ->where('database', DatabaseManagementService::generateUniqueDatabaseName($this->input('database'), $server->id));
                 }),
             ],
+            /** Addresses the database user may connect from. Use `%` to allow any address. */
             'remote' => Database::getRulesForField('remote'),
         ];
     }

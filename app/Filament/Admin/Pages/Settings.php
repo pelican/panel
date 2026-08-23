@@ -91,7 +91,7 @@ class Settings extends Page implements HasSchemas
 
     public static function canAccess(): bool
     {
-        return user()?->can('view settings');
+        return user()?->can('view settings') ?? false;
     }
 
     public function getTitle(): string
@@ -689,16 +689,6 @@ class Settings extends Page implements HasSchemas
                         ->formatStateUsing(fn ($state): bool => (bool) $state)
                         ->afterStateUpdated(fn ($state, Set $set) => $set('PANEL_SEND_REINSTALL_NOTIFICATION', (bool) $state))
                         ->default(env('PANEL_SEND_REINSTALL_NOTIFICATION', config('panel.email.send_reinstall_notification'))),
-                    Toggle::make('PANEL_SEND_BACKUP_COMPLETED_NOTIFICATION')
-                        ->label(trans('admin/setting.misc.mail_notifications.backup_completed'))
-                        ->onIcon(TablerIcon::Check)
-                        ->offIcon(TablerIcon::X)
-                        ->onColor('success')
-                        ->offColor('danger')
-                        ->live()
-                        ->formatStateUsing(fn ($state): bool => (bool) $state)
-                        ->afterStateUpdated(fn ($state, Set $set) => $set('PANEL_SEND_BACKUP_COMPLETED_NOTIFICATION', (bool) $state))
-                        ->default(env('PANEL_SEND_BACKUP_COMPLETED_NOTIFICATION', config('panel.email.send_backup_completed_notification'))),
                 ]),
             Section::make(trans('admin/setting.misc.connections.title'))
                 ->description(trans('admin/setting.misc.connections.helper'))

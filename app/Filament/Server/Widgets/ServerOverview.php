@@ -20,7 +20,7 @@ class ServerOverview extends StatsOverviewWidget
             SmallStatBlock::make(trans('server/console.labels.name'), $this->server->name)
                 ->copyable(),
             SmallStatBlock::make(trans('server/console.labels.status'), $this->status()),
-            SmallStatBlock::make(trans('server/console.labels.address'), $this->server?->allocation->address ?? 'None')
+            SmallStatBlock::make(trans('server/console.labels.address'), $this->server?->allocation->display_address ?? 'None')
                 ->copyable(),
             SmallStatBlock::make(trans('server/console.labels.cpu'), $this->cpuUsage()),
             SmallStatBlock::make(trans('server/console.labels.memory'), $this->memoryUsage()),

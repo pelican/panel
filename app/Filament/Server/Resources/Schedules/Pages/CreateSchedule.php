@@ -26,7 +26,7 @@ class CreateSchedule extends CreateRecord
         $hasFormWrapper = $this->hasFormWrapper();
 
         return Action::make('exclude_create')
-            ->label(__('filament-panels::resources/pages/create-record.form.actions.create.label'))
+            ->label(trans('filament-panels::resources/pages/create-record.form.actions.create.label'))
             ->submit($hasFormWrapper ? $this->getSubmitFormLivewireMethodName() : null)
             ->action($hasFormWrapper ? null : $this->getSubmitFormLivewireMethodName())
             ->keyBindings(['mod+s']);

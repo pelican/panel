@@ -54,7 +54,7 @@ class Console extends Page
             $server->validateCurrentState();
         } catch (ServerStateConflictException $exception) {
             AlertBanner::make('server_conflict')
-                ->title('Warning')
+                ->title(trans('admin/log.warning'))
                 ->body($exception->getMessage())
                 ->warning()
                 ->send();
@@ -64,9 +64,15 @@ class Console extends Page
     public function boot(FeatureService $featureService): void
     {
         $this->featureService = $featureService;
+
         /** @var Server $server */
         $server = Filament::getTenant();
+
         foreach ($featureService->getActiveSchemas($server->egg->features) as $feature) {
+            if (!$feature->authorize(user(), $server)) {
+                continue;
+            }
+
             $this->cacheAction($feature->getAction());
         }
     }
@@ -79,6 +85,13 @@ class Console extends Page
 
         $feature = $this->featureService->get($feature);
         if (!$feature) {
+            return;
+        }
+
+        /** @var Server $server */
+        $server = Filament::getTenant();
+
+        if (!$feature->authorize(user(), $server)) {
             return;
         }
 

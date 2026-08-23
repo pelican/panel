@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Enums\WebhookScope;
-use App\Enums\WebhookType;
+use App\Extensions\Webhooks\WebhookTypeService;
 use App\Jobs\ProcessWebhook;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -25,7 +25,7 @@ use Livewire\Features\SupportEvents\HandlesEvents;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
- * @property WebhookType|null $type
+ * @property string|null $type
  * @property string|array<array-key, mixed>|null $payload
  * @property array<array-key, mixed>|null $headers
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Webhook> $webhooks
@@ -53,6 +53,12 @@ class WebhookConfiguration extends Model
 {
     use HandlesEvents, HasFactory, SoftDeletes;
 
+    /**
+     * The resource name for this model when it is transformed into an
+     * API representation using fractal.
+     */
+    public const RESOURCE_NAME = 'webhook';
+
     /** @var string[] */
     protected static array $eventBlacklist = [
         'eloquent.created: App\Models\Webhook',
@@ -75,7 +81,7 @@ class WebhookConfiguration extends Model
      */
     protected $attributes = [
         'scope' => WebhookScope::Global,
-        'type' => WebhookType::Regular,
+        'type' => WebhookTypeService::Default,
         'payload' => null,
     ];
 
@@ -85,7 +91,7 @@ class WebhookConfiguration extends Model
             'scope' => WebhookScope::class,
             'events' => 'array',
             'payload' => 'array',
-            'type' => WebhookType::class,
+            'type' => 'string',
             'headers' => 'array',
         ];
     }
@@ -321,7 +327,11 @@ class WebhookConfiguration extends Model
             ->values()
             ->all();
 
-        return array_values(array_unique(array_merge($events, $serverEvents)));
+        $events = array_merge($events, $serverEvents);
+
+        Event::dispatch('global:webhook.events', [&$events]);
+
+        return array_values(array_unique($events));
     }
 
     /** @return array<string, string> */
@@ -381,34 +391,40 @@ class WebhookConfiguration extends Model
     /** @return string[] */
     public static function discoverModels(): array
     {
-        $namespace = 'App\\Models\\';
-        $directory = app_path('Models');
+        // The filesystem scan is memoized per request: this runs on every webhook API
+        // write, and allPossibleAdminOnlyEvents() alone needs it twice
+        return once(function () {
+            $namespace = 'App\\Models\\';
+            $directory = app_path('Models');
 
-        $models = [];
-        foreach (File::allFiles($directory) as $file) {
-            $models[] = $namespace . str($file->getFilename())
-                ->replace([DIRECTORY_SEPARATOR, '.php'], ['\\', '']);
-        }
+            $models = [];
+            foreach (File::allFiles($directory) as $file) {
+                $models[] = $namespace . str($file->getFilename())
+                    ->replace([DIRECTORY_SEPARATOR, '.php'], ['\\', '']);
+            }
 
-        return $models;
+            return $models;
+        });
     }
 
     /** @return string[] */
     public static function discoverCustomEvents(): array
     {
-        $directory = app_path('Events');
+        return once(function () {
+            $directory = app_path('Events');
 
-        $events = [];
-        foreach (File::allFiles($directory) as $file) {
-            $namespace = str($file->getPath())
-                ->after(base_path())
-                ->replace([DIRECTORY_SEPARATOR, '\\app\\'], ['\\', 'App\\']);
+            $events = [];
+            foreach (File::allFiles($directory) as $file) {
+                $namespace = str($file->getPath())
+                    ->after(base_path())
+                    ->replace([DIRECTORY_SEPARATOR, '\\app\\'], ['\\', 'App\\']);
 
-            $events[] = $namespace . '\\' . str($file->getFilename())
-                ->replace([DIRECTORY_SEPARATOR, '.php'], ['\\', '']);
-        }
+                $events[] = $namespace . '\\' . str($file->getFilename())
+                    ->replace([DIRECTORY_SEPARATOR, '.php'], ['\\', '']);
+            }
 
-        return $events;
+            return $events;
+        });
     }
 
     /**
@@ -428,7 +444,7 @@ class WebhookConfiguration extends Model
                 return data_get($replacement, $trimmed, $trimmed);
             },
             $subject
-        );
+        ) ?? $subject;
     }
 
     /** @param array<mixed, mixed> $eventData */
@@ -442,8 +458,7 @@ class WebhookConfiguration extends Model
         $eventName ??= 'eloquent.created: '.Server::class;
         $eventData ??= static::getWebhookSampleData();
 
-        $payload = array_is_list($eventData) ? $eventData : [$eventData];
-        ProcessWebhook::dispatch($this, $eventName, $payload);
+        ProcessWebhook::dispatch($this, $eventName, [$eventData]);
     }
 
     /**

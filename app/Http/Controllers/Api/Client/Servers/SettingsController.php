@@ -51,6 +51,9 @@ class SettingsController extends ClientApiController
 
     /**
      * Update server description
+     *
+     * Change the description shown for the server in the Panel. This is cosmetic and does not
+     * affect how the server runs.
      */
     public function description(DescriptionServerRequest $request, Server $server): JsonResponse
     {

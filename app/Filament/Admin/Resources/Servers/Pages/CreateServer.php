@@ -108,7 +108,7 @@ class CreateServer extends CreateRecord
                         ->prefixIcon(TablerIcon::Server)
                         ->label(trans('admin/server.name'))
                         ->suffixAction(Action::make('hint_random')
-                            ->tooltip('Random')
+                            ->tooltip(trans('admin/server.random'))
                             ->icon('tabler-dice-' . random_int(1, 6))
                             ->action(function (Set $set, Get $get) {
                                 $egg = Egg::find($get('egg_id'));
@@ -245,7 +245,7 @@ class CreateServer extends CreateRecord
                                 ->where('node_id', $get('node_id'))
                                 ->whereNull('server_id'),
                         )
-                        ->createOptionAction(fn (Action $action) => $action->authorize(fn (Get $get) => user()?->can('create', Node::find($get('node_id')))))
+                        ->createOptionAction(fn (Action $action) => $action->authorize(fn () => user()?->can('create', Allocation::class)))
                         ->createOptionForm(function (Get $get) {
                             $getPage = $get;
 
@@ -305,7 +305,7 @@ class CreateServer extends CreateRecord
                         ->createOptionUsing(function (array $data, Get $get, AssignmentService $assignmentService): int {
                             return collect(
                                 $assignmentService->handle(Node::find($get('node_id')), $data)
-                            )->first();
+                            )->firstOrFail();
                         }),
                     Repeater::make('allocation_additional')
                         ->label(trans('admin/server.additional_allocations'))
@@ -651,8 +651,8 @@ class CreateServer extends CreateRecord
                         ])
                         ->schema([
                             Hidden::make('io')
-                                ->helperText('The IO performance relative to other running containers')
-                                ->label('Block IO Proportion')
+                                ->helperText(trans('admin/server.block_io_helper'))
+                                ->label(trans('admin/server.block_io'))
                                 ->default(500),
 
                             Grid::make()

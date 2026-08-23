@@ -20,10 +20,15 @@ class RenameFileRequest extends ClientApiRequest implements ClientPermissionsReq
     public function rules(): array
     {
         return [
+            /** Directory the files live in, relative to the server root. */
             'root' => 'required|nullable|string',
+            /** Files and directories to rename. Renaming across directories moves the file. */
             'files' => 'required|array',
+            /** A single rename, given as its `from` and `to` names. */
             'files.*' => 'array',
+            /** New name of the file, relative to `root`. */
             'files.*.to' => 'required|string',
+            /** Current name of the file, relative to `root`. */
             'files.*.from' => 'required|string',
         ];
     }

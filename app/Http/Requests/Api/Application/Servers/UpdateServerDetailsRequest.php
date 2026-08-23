@@ -14,9 +14,13 @@ class UpdateServerDetailsRequest extends ServerWriteRequest
         $rules = $this->route() ? Server::getRulesForUpdate($this->parameter('server', Server::class)) : Server::getRules();
 
         return [
+            /** Identifier from your own system, stored alongside the server so you can match the two up later. */
             'external_id' => $rules['external_id'],
+            /** Name the server is shown under in the Panel. */
             'name' => $rules['name'],
+            /** ID of the user who owns the server. Changing this transfers ownership. */
             'user' => $rules['owner_id'],
+            /** Free form text describing the server. */
             'description' => array_merge(['nullable'], $rules['description']),
         ];
     }

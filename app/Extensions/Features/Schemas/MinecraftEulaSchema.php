@@ -2,8 +2,10 @@
 
 namespace App\Extensions\Features\Schemas;
 
+use App\Enums\SubuserPermission;
 use App\Extensions\Features\FeatureSchemaInterface;
 use App\Models\Server;
+use App\Models\User;
 use App\Repositories\Daemon\DaemonFileRepository;
 use App\Repositories\Daemon\DaemonServerRepository;
 use Exception;
@@ -26,6 +28,11 @@ class MinecraftEulaSchema implements FeatureSchemaInterface
     public function getId(): string
     {
         return 'eula';
+    }
+
+    public function authorize(User $user, Server $server): bool
+    {
+        return $user->can(SubuserPermission::FileUpdate, $server);
     }
 
     public function getAction(): Action

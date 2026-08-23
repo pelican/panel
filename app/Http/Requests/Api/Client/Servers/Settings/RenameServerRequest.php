@@ -25,6 +25,7 @@ class RenameServerRequest extends ClientApiRequest implements ClientPermissionsR
     public function rules(): array
     {
         return [
+            /** New name for the server. */
             'name' => Server::getRules()['name'],
         ];
     }

@@ -6,6 +6,7 @@ use App\Enums\SubuserPermission;
 use App\Extensions\Features\FeatureSchemaInterface;
 use App\Facades\Activity;
 use App\Models\Server;
+use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
 use Exception;
 use Filament\Actions\Action;
@@ -34,6 +35,11 @@ class JavaVersionSchema implements FeatureSchemaInterface
         return 'java_version';
     }
 
+    public function authorize(User $user, Server $server): bool
+    {
+        return $user->can(SubuserPermission::StartupDockerImage, $server);
+    }
+
     public function getAction(): Action
     {
         /** @var Server $server */
@@ -44,7 +50,6 @@ class JavaVersionSchema implements FeatureSchemaInterface
             ->modalHeading(trans('server/feature.java_version.heading'))
             ->modalDescription(trans('server/feature.java_version.description'))
             ->modalSubmitActionLabel(trans('server/feature.java_version.submit'))
-            ->disabledSchema(fn () => !user()?->can(SubuserPermission::StartupDockerImage, $server))
             ->schema([
                 TextEntry::make('java')
                     ->label(trans('server/feature.java_version.select_version')),

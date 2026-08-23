@@ -233,17 +233,19 @@ class ActivityLogService
     {
         Assert::notNull($this->activity);
 
-        $response = $this->connection->transaction(function () {
-            $this->activity->save();
+        $activity = $this->activity;
+
+        $response = $this->connection->transaction(function () use ($activity) {
+            $activity->save();
 
             foreach ($this->subjects as $subject) {
-                $this->activity->subjects()->forceCreate([
+                $activity->subjects()->forceCreate([
                     'subject_id' => $subject->getKey(),
                     'subject_type' => $subject->getMorphClass(),
                 ]);
             }
 
-            return $this->activity;
+            return $activity;
         });
 
         Event::dispatch(new ActivityLogged($response));

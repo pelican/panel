@@ -38,7 +38,7 @@ class BuildModificationServiceTest extends IntegrationTestCase
         $allocations = Allocation::factory()->times(4)->create(['node_id' => $server->node_id, 'notes' => 'Random notes']);
 
         $initialAllocationId = $server->allocation_id;
-        $allocations[0]->update(['server_id' => $server->id, 'notes' => 'Test notes']);
+        $allocations[0]->update(['server_id' => $server->id, 'notes' => 'Test notes', 'is_locked' => true, 'show_port' => false]);
 
         // Some additional test allocations for the other server, not the server we are attempting
         // to modify.
@@ -69,9 +69,9 @@ class BuildModificationServiceTest extends IntegrationTestCase
         $this->assertDatabaseHas('allocations', ['id' => $allocations[3]->id, 'server_id' => $server2->id]);
 
         // Both of these allocations should have been removed from the server, and have had their
-        // notes properly reset.
+        // per-server state (notes, lock, port visibility) properly reset.
         $this->assertDatabaseHas('allocations', ['id' => $initialAllocationId, 'server_id' => null, 'notes' => null]);
-        $this->assertDatabaseHas('allocations', ['id' => $allocations[0]->id, 'server_id' => null, 'notes' => null]);
+        $this->assertDatabaseHas('allocations', ['id' => $allocations[0]->id, 'server_id' => null, 'notes' => null, 'is_locked' => false, 'show_port' => true]);
     }
 
     /**

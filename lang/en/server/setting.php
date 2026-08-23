@@ -41,6 +41,18 @@ return [
             'password_body' => 'Your SFTP password is the same as the password you use to access this panel.',
         ],
     ],
+    'notifications' => [
+        'title' => 'Notifications',
+        'saved' => 'Notification Settings Updated',
+        'backup_manual' => [
+            'label' => 'Manual Backup Notifications',
+            'helper' => 'Receive a notification and email when a manually created backup for this server completes or fails.',
+        ],
+        'backup_scheduled' => [
+            'label' => 'Scheduled Backup Notifications',
+            'helper' => 'Receive a notification and email when a scheduled backup for this server completes or fails.',
+        ],
+    ],
     'reinstall' => [
         'title' => 'Reinstall Server',
         'body' => 'Reinstalling your server will stop it, and then re-run the installation script that initially set it up.',

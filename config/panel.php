@@ -55,8 +55,6 @@ return [
         'send_install_notification' => env('PANEL_SEND_INSTALL_NOTIFICATION', true),
         // Should an email be sent to a server owner whenever their server is reinstalled?
         'send_reinstall_notification' => env('PANEL_SEND_REINSTALL_NOTIFICATION', true),
-        // Should an email be sent to a server owner whenever a backup is completed?
-        'send_backup_completed_notification' => env('PANEL_SEND_BACKUP_COMPLETED_NOTIFICATION', true),
     ],
 
     'filament' => [
@@ -77,6 +75,12 @@ return [
 
     'webhook' => [
         'prune_days' => env('APP_WEBHOOK_PRUNE_DAYS', 30),
+
+        /*
+        | Request timeout in seconds used when delivering a webhook. A webhook type can
+        | override this by implementing its own deliver() method.
+        */
+        'timeout' => env('APP_WEBHOOK_TIMEOUT', 30),
     ],
 
     'plugin' => [

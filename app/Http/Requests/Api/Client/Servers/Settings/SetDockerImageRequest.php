@@ -24,6 +24,7 @@ class SetDockerImageRequest extends ClientApiRequest implements ClientPermission
         Assert::isInstanceOf($server, Server::class);
 
         return [
+            /** Docker image the server container is built from. Must be one of the images the server's egg offers. */
             'docker_image' => ['required', 'string', Rule::in(array_values($server->egg->docker_images))],
         ];
     }

@@ -2,9 +2,11 @@
 
 namespace App\Filament\Server\Pages;
 
+use App\Enums\ServerUserSettingKey;
 use App\Enums\SubuserPermission;
 use App\Enums\TablerIcon;
 use App\Facades\Activity;
+use App\Filament\Components\Actions\ConnectSftpAction;
 use App\Filament\Components\Actions\DeleteIcon;
 use App\Filament\Components\Actions\UploadIcon;
 use App\Models\Server;
@@ -14,6 +16,7 @@ use Exception;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Fieldset;
@@ -179,22 +182,8 @@ class Settings extends ServerFormPage
                                     ->columnSpan(1)
                                     ->disabled()
                                     ->copyable()
-                                    ->hintAction(
-                                        Action::make('hint_connect_sftp')
-                                            ->label(trans('server/setting.server_info.sftp.action'))
-                                            ->color('success')
-                                            ->icon(TablerIcon::Plug)
-                                            ->url(function (Server $server) {
-                                                $fqdn = $server->node->daemon_sftp_alias ?? $server->node->fqdn;
-
-                                                return 'sftp://' . rawurlencode(user()?->username) . '.' . $server->uuid_short . '@' . $fqdn . ':' . $server->node->daemon_sftp;
-                                            }),
-                                    )
-                                    ->formatStateUsing(function (Server $server) {
-                                        $fqdn = $server->node->daemon_sftp_alias ?? $server->node->fqdn;
-
-                                        return 'sftp://' . rawurlencode(user()?->username) . '.' . $server->uuid_short . '@' . $fqdn . ':' . $server->node->daemon_sftp;
-                                    }),
+                                    ->hintAction(ConnectSftpAction::make('hint_connect_sftp'))
+                                    ->formatStateUsing(fn (Server $server) => $server->getSftpUrl()),
                                 TextInput::make('username')
                                     ->label(trans('server/setting.server_info.sftp.username'))
                                     ->columnSpan(1)
@@ -254,7 +243,42 @@ class Settings extends ServerFormPage
                         TextEntry::make('files_info')
                             ->label(trans('server/setting.reinstall.body2')),
                     ]),
+                Section::make(trans('server/setting.notifications.title'))
+                    ->columnSpanFull()
+                    ->schema([
+                        Toggle::make(ServerUserSettingKey::ManualBackupNotifications->value)
+                            ->label(trans('server/setting.notifications.backup_manual.label'))
+                            ->helperText(trans('server/setting.notifications.backup_manual.helper'))
+                            ->live()
+                            ->afterStateUpdated(fn ($state, Server $server) => $this->updateNotificationSetting(ServerUserSettingKey::ManualBackupNotifications, (bool) $state, $server)),
+                        Toggle::make(ServerUserSettingKey::ScheduledBackupNotifications->value)
+                            ->label(trans('server/setting.notifications.backup_scheduled.label'))
+                            ->helperText(trans('server/setting.notifications.backup_scheduled.helper'))
+                            ->live()
+                            ->afterStateUpdated(fn ($state, Server $server) => $this->updateNotificationSetting(ServerUserSettingKey::ScheduledBackupNotifications, (bool) $state, $server)),
+                    ]),
             ]);
+    }
+
+    protected function fillForm(): void
+    {
+        $data = $this->getRecord()->attributesToArray();
+
+        foreach (ServerUserSettingKey::cases() as $key) {
+            $data[$key->value] = (bool) user()?->getServerSetting($this->getRecord(), $key);
+        }
+
+        $this->form->fill($data);
+    }
+
+    public function updateNotificationSetting(ServerUserSettingKey $key, bool $state, Server $server): void
+    {
+        user()?->updateServerSetting($server, $key, $state);
+
+        Notification::make()
+            ->title(trans('server/setting.notifications.saved'))
+            ->success()
+            ->send();
     }
 
     public function updateName(string $name, Server $server): void

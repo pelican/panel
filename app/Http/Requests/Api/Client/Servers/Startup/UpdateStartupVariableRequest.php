@@ -18,7 +18,9 @@ class UpdateStartupVariableRequest extends ClientApiRequest
     public function rules(): array
     {
         return [
+            /** Name of the egg variable to change, as shown in the server's startup settings. */
             'key' => 'required|string',
+            /** New value for the variable. */
             'value' => 'present',
         ];
     }

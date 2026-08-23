@@ -16,9 +16,13 @@ class ChmodFilesRequest extends ClientApiRequest implements ClientPermissionsReq
     public function rules(): array
     {
         return [
+            /** Directory the files live in, relative to the server root. */
             'root' => 'required|nullable|string',
+            /** Files to change the permissions of. */
             'files' => 'required|array',
+            /** Name of the file, relative to `root`. */
             'files.*.file' => 'required|string',
+            /** New permissions as an octal number, such as `644`. */
             'files.*.mode' => 'required|numeric',
         ];
     }

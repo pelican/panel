@@ -30,7 +30,7 @@ x-common:
 services:
   panel:
     user: "0:0"
-    image: ghcr.io/pelican-dev/panel:latest
+    image: ghcr.io/pelican/panel:latest
     build: .
     restart: unless-stopped
     networks:

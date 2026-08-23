@@ -59,7 +59,7 @@ class StartupModificationService
             //
             // TODO: this seems like a red-flag for the code powering the relationship
             //  that should be looked into more.
-            return $server->fresh();
+            return $server->fresh() ?? $server;
         });
     }
 

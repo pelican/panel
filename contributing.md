@@ -42,6 +42,10 @@ Also, please make sure that your pull requests are as targeted and simple as pos
 If you add any new translation strings make sure to only add them to english.  
 Other languages are translated via [Crowdin](https://crowdin.com/project/pelican-dev).
 
+### API changes
+
+The HTTP API is frozen for 1.0; see [api-versioning.md](./api-versioning.md) before changing anything a response returns or a request accepts.
+
 ## Code Review Process
 
 Your pull request will then be reviewed by the maintainers.  
@@ -52,6 +56,6 @@ Depending on the pull request size this process can take multiple days.
 ## Community and Support
 
 * Help: [Discord](https://discord.gg/pelican-panel)
-* Bugs: [GitHub Issues](https://github.com/pelican-dev/panel/issues)
-* Features: [GitHub Discussions](https://github.com/pelican-dev/panel/discussions)
+* Bugs: [GitHub Issues](https://github.com/pelican/panel/issues)
+* Features: [GitHub Discussions](https://github.com/pelican/panel/discussions)
 * Security vulnerabilities: See our [security policy](./security.md).

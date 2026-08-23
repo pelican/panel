@@ -32,6 +32,7 @@ class SendPowerRequest extends ClientApiRequest
     public function rules(): array
     {
         return [
+            /** Power action to send. `kill` stops the container immediately and may lose unsaved data. */
             'signal' => 'required|string|in:start,stop,restart,kill',
         ];
     }

@@ -20,10 +20,15 @@ class UpdateServerStartupRequest extends ApplicationApiRequest
         $rules = $this->route() ? Server::getRulesForUpdate($this->parameter('server', Server::class)) : Server::getRules();
 
         return [
+            /** Command run inside the container to start the server. */
             'startup' => 'sometimes|string',
+            /** Values for the egg's environment variables, keyed by variable name. */
             'environment' => 'present|array',
+            /** ID of the egg the server runs. Changing this reinstalls the server. */
             'egg' => $rules['egg_id'],
+            /** Docker image the server container is built from. */
             'image' => 'sometimes|string',
+            /** Skip the egg's install script when the server is reinstalled. */
             'skip_scripts' => 'present|boolean',
         ];
     }

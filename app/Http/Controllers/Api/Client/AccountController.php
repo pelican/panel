@@ -35,6 +35,8 @@ class AccountController extends ClientApiController
     /**
      * View account
      *
+     * Return the account details of the user the API key belongs to.
+     *
      * @return array<array-key, mixed>
      */
     public function index(Request $request): array

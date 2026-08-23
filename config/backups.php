@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Api\Remote\Backups\BackupRemoteUploadController;
-use App\Models\Backup;
 
 return [
     // This value is used to determine the lifespan of UploadPart presigned urls that daemon
@@ -9,13 +8,19 @@ return [
     'presigned_url_lifespan' => (int) env('BACKUP_PRESIGNED_URL_LIFESPAN', 60),
 
     // This value defines the maximal size of a single part for the S3 multipart upload during backups
-    // The maximal part size must be given in bytes. The default value is 5GB.
-    // Note that 5GB is the maximum for a single part when using AWS S3.
+    // The maximal part size must be given in bytes. The default value is 128MiB.
+    // Note that 5GiB is the maximum for a single part when using AWS S3.
     'max_part_size' => (int) env('BACKUP_MAX_PART_SIZE', BackupRemoteUploadController::DEFAULT_MAX_PART_SIZE),
 
     // The time to wait before automatically failing a backup, time is in minutes and defaults
     // to 6 hours.  To disable this feature, set the value to `0`.
     'prune_age' => (int) env('BACKUP_PRUNE_AGE', 360),
+
+    // This value defines the maximum amount of concurrent requests PER BACKUP for S3 uploads
+    // The default value is 10.
+    // This value is not guaranteed to be reached (for instance, if there are fewer parts).
+    // If multiple backups are being uploaded to S3 at the same time, each backup may have up to this limit of concurrent uploads.
+    'max_concurrent_uploads' => (int) env('BACKUP_MAX_CONCURRENT_UPLOADS', BackupRemoteUploadController::MAX_CONCURRENT_UPLOADS),
 
     // Defines the backup creation throttle limits for users. In this default example, we allow
     // a user to create two (successful or pending) backups per 10 minutes. Even if they delete

@@ -7,7 +7,7 @@ use App\Models\Server;
 
 class EnvironmentService
 {
-    /** @var array<array-key, callable> */
+    /** @var array<string, callable> */
     private array $additional = [];
 
     /**
@@ -21,7 +21,7 @@ class EnvironmentService
     /**
      * Return the dynamically added additional keys.
      *
-     * @return array<array-key, callable>
+     * @return array<string, callable>
      */
     public function getEnvironmentKeys(): array
     {
@@ -32,7 +32,7 @@ class EnvironmentService
      * Take all the environment variables configured for this server and return
      * them in an easy to process format.
      *
-     * @return array<array-key, mixed>
+     * @return array<string, mixed>
      */
     public function handle(Server $server): array
     {
@@ -58,7 +58,7 @@ class EnvironmentService
     /**
      * Return a mapping of Panel default environment variables.
      *
-     * @return array<array-key, string>
+     * @return array<string, string>
      */
     private function getEnvironmentMappings(): array
     {

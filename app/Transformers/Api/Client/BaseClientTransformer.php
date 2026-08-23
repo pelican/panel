@@ -14,7 +14,11 @@ abstract class BaseClientTransformer extends BaseApplicationTransformer
      */
     public function getUser(): User
     {
-        return $this->request->user();
+        $user = $this->request->user();
+
+        Assert::isInstanceOf($user, User::class);
+
+        return $user;
     }
 
     /**

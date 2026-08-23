@@ -40,7 +40,7 @@ class ServerConfigurationStructureService
      * @return array{
      *     id: int,
      *     uuid: string,
-     *     meta: array{name: string, description: string},
+     *     meta: array{name: string, description: string|null},
      *     suspended: bool,
      *     environment: array<string, mixed>,
      *     invocation: string,
@@ -60,9 +60,9 @@ class ServerConfigurationStructureService
      *         default: array{ip: string, port: int},
      *         mappings: array<string, array<int>>,
      *     },
-     *     egg: array{id: string, file_denylist: string[], features: string[][]},
-     *     labels?: string[],
-     *     mounts: array{source: string, target: string, read_only: bool},
+     *     egg: array{id: string|null, file_denylist: string[]|null, features: string[][]},
+     *     labels?: array<mixed>,
+     *     mounts?: array<mixed>,
      * }
      *
      * @todo convert to API Resource

@@ -1,0 +1,27 @@
+{
+    "object": "user",
+    "attributes": {
+        "id": 101,
+        "external_id": "fixture-owner-ext",
+        "is_managed_externally": false,
+        "uuid": "00000000-0000-4000-8000-000000000101",
+        "username": "fixture.owner",
+        "email": "owner@fixture.test",
+        "language": "en",
+        "root_admin": false,
+        "2fa_enabled": false,
+        "2fa": false,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "relationships": {
+            "servers": {
+                "object": "null_resource",
+                "attributes": null
+            },
+            "roles": {
+                "object": "null_resource",
+                "attributes": null
+            }
+        }
+    }
+}

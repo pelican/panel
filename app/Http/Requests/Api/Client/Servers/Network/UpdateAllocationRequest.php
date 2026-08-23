@@ -18,6 +18,7 @@ class UpdateAllocationRequest extends ClientApiRequest
         $rules = Allocation::getRules();
 
         return [
+            /** Note describing what the allocation is used for. Send `null` to clear it. */
             'notes' => array_merge($rules['notes'], ['present']),
         ];
     }

@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Query\Builder;
 
 /**
@@ -27,10 +26,10 @@ use Illuminate\Database\Query\Builder;
  * @property CarbonImmutable|null $completed_at
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
- * @property CarbonImmutable|null $deleted_at
  * @property bool $is_successful
  * @property string|null $upload_id
  * @property bool $is_locked
+ * @property bool $is_scheduled
  * @property-read Server $server
  * @property-read BackupStatus $status
  *
@@ -38,7 +37,6 @@ use Illuminate\Database\Query\Builder;
  * @method static BackupQueryBuilder<static>|Backup newModelQuery()
  * @method static BackupQueryBuilder<static>|Backup newQuery()
  * @method static BackupQueryBuilder<static>|Backup nonFailed()
- * @method static \Illuminate\Database\Eloquent\Builder<static>|Backup onlyTrashed()
  * @method static BackupQueryBuilder<static>|Backup query()
  * @method static BackupQueryBuilder<static>|Backup whereBytes($value)
  * @method static BackupQueryBuilder<static>|Backup whereChecksum($value)
@@ -55,26 +53,24 @@ use Illuminate\Database\Query\Builder;
  * @method static BackupQueryBuilder<static>|Backup whereUpdatedAt($value)
  * @method static BackupQueryBuilder<static>|Backup whereUploadId($value)
  * @method static BackupQueryBuilder<static>|Backup whereUuid($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|Backup withTrashed(bool $withTrashed = true)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|Backup withoutTrashed()
  */
 class Backup extends Model implements Validatable
 {
     use HasFactory;
     use HasValidation;
-    use SoftDeletes;
 
     public const RESOURCE_NAME = 'backup';
 
     protected $attributes = [
         'is_successful' => false,
         'is_locked' => false,
+        'is_scheduled' => false,
         'checksum' => null,
         'bytes' => 0,
         'upload_id' => null,
     ];
 
-    protected $guarded = ['id', 'created_at', 'updated_at', 'deleted_at'];
+    protected $guarded = ['id', 'created_at', 'updated_at'];
 
     /** @var array<array-key, string[]> */
     public static array $validationRules = [
@@ -82,6 +78,7 @@ class Backup extends Model implements Validatable
         'uuid' => ['required', 'uuid'],
         'is_successful' => ['boolean'],
         'is_locked' => ['boolean'],
+        'is_scheduled' => ['boolean'],
         'name' => ['required', 'string'],
         'ignored_files' => ['array'],
         'backup_host_id' => ['required', 'integer', 'exists:backup_hosts,id'],
@@ -96,12 +93,12 @@ class Backup extends Model implements Validatable
             'id' => 'int',
             'is_successful' => 'bool',
             'is_locked' => 'bool',
+            'is_scheduled' => 'bool',
             'ignored_files' => 'array',
             'bytes' => 'int',
             'completed_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
             'updated_at' => 'immutable_datetime',
-            'deleted_at' => 'immutable_datetime',
         ];
     }
 

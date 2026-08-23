@@ -8,6 +8,7 @@ use App\Extensions\Features\FeatureSchemaInterface;
 use App\Facades\Activity;
 use App\Models\Server;
 use App\Models\ServerVariable;
+use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
 use Closure;
 use Exception;
@@ -37,6 +38,11 @@ class GSLTokenSchema implements FeatureSchemaInterface
         return 'gsl_token';
     }
 
+    public function authorize(User $user, Server $server): bool
+    {
+        return $user->can(SubuserPermission::StartupUpdate, $server);
+    }
+
     /**
      * @throws Exception
      */
@@ -55,7 +61,6 @@ class GSLTokenSchema implements FeatureSchemaInterface
             ->modalHeading(trans('server/feature.gsl_token.heading'))
             ->modalDescription(trans('server/feature.gsl_token.description'))
             ->modalSubmitActionLabel(trans('server/feature.gsl_token.submit'))
-            ->disabledSchema(fn () => !user()?->can(SubuserPermission::StartupUpdate, $server))
             ->schema([
                 TextEntry::make('info')
                     ->label(new HtmlString(Blade::render(trans('server/feature.gsl_token.info')))),

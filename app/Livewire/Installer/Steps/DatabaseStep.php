@@ -38,7 +38,7 @@ class DatabaseStep
                     ->default(config('database.default'))
                     ->live()
                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                        $set('env_database.DB_DATABASE', $state === 'sqlite' ? 'database.sqlite' : 'panel');
+                        $set('env_database.DB_DATABASE', self::getConfiguredConnectionValue($state, 'database', 'panel'));
 
                         switch ($state) {
                             case 'sqlite':
@@ -49,14 +49,14 @@ class DatabaseStep
                                 break;
                             case 'mariadb':
                             case 'mysql':
-                                $set('env_database.DB_HOST', $get('env_database.DB_HOST') ?? '127.0.0.1');
-                                $set('env_database.DB_USERNAME', $get('env_database.DB_USERNAME') ?? 'pelican');
-                                $set('env_database.DB_PORT', '3306');
+                                $set('env_database.DB_HOST', $get('env_database.DB_HOST') ?? self::getConfiguredConnectionValue($state, 'host', '127.0.0.1'));
+                                $set('env_database.DB_USERNAME', $get('env_database.DB_USERNAME') ?? self::getConfiguredConnectionValue($state, 'username', 'pelican'));
+                                $set('env_database.DB_PORT', self::getConfiguredConnectionValue($state, 'port', '3306'));
                                 break;
                             case 'pgsql':
-                                $set('env_database.DB_HOST', $get('env_database.DB_HOST') ?? '127.0.0.1');
-                                $set('env_database.DB_USERNAME', $get('env_database.DB_USERNAME') ?? 'pelican');
-                                $set('env_database.DB_PORT', '5432');
+                                $set('env_database.DB_HOST', $get('env_database.DB_HOST') ?? self::getConfiguredConnectionValue($state, 'host', '127.0.0.1'));
+                                $set('env_database.DB_USERNAME', $get('env_database.DB_USERNAME') ?? self::getConfiguredConnectionValue($state, 'username', 'pelican'));
+                                $set('env_database.DB_PORT', self::getConfiguredConnectionValue($state, 'port', '5432'));
                                 break;
                         }
                     }),
@@ -65,12 +65,13 @@ class DatabaseStep
                     ->placeholder(fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite' ? 'database.sqlite' : 'panel')
                     ->hintIcon(TablerIcon::QuestionMark, fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite' ? trans('installer.database.fields.path_help') : trans('installer.database.fields.name_help'))
                     ->required()
-                    ->default('database.sqlite'),
+                    ->default(fn (Get $get) => self::getConnectionDefault($get, 'database', 'panel')),
                 TextInput::make('env_database.DB_HOST')
                     ->label(trans('installer.database.fields.host'))
                     ->placeholder('127.0.0.1')
                     ->hintIcon(TablerIcon::QuestionMark, trans('installer.database.fields.host_help'))
                     ->required(fn (Get $get) => $get('env_database.DB_CONNECTION') !== 'sqlite')
+                    ->default(fn (Get $get) => self::getConnectionDefault($get, 'host', '127.0.0.1'))
                     ->hidden(fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite'),
                 TextInput::make('env_database.DB_PORT')
                     ->label(trans('installer.database.fields.port'))
@@ -80,12 +81,18 @@ class DatabaseStep
                     ->minValue(1)
                     ->maxValue(65535)
                     ->required(fn (Get $get) => $get('env_database.DB_CONNECTION') !== 'sqlite')
+                    ->default(fn (Get $get) => self::getConnectionDefault(
+                        $get,
+                        'port',
+                        $get('env_database.DB_CONNECTION') === 'pgsql' ? '5432' : '3306',
+                    ))
                     ->hidden(fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite'),
                 TextInput::make('env_database.DB_USERNAME')
                     ->label(trans('installer.database.fields.username'))
                     ->placeholder('pelican')
                     ->hintIcon(TablerIcon::QuestionMark, trans('installer.database.fields.username_help'))
                     ->required(fn (Get $get) => $get('env_database.DB_CONNECTION') !== 'sqlite')
+                    ->default(fn (Get $get) => self::getConnectionDefault($get, 'username', 'pelican'))
                     ->hidden(fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite'),
                 TextInput::make('env_database.DB_PASSWORD')
                     ->label(trans('installer.database.fields.password'))
@@ -103,11 +110,33 @@ class DatabaseStep
             });
     }
 
+    private static function getConnectionDefault(Get $get, string $key, mixed $fallback): mixed
+    {
+        $driver = $get('env_database.DB_CONNECTION');
+
+        return self::getConfiguredConnectionValue($driver, $key, $fallback);
+    }
+
+    private static function getConfiguredConnectionValue(mixed $driver, string $key, mixed $fallback): mixed
+    {
+        if ($driver === 'sqlite') {
+            return $key === 'database' ? 'database.sqlite' : null;
+        }
+
+        if (!is_string($driver) || $driver !== config('database.default')) {
+            return $fallback;
+        }
+
+        return config("database.connections.{$driver}.{$key}", $fallback);
+    }
+
     private static function testConnection(string $driver, ?string $host, null|string|int $port, ?string $database, ?string $username, ?string $password): bool
     {
         if ($driver === 'sqlite') {
             return true;
         }
+
+        $password = self::getConnectionPassword($driver, $password);
 
         try {
             config()->set('database.connections._panel_install_test', [
@@ -135,5 +164,15 @@ class DatabaseStep
         }
 
         return true;
+    }
+
+    private static function getConnectionPassword(string $driver, ?string $password): ?string
+    {
+        $configuredPassword = config("database.connections.{$driver}.password");
+        if (($password === null || $password === '') && $driver === config('database.default') && is_string($configuredPassword)) {
+            return $configuredPassword;
+        }
+
+        return $password;
     }
 }

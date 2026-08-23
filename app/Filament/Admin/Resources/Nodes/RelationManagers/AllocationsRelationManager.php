@@ -4,6 +4,7 @@ namespace App\Filament\Admin\Resources\Nodes\RelationManagers;
 
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
+use App\Filament\Admin\Resources\Servers\Pages\EditServer;
 use App\Filament\Components\Actions\UpdateNodeAllocations;
 use App\Models\Allocation;
 use App\Models\Node;
@@ -11,6 +12,8 @@ use App\Services\Allocations\AssignmentService;
 use BackedEnum;
 use Exception;
 use Filament\Actions\Action;
+use Filament\Actions\CreateAction;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
@@ -30,7 +33,7 @@ class AllocationsRelationManager extends RelationManager
 {
     protected static string $relationship = 'allocations';
 
-    protected static string|BackedEnum|null $icon = TablerIcon::PlugConnected;
+    protected static string|BackedEnum|null $icon = TablerIcon::Network;
 
     public function setTitle(): string
     {
@@ -46,30 +49,14 @@ class AllocationsRelationManager extends RelationManager
             ->recordTitleAttribute('address')
             ->checkIfRecordIsSelectableUsing(fn (Allocation $allocation) => $allocation->server_id === null)
             ->paginationPageOptions([10, 20, 50, 100, 200, 500])
-            ->searchable()
-            ->heading('')
+            ->heading(null)
             ->selectCurrentPageOnly() //Prevent people from trying to nuke 30,000 ports at once.... -,-
             ->columns([
                 TextColumn::make('id')
+                    ->label(trans('admin/node.table.id'))
+                    ->sortable()
                     ->toggleable()
                     ->toggledHiddenByDefault(),
-                TextColumn::make('port')
-                    ->searchable()
-                    ->label(trans('admin/node.ports')),
-                TextColumn::make('server.name')
-                    ->label(trans('admin/node.table.servers'))
-                    ->icon(TablerIcon::BrandDocker)
-                    ->visibleFrom('md')
-                    ->searchable()
-                    ->url(fn (Allocation $allocation): string => $allocation->server ? route('filament.admin.resources.servers.edit', ['record' => $allocation->server]) : ''),
-                TextInputColumn::make('ip_alias')
-                    ->searchable()
-                    ->label(trans('admin/node.table.alias'))
-                    ->disabled(fn () => $this->isReadOnly()),
-                TextInputColumn::make('notes')
-                    ->label(trans('admin/node.table.allocation_notes'))
-                    ->placeholder(trans('admin/node.table.no_notes'))
-                    ->disabled(fn () => $this->isReadOnly()),
                 SelectColumn::make('ip')
                     ->options(function (Allocation $allocation) {
                         $ips = Allocation::where('port', $allocation->port)->pluck('ip');
@@ -83,17 +70,38 @@ class AllocationsRelationManager extends RelationManager
                     })
                     ->selectablePlaceholder(false)
                     ->searchable()
+                    ->sortable()
                     ->label(trans('admin/node.table.ip'))
                     ->disabled(fn () => $this->isReadOnly()),
+                TextColumn::make('port')
+                    ->searchable()
+                    ->sortable()
+                    ->label(trans('admin/node.port')),
+                TextInputColumn::make('ip_alias')
+                    ->searchable()
+                    ->sortable()
+                    ->label(trans('admin/node.table.alias'))
+                    ->placeholder(trans('admin/node.table.no_alias'))
+                    ->disabled(fn () => $this->isReadOnly()),
+                TextInputColumn::make('notes')
+                    ->label(trans('admin/node.table.allocation_notes'))
+                    ->placeholder(trans('admin/node.table.no_notes'))
+                    ->disabled(fn () => $this->isReadOnly()),
+                TextColumn::make('server.name')
+                    ->label(trans('admin/node.table.servers'))
+                    ->placeholder(trans('admin/node.table.no_server'))
+                    ->visibleFrom('md')
+                    ->searchable()
+                    ->url(fn (Allocation $allocation) => $allocation->server && user()?->can('update', $allocation->server) ? EditServer::getUrl(['record' => $allocation->server]) : null),
             ])
             ->emptyStateHeading(trans('admin/node.no_allocations'))
+            ->recordActions([
+                DeleteAction::make()
+                    ->visible(fn (Allocation $allocation) => $allocation->server_id === null),
+            ])
             ->toolbarActions([
-                DeleteBulkAction::make()
-                    ->authorize(fn () => user()?->can('update', $this->getOwnerRecord()))
-                    ->hidden(fn () => $this->isReadOnly()),
-                Action::make('create new allocation')
-                    ->label(trans('admin/node.create_allocation'))
-                    ->tooltip(trans('admin/node.create_allocation'))
+                CreateAction::make()
+                    ->createAnother(false)
                     ->icon(TablerIcon::WorldPlus)
                     ->visible(fn () => !$this->isReadOnly())
                     ->schema(fn () => [
@@ -149,6 +157,8 @@ class AllocationsRelationManager extends RelationManager
                 UpdateNodeAllocations::make()
                     ->nodeRecord($this->getOwnerRecord())
                     ->authorize(fn () => user()?->can('update', $this->getOwnerRecord()))
+                    ->hidden(fn () => $this->isReadOnly()),
+                DeleteBulkAction::make()
                     ->hidden(fn () => $this->isReadOnly()),
             ]);
     }

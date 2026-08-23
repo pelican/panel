@@ -21,7 +21,7 @@ class TurnstileSchema extends BaseSchema implements CaptchaSchemaInterface
 
     public function isEnabled(): bool
     {
-        return env('CAPTCHA_TURNSTILE_ENABLED', false);
+        return (bool) env('CAPTCHA_TURNSTILE_ENABLED', false);
     }
 
     public function getFormComponent(): Component

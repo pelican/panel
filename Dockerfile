@@ -65,7 +65,7 @@ WORKDIR /var/www/html
 RUN apk add --no-cache \
     # packages for running the panel
     caddy ca-certificates supervisor supercronic fcgi \
-    # required for installing plugins. Pulled from https://github.com/pelican-dev/panel/pull/2034
+    # required for installing plugins. Pulled from https://github.com/pelican/panel/pull/2034
     zip unzip 7zip bzip2-dev yarn git
 
 # Copy composer binary for runtime plugin dependency management
@@ -84,6 +84,9 @@ RUN mkdir -p /pelican-data/storage /var/run/supervisord \
     && chown -R www-data: /pelican-data .env ./storage ./bootstrap/cache /var/run/supervisord /var/www/html/public/storage \
     && chmod -R 770 /pelican-data ./storage ./bootstrap/cache /var/run/supervisord \
     && chown -R www-data: /usr/local/etc/php/ /usr/local/etc/php-fpm.d/ /var/www/html/composer.json /var/www/html/composer.lock
+# Configure PHP and PHP-FPM
+COPY docker/php/pelican.ini /usr/local/etc/php/conf.d/zz-pelican.ini
+COPY docker/php/pelican-pool.conf /usr/local/etc/php-fpm.d/zz-pelican.conf
 # Configure Supervisor
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/Caddyfile /etc/caddy/Caddyfile
@@ -93,7 +96,7 @@ COPY docker/crontab /etc/crontabs/crontab
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY docker/healthcheck.sh /healthcheck.sh
 
-HEALTHCHECK --interval=5m --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=2m --retries=3 \
   CMD /bin/ash /healthcheck.sh
 
 EXPOSE 80 443

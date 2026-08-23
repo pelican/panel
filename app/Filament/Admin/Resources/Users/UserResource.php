@@ -91,7 +91,11 @@ class UserResource extends Resource
 
     public static function getNavigationGroup(): ?string
     {
-        return user()?->getCustomization(CustomizationKey::TopNavigation) ? false : trans('admin/dashboard.user');
+        if (user()?->getCustomization(CustomizationKey::TopNavigation) === 'topbar') {
+            return null;
+        }
+
+        return trans('admin/dashboard.user');
     }
 
     public static function getNavigationBadge(): ?string
@@ -114,15 +118,17 @@ class UserResource extends Resource
                     ->defaultImageUrl(fn (User $user) => Filament::getUserAvatarUrl($user)),
                 TextColumn::make('username')
                     ->label(trans('admin/user.username'))
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('email')
                     ->label(trans('admin/user.email'))
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
                 IconColumn::make('mfa_email_enabled')
                     ->label(trans('profile.tabs.2fa'))
                     ->visibleFrom('lg')
                     ->icon(fn (User $user) => filled($user->mfa_app_secret) ? TablerIcon::Qrcode : ($user->mfa_email_enabled ? TablerIcon::Mail : TablerIcon::LockOpenOff))
-                    ->tooltip(fn (User $user) => filled($user->mfa_app_secret) ? 'App' : ($user->mfa_email_enabled ? 'E-Mail' : 'None')),
+                    ->tooltip(fn (User $user) => filled($user->mfa_app_secret) ? trans('profile.mfa.app') : ($user->mfa_email_enabled ? trans('profile.mfa.email') : trans('profile.mfa.none'))),
                 TextColumn::make('roles.name')
                     ->label(trans('admin/user.roles'))
                     ->badge()
@@ -486,7 +492,7 @@ class UserResource extends Resource
                         ->schema([
                             TextEntry::make('log')
                                 ->hiddenLabel()
-                                ->state(fn (ActivityLog $log) => new HtmlString($log->htmlable())),
+                                ->state(fn (ActivityLog $record) => new HtmlString($record->htmlable())),
                         ]),
                 ]),
         ];

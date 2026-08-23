@@ -51,7 +51,7 @@ services:
     restart: always
 
   panel:
-    image: ghcr.io/pelican-dev/panel:latest
+    image: ghcr.io/pelican/panel:latest
     build: .
     restart: unless-stopped
     networks:

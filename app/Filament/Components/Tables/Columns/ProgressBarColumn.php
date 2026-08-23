@@ -104,7 +104,7 @@ class ProgressBarColumn extends Column
     }
 
     /**
-     * @return string|array<int|string,string>
+     * @return string|array<int|string,int|string>
      */
     public function getProgressColor(): string|array
     {

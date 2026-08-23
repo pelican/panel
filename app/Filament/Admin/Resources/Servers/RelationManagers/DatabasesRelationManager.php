@@ -3,6 +3,7 @@
 namespace App\Filament\Admin\Resources\Servers\RelationManagers;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Resources\Servers\Pages\EditServer;
 use App\Filament\Components\Actions\RotateDatabasePasswordAction;
 use App\Filament\Components\Tables\Columns\DateTimeColumn;
 use App\Models\Database;
@@ -10,6 +11,7 @@ use App\Models\DatabaseHost;
 use App\Models\Server;
 use App\Services\Databases\DatabaseManagementService;
 use App\Services\Servers\RandomWordService;
+use BackedEnum;
 use Exception;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -29,6 +31,8 @@ use Filament\Tables\Table;
 class DatabasesRelationManager extends RelationManager
 {
     protected static string $relationship = 'databases';
+
+    protected static string|BackedEnum|null $icon = TablerIcon::Database;
 
     public function form(Schema $schema): Schema
     {
@@ -63,7 +67,7 @@ class DatabasesRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->heading('')
+            ->heading(null)
             ->recordTitleAttribute('database')
             ->columns([
                 TextColumn::make('database'),
@@ -73,7 +77,7 @@ class DatabasesRelationManager extends RelationManager
                     ->label(trans('admin/databasehost.table.remote'))
                     ->formatStateUsing(fn (Database $record) => $record->remote === '%' ? trans('admin/databasehost.anywhere'). ' ( % )' : $record->remote),
                 TextColumn::make('server.name')
-                    ->url(fn (Database $database) => route('filament.admin.resources.servers.edit', ['record' => $database->server_id])),
+                    ->url(fn (Database $database) => user()?->can('update', $database->server) ? EditServer::getUrl(['record' => $database->server]) : null),
                 TextColumn::make('max_connections')
                     ->label(trans('admin/databasehost.table.max_connections'))
                     ->formatStateUsing(fn ($record) => $record->max_connections ?: trans('admin/databasehost.unlimited')),

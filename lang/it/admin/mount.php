@@ -17,14 +17,19 @@ return [
     'no_mounts' => 'Nessun Mount',
     'eggs' => 'Eggs',
     'nodes' => 'Nodes',
+    'user_mountable' => 'Montabile dagli utenti?',
+    'user_mountable_help' => 'Gli utenti devono poter attivare o disattivare questo mount per i propri server?',
     'toggles' => [
         'writable' => 'Scrivibile',
         'read_only' => 'Sola Lettura',
+        'user_mountable' => 'Montabile dagli utenti',
+        'not_user_mountable' => 'Solo amministratori',
     ],
     'table' => [
         'name' => 'Nome',
         'all_eggs' => 'Tutti gli Egg',
         'all_nodes' => 'Tutti i Nodi',
         'read_only' => 'Sola Lettura',
+        'user_mountable' => 'Montabile dagli utenti',
     ],
 ];

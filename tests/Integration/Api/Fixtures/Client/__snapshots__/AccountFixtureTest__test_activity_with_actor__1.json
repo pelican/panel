@@ -1,0 +1,45 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "activity_log",
+            "attributes": {
+                "id": "dbc0f004854457f59fb16ab863a3a1722cef553f",
+                "event": "user:account.email-changed",
+                "is_api": false,
+                "ip": "192.0.2.1",
+                "description": null,
+                "properties": [],
+                "has_additional_metadata": false,
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "relationships": {
+                    "actor": {
+                        "object": "user",
+                        "attributes": {
+                            "uuid": "00000000-0000-4000-8000-000000000101",
+                            "username": "fixture.owner",
+                            "email": "owner@fixture.test",
+                            "language": "en",
+                            "image": "https://gravatar.com/avatar/e7106177a57b526d357497a9f3b7ba90",
+                            "admin": false,
+                            "root_admin": false,
+                            "2fa_enabled": false,
+                            "created_at": "2026-01-01T00:00:00+00:00",
+                            "updated_at": "2026-01-01T00:00:00+00:00"
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "meta": {
+        "pagination": {
+            "total": 1,
+            "count": 1,
+            "per_page": 25,
+            "current_page": 1,
+            "total_pages": 1,
+            "links": {}
+        }
+    }
+}

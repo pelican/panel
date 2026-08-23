@@ -16,6 +16,7 @@ class CopyFileRequest extends ClientApiRequest implements ClientPermissionsReque
     public function rules(): array
     {
         return [
+            /** Path of the file or directory to copy, relative to the server root. The copy is made alongside it. */
             'location' => 'required|string',
         ];
     }

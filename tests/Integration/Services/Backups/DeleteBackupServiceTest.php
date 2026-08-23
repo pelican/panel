@@ -27,6 +27,8 @@ class DeleteBackupServiceTest extends IntegrationTestCase
         $this->expectException(BackupLockedException::class);
 
         $this->app->make(DeleteBackupService::class)->handle($backup);
+
+        $this->assertModelExists($backup);
     }
 
     public function test_failed_backup_that_is_locked_can_be_deleted(): void
@@ -46,9 +48,7 @@ class DeleteBackupServiceTest extends IntegrationTestCase
 
         $this->app->make(DeleteBackupService::class)->handle($backup);
 
-        $backup->refresh();
-
-        $this->assertNotNull($backup->deleted_at);
+        $this->assertModelMissing($backup);
     }
 
     public function test_exception_thrown_due_to_missing_backup_is_ignored(): void
@@ -63,9 +63,7 @@ class DeleteBackupServiceTest extends IntegrationTestCase
 
         $this->app->make(DeleteBackupService::class)->handle($backup);
 
-        $backup->refresh();
-
-        $this->assertNotNull($backup->deleted_at);
+        $this->assertModelMissing($backup);
     }
 
     public function test_exception_is_thrown_if_not404(): void
@@ -82,8 +80,6 @@ class DeleteBackupServiceTest extends IntegrationTestCase
 
         $this->app->make(DeleteBackupService::class)->handle($backup);
 
-        $backup->refresh();
-
-        $this->assertNull($backup->deleted_at);
+        $this->assertModelExists($backup);
     }
 }

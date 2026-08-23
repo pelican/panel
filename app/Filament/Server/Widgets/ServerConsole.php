@@ -10,6 +10,7 @@ use App\Models\Server;
 use App\Models\User;
 use App\Services\Nodes\NodeJWTService;
 use App\Services\Servers\GetUserPermissionsService;
+use Filament\Actions\Action;
 use Filament\Widgets\Widget;
 use Illuminate\Support\Arr;
 use Livewire\Attributes\On;
@@ -135,6 +136,12 @@ class ServerConsole extends Widget
         AlertBanner::make('websocket_error')
             ->title(trans('server/console.websocket_error.title'))
             ->body(trans('server/console.websocket_error.body'))
+            ->actions(fn () => user()->can('update', $this->server->node) ? [
+                Action::make('exclude_troubleshooting')
+                    ->label('Open troubleshooting guide')
+                    ->color('gray')
+                    ->url('https://pelican.dev/docs/troubleshooting/#wings-connection-issues', true),
+            ] : [])
             ->danger()
             ->send();
     }

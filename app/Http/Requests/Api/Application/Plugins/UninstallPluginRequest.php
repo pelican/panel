@@ -11,6 +11,7 @@ class UninstallPluginRequest extends WritePluginRequest
     public function rules(?array $rules = null): array
     {
         return [
+            /** Also remove the plugin's files from disk rather than only disabling it. */
             'delete' => 'boolean',
         ];
     }

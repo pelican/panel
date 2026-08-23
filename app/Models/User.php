@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Contracts\Validatable;
 use App\Enums\CustomizationKey;
+use App\Enums\ServerUserSettingKey;
 use App\Enums\SubuserPermission;
 use App\Events\User\Deleting;
 use App\Exceptions\DisplayException;
@@ -40,6 +41,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\In;
 use Laravel\Passkeys\Contracts\PasskeyUser;
@@ -86,6 +88,8 @@ use Spatie\Permission\Traits\HasRoles;
  * @property-read int|null $sub_servers_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Subuser> $subusers
  * @property-read int|null $subusers_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, ServerUserSettings> $serverSettings
+ * @property-read int|null $server_settings_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, ApiKey> $tokens
  * @property-read int|null $tokens_count
  *
@@ -197,6 +201,7 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         'customization.console_graph_period' => ['integer', 'min:1'],
         'customization.top_navigation' => ['boolean'],
         'customization.dashboard_layout' => ['string', 'in:grid,table'],
+        'customization.servers_per_page' => ['integer', 'min:0'],
     ];
 
     protected function casts(): array
@@ -351,6 +356,30 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         return $this->belongsToMany(Server::class, 'subusers');
     }
 
+    /** @return HasMany<ServerUserSettings, $this> */
+    public function serverSettings(): HasMany
+    {
+        return $this->hasMany(ServerUserSettings::class);
+    }
+
+    public function getServerSetting(Server $server, ServerUserSettingKey $key): string|int|bool
+    {
+        $settings = $this->serverSettings()->where('server_id', $server->id)->first()->settings ?? [];
+
+        return $settings[$key->value] ?? $key->getDefaultValue();
+    }
+
+    public function updateServerSetting(Server $server, ServerUserSettingKey $key, string|int|bool $value): void
+    {
+        $row = $this->serverSettings()->firstOrNew(['server_id' => $server->id]);
+
+        $settings = $row->settings ?? [];
+        $settings[$key->value] = $value;
+
+        $row->settings = array_intersect_key($settings, ServerUserSettingKey::getDefaultSettings());
+        $row->save();
+    }
+
     /** @return ($key is null ? array<string, string|int|bool> : string|int|bool) */
     public function getCustomization(?CustomizationKey $key = null): array|string|int|bool|null
     {
@@ -358,6 +387,21 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         $customization = array_merge(CustomizationKey::getDefaultCustomization(), $customization);
 
         return !$key ? $customization : $customization[$key->value];
+    }
+
+    public function setCustomization(CustomizationKey $key, string|int|bool $value): void
+    {
+        DB::transaction(function () use ($key, $value) {
+            // Re-read the raw stored data under lock so concurrent updates to other
+            // keys aren't lost, and merge into it rather than getCustomization(),
+            // which mixes in enum defaults that don't all pass this model's
+            // validation rules.
+            $raw = static::query()->whereKey($this->getKey())->lockForUpdate()->value('customization');
+            $customization = (is_string($raw) ? json_decode($raw, true) : $raw) ?? [];
+            $customization[$key->value] = $value;
+
+            $this->update(['customization' => $customization]);
+        });
     }
 
     protected function hasPermission(Server $server, string $permission = ''): bool

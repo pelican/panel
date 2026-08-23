@@ -85,7 +85,7 @@ class EggVariable extends Model implements Validatable
     /**
      * Implement language verification by overriding Eloquence's gather rules function.
      *
-     * @return array<string|string[]>
+     * @return array<string, string[]>
      */
     public static function getRules(): array
     {

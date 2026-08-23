@@ -3,12 +3,14 @@
 namespace App\Filament\Admin\Resources\Servers\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Resources\Eggs\Pages\EditEgg;
+use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
 use App\Filament\Admin\Resources\Servers\ServerResource;
-use App\Filament\Server\Pages\Console;
+use App\Filament\Admin\Resources\Users\Pages\EditUser;
+use App\Filament\Components\Actions\ViewConsoleAction;
 use App\Models\Server;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
-use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
@@ -29,12 +31,11 @@ class ListServers extends ListRecords
     public function table(Table $table): Table
     {
         return $table
-            ->searchable(false)
             ->defaultGroup('node.name')
             ->groups([
-                Group::make('node.name')->getDescriptionFromRecordUsing(fn (Server $server): string => str($server->node->description)->limit(150)),
-                Group::make('user.username')->getDescriptionFromRecordUsing(fn (Server $server): string => $server->user->email),
-                Group::make('egg.name')->getDescriptionFromRecordUsing(fn (Server $server): string => str($server->egg->description)->limit(150)),
+                Group::make('node.name')->getDescriptionFromRecordUsing(fn (Server $server) => str($server->node->description)->limit(150)),
+                Group::make('user.username')->getDescriptionFromRecordUsing(fn (Server $server) => $server->user->email),
+                Group::make('egg.name')->getDescriptionFromRecordUsing(fn (Server $server) => str($server->egg->description)->limit(150)),
             ])
             ->columns([
                 TextColumn::make('condition')
@@ -45,7 +46,7 @@ class ListServers extends ListRecords
                     ->color(fn (Server $server) => $server->condition->getColor()),
                 TextColumn::make('uuid')
                     ->hidden()
-                    ->label('UUID')
+                    ->label(trans('admin/server.uuid'))
                     ->searchable(),
                 TextColumn::make('name')
                     ->label(trans('admin/server.name'))
@@ -55,19 +56,19 @@ class ListServers extends ListRecords
                     ->sortable(),
                 TextColumn::make('node.name')
                     ->label(trans('admin/server.node'))
-                    ->url(fn (Server $server) => route('filament.admin.resources.nodes.edit', ['record' => $server->node]))
+                    ->url(fn (Server $server) => user()?->can('update', $server->node) ? EditNode::getUrl(['record' => $server->node]) : null)
                     ->hidden(fn (Table $table) => $table->getGrouping()?->getId() === 'node.name')
                     ->sortable()
                     ->searchable(),
                 TextColumn::make('egg.name')
                     ->label(trans('admin/server.egg'))
-                    ->url(fn (Server $server) => route('filament.admin.resources.eggs.edit', ['record' => $server->egg]))
+                    ->url(fn (Server $server) => user()?->can('update', $server->egg) ? EditEgg::getUrl(['record' => $server->egg]) : null)
                     ->hidden(fn (Table $table) => $table->getGrouping()?->getId() === 'egg.name')
                     ->sortable()
                     ->searchable(),
                 TextColumn::make('user.username')
                     ->label(trans('admin/user.username'))
-                    ->url(fn (Server $server) => route('filament.admin.resources.users.edit', ['record' => $server->user]))
+                    ->url(fn (Server $server) => user()?->can('update', $server->user) ? EditUser::getUrl(['record' => $server->user]) : null)
                     ->hidden(fn (Table $table) => $table->getGrouping()?->getId() === 'user.username')
                     ->sortable()
                     ->searchable(),
@@ -83,22 +84,26 @@ class ListServers extends ListRecords
                     ->label(trans('admin/server.primary_allocation'))
                     ->hidden(fn () => user()?->can('update server')) // TODO: update to policy check (fn (Server $server) --> $server is empty)
                     ->state(fn (Server $server) => $server->allocation->address ?? trans('admin/server.none')),
-                TextColumn::make('image')->hidden(),
+                TextColumn::make('databases_count')
+                    ->counts('databases')
+                    ->label(trans('admin/server.databases'))
+                    ->numeric()
+                    ->sortable()
+                    ->toggleable()
+                    ->toggledHiddenByDefault(),
                 TextColumn::make('backups_count')
                     ->counts('backups')
                     ->label(trans('admin/server.backups'))
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable()
+                    ->toggledHiddenByDefault(),
             ])
             ->recordActions([
                 ViewAction::make()
                     ->tooltip(trans('filament-actions::view.single.label'))
                     ->hidden(fn (Server $record) => ServerResource::getEditAuthorizationResponse($record)->allowed()),
-                Action::make('console')
-                    ->tooltip(trans('admin/server.console'))
-                    ->icon(TablerIcon::Terminal)
-                    ->url(fn (Server $server) => Console::getUrl(panel: 'server', tenant: $server))
-                    ->authorize(fn (Server $server) => user()?->canAccessTenant($server)),
+                ViewConsoleAction::make(),
                 EditAction::make(),
             ])
             ->toolbarActions([

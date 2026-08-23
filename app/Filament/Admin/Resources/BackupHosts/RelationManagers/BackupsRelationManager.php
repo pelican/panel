@@ -3,8 +3,10 @@
 namespace App\Filament\Admin\Resources\BackupHosts\RelationManagers;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Resources\Servers\Pages\EditServer;
 use App\Filament\Components\Tables\Columns\BytesColumn;
 use App\Filament\Components\Tables\Columns\DateTimeColumn;
+use App\Models\Backup;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -20,6 +22,10 @@ class BackupsRelationManager extends RelationManager
             ->recordTitleAttribute('name')
             ->heading(null)
             ->columns([
+                TextColumn::make('server.name')
+                    ->label(trans('admin/server.name'))
+                    ->url(fn (Backup $backup) => user()?->can('update', $backup->server) ? EditServer::getUrl(['record' => $backup->server]) : null)
+                    ->searchable(),
                 TextColumn::make('name')
                     ->label(trans('server/backup.actions.create.name'))
                     ->searchable(),

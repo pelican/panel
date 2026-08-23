@@ -33,7 +33,7 @@ class ListWebhookConfigurations extends ListRecords
     {
         return collect(WebhookScope::cases())
             ->mapWithKeys(fn (WebhookScope $scope) => [
-                $scope->value . '-webhooks' => Tab::make($scope->getLabel() . ' Webhooks')
+                $scope->value . '-webhooks' => Tab::make(trans('admin/webhook.tabs.' . $scope->value))
                     ->modifyQueryUsing(fn (Builder $query) => $query->where('scope', $scope))
                     ->badge(WebhookConfiguration::where('scope', $scope)->count()),
             ])

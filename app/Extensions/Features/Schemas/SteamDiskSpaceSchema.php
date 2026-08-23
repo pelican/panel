@@ -3,6 +3,8 @@
 namespace App\Extensions\Features\Schemas;
 
 use App\Extensions\Features\FeatureSchemaInterface;
+use App\Models\Server;
+use App\Models\User;
 use Filament\Actions\Action;
 use Illuminate\Support\HtmlString;
 
@@ -20,6 +22,11 @@ class SteamDiskSpaceSchema implements FeatureSchemaInterface
     public function getId(): string
     {
         return 'steam_disk_space';
+    }
+
+    public function authorize(User $user, Server $server): bool
+    {
+        return true;
     }
 
     public function getAction(): Action

@@ -24,6 +24,7 @@ class DescriptionServerRequest extends ClientApiRequest implements ClientPermiss
     public function rules(): array
     {
         return [
+            /** New description for the server. */
             'description' => 'string|nullable',
         ];
     }

@@ -137,10 +137,7 @@ class NetworkAllocationController extends ClientApiController
         // allocation limit set.
         throw_if(empty($server->allocation_limit), new DisplayException('You cannot delete allocations for this server: no allocation limit is set.'));
 
-        Allocation::query()->where('id', $allocation->id)->update([
-            'notes' => null,
-            'server_id' => null,
-        ]);
+        Allocation::query()->where('id', $allocation->id)->update(Allocation::RELEASE_ATTRIBUTES);
 
         Activity::event('server:allocation.delete')
             ->subject($allocation)

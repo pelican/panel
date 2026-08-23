@@ -34,10 +34,7 @@ return new class extends Migration
         });
 
         Schema::table('backups', function (Blueprint $table) {
-            $table->unsignedInteger('backup_host_id')->after('disk');
-            $table->foreign('backup_host_id')->references('id')->on('backup_hosts');
-
-            $table->dropColumn('disk');
+            $table->unsignedInteger('backup_host_id')->nullable()->after('disk');
         });
 
         $oldDriver = env('APP_BACKUP_DRIVER', 'wings');
@@ -64,6 +61,14 @@ return new class extends Migration
         ]);
 
         DB::table('backups')->update(['backup_host_id' => $backupHost->id]);
+
+        Schema::table('backups', function (Blueprint $table) {
+            $table->unsignedInteger('backup_host_id')->nullable(false)->change();
+
+            $table->foreign('backup_host_id')->references('id')->on('backup_hosts');
+
+            $table->dropColumn('disk');
+        });
     }
 
     /**
@@ -78,8 +83,8 @@ return new class extends Migration
             $table->dropColumn('backup_host_id');
         });
 
-        Schema::dropIfExists('backup_hosts');
-
         Schema::dropIfExists('backup_host_node');
+
+        Schema::dropIfExists('backup_hosts');
     }
 };

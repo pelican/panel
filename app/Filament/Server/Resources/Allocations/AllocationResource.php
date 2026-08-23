@@ -54,7 +54,9 @@ class AllocationResource extends Resource
                 TextColumn::make('alias')
                     ->hidden(),
                 TextColumn::make('port')
-                    ->label(trans('server/network.port')),
+                    ->label(trans('server/network.port'))
+                    ->state(fn (Allocation $allocation) => $allocation->show_port ? $allocation->port : null)
+                    ->placeholder(trans('server/network.port_hidden')),
                 TextInputColumn::make('notes')
                     ->label(trans('server/network.notes'))
                     ->visibleFrom('sm')
@@ -88,6 +90,7 @@ class AllocationResource extends Resource
                         Allocation::where('id', $allocation->id)->update([
                             'notes' => null,
                             'is_locked' => false,
+                            'show_port' => true,
                             'server_id' => null,
                         ]);
 

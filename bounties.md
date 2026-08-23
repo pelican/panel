@@ -1,4 +1,4 @@
-# [Bounties](https://github.com/pelican-dev/panel/issues?q=state%3Aopen%20is%3Aissue%20label%3A%22%F0%9F%92%B0%20fund%22)
+# [Bounties](https://github.com/pelican/panel/issues?q=state%3Aopen%20is%3Aissue%20label%3A%22%F0%9F%92%B0%20fund%22)
 
 Get paid to improve Pelican!
 
@@ -15,6 +15,6 @@ This is still valuable work, so we'll pay out $50 for getting any bounty closed 
 
 ## Issue bounties
 
-We've tagged bounty-eligible issues across openpilot and the rest of our repos; check out all the open ones [here](https://github.com/pelican-dev/panel/issues?q=state%3Aopen%20is%3Aissue%20label%3A%22%F0%9F%92%B0%20fund%22).
+We've tagged bounty-eligible issues across openpilot and the rest of our repos; check out all the open ones [here](https://github.com/pelican/panel/issues?q=state%3Aopen%20is%3Aissue%20label%3A%22%F0%9F%92%B0%20fund%22).
 
 New bounties can be proposed in the [**#feedback**](https://discord.com/channels/1218730176297439332/1218732581797892220) channel in Discord.

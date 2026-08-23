@@ -1,0 +1,15 @@
+{
+    "object": "user",
+    "attributes": {
+        "uuid": "00000000-0000-4000-8000-000000000101",
+        "username": "fixture.owner",
+        "email": "owner@fixture.test",
+        "language": "en",
+        "image": "https://gravatar.com/avatar/e7106177a57b526d357497a9f3b7ba90",
+        "admin": false,
+        "root_admin": false,
+        "2fa_enabled": false,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00"
+    }
+}

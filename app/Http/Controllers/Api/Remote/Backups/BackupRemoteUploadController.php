@@ -16,7 +16,13 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class BackupRemoteUploadController extends Controller
 {
-    public const DEFAULT_MAX_PART_SIZE = 5 * 1024 * 1024 * 1024;
+    public const MIN_MAX_PART_SIZE = 5 * 1024 * 1024; // 5 MiB
+
+    public const DEFAULT_MAX_PART_SIZE = 128 * 1024 * 1024; // 128 MiB
+
+    public const MAX_MAX_PART_SIZE = 5 * 1024 * 1024 * 1024; // 5 GiB
+
+    public const MAX_CONCURRENT_UPLOADS = 10;
 
     /**
      * BackupRemoteUploadController constructor.

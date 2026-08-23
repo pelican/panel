@@ -24,6 +24,7 @@ class DatabaseSettingsCommand extends Command
     protected $signature = 'p:environment:database
                             {--driver= : The database driver backend to use.}
                             {--database= : The database to use.}
+                            {--schema= : The schema to use for the PostgreSQL database.}
                             {--host= : The connection address for the MySQL/ MariaDB/ PostgreSQL server.}
                             {--port= : The connection port for the MySQL/ MariaDB/ PostgreSQL server.}
                             {--username= : Username to use when connecting to the MySQL/ MariaDB/ PostgreSQL server.}
@@ -196,6 +197,11 @@ class DatabaseSettingsCommand extends Command
                 config('database.connections.pgsql.database', 'panel')
             );
 
+            $this->variables['DB_SCHEMA'] = $this->option('schema') ?? $this->ask(
+                'Database Schema',
+                config('database.connections.pgsql.search_path', 'public')
+            );
+
             $this->output->note(trans('commands.database_settings.DB_USERNAME_note'));
             $this->variables['DB_USERNAME'] = $this->option('username') ?? $this->ask(
                 'Database Username',
@@ -224,7 +230,7 @@ class DatabaseSettingsCommand extends Command
                     'charset' => 'utf8',
                     'prefix' => '',
                     'prefix_indexes' => true,
-                    'search_path' => 'public',
+                    'search_path' => $this->variables['DB_SCHEMA'],
                     'sslmode' => 'prefer',
                 ]);
 

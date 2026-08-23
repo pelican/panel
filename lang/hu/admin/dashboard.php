@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'heading' => 'Üdvözöljük a Pelicanban!',
+    'heading' => 'Üdvözöllek a :app applikációban!',
     'version' => 'Verzió: :version',
     'advanced' => 'Haladó',
     'server' => 'Szerver',
@@ -27,7 +27,7 @@ return [
             'heading' => 'Nincs észlelt csomópont',
             'content' => 'Úgy tűnik, hogy még nincs egyetlen csomópontod sem beállítva, de ne aggódj, mert a művelet gombra kattintva létrehozhatod az elsőt!',
             'extra_note' => 'Ha bármilyen problémába ütközik, kérjük jelentse a GitHubon.',
-            'button_label' => 'Első csomópont létrehozása a Pelicanban',
+            'button_label' => 'Hozd létre az első Node-ot',
         ],
         'intro-support' => [
             'heading' => 'Pelican támogatása',

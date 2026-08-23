@@ -42,8 +42,8 @@ abstract class OAuthSchema implements OAuthSchemaInterface
 
         return [
             TextInput::make("OAUTH_{$id}_CLIENT_ID")
-                ->label('Client ID')
-                ->placeholder('Client ID')
+                ->label(trans('admin/setting.oauth.client_id'))
+                ->placeholder(trans('admin/setting.oauth.client_id'))
                 ->columnSpan(2)
                 ->required()
                 ->password()
@@ -51,8 +51,8 @@ abstract class OAuthSchema implements OAuthSchemaInterface
                 ->autocomplete(false)
                 ->default(env("OAUTH_{$id}_CLIENT_ID")),
             TextInput::make("OAUTH_{$id}_CLIENT_SECRET")
-                ->label('Client Secret')
-                ->placeholder('Client Secret')
+                ->label(trans('admin/setting.oauth.client_secret'))
+                ->placeholder(trans('admin/setting.oauth.client_secret'))
                 ->columnSpan(2)
                 ->required()
                 ->password()
@@ -120,20 +120,20 @@ abstract class OAuthSchema implements OAuthSchemaInterface
 
     public function isEnabled(): bool
     {
-        return env($this->getConfigKey(), false);
+        return (bool) env($this->getConfigKey(), false);
     }
 
     public function shouldCreateMissingUser(OAuthUser $user): bool
     {
         $id = Str::upper($this->getId());
 
-        return env("OAUTH_{$id}_SHOULD_CREATE_MISSING_USERS", false);
+        return (bool) env("OAUTH_{$id}_SHOULD_CREATE_MISSING_USERS", false);
     }
 
     public function shouldLinkMissingUser(User $user, OAuthUser $oauthUser): bool
     {
         $id = Str::upper($this->getId());
 
-        return env("OAUTH_{$id}_SHOULD_LINK_MISSING_USERS", false);
+        return (bool) env("OAUTH_{$id}_SHOULD_LINK_MISSING_USERS", false);
     }
 }

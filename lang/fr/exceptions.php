@@ -60,5 +60,11 @@ return [
     ],
     'server' => [
         'marked_as_failed' => 'Ce serveur n\'a pas encore terminé son processus d\'installation, veuillez réessayer plus tard.',
+        'file_too_large' => 'Le fichier que vous essayez d\'ouvrir est trop volumineux pour être affiché dans l\'éditeur de fichiers.',
+        'state_conflict' => 'Ce serveur est actuellement en état non pris en charge, veuillez réessayer plus tard.',
+        'suspended' => 'Ce serveur est actuellement suspendu et la fonctionnalité demandée est indisponible.',
+        'maintenance' => 'Le noeud de ce serveur est actuellement en maintenance et la fonctionnalité demandée est indisponible.',
+        'restoring_backup' => 'Ce serveur est en cours de restauration à partir d\'une sauvegarde, veuillez réessayer plus tard.',
+        'transferring' => 'Ce serveur est en cours de transfert vers une nouvelle machine, veuillez réessayer plus tard.',
     ],
 ];

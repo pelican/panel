@@ -3,6 +3,9 @@
 namespace App\Livewire;
 
 use Closure;
+use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Notifications\Concerns\HasActions;
 use Filament\Notifications\Concerns\HasBody;
 use Filament\Notifications\Concerns\HasIcon;
 use Filament\Notifications\Concerns\HasId;
@@ -10,10 +13,12 @@ use Filament\Notifications\Concerns\HasStatus;
 use Filament\Notifications\Concerns\HasTitle;
 use Filament\Support\Components\ViewComponent;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Contracts\Support\Htmlable;
 use Livewire\Livewire;
 
 final class AlertBanner extends ViewComponent implements Arrayable
 {
+    use HasActions;
     use HasBody;
     use HasIcon;
     use HasId;
@@ -40,7 +45,7 @@ final class AlertBanner extends ViewComponent implements Arrayable
     }
 
     /**
-     * @return array{id: string, title: ?string, body: ?string, status: ?string, icon: ?string, closeable: bool}
+     * @return array{id: string, title: ?string, body: ?string, status: ?string, icon: string|\BackedEnum|Htmlable|null, closeable: bool, actions: array<array<string, mixed>>}
      */
     public function toArray(): array
     {
@@ -51,11 +56,12 @@ final class AlertBanner extends ViewComponent implements Arrayable
             'status' => $this->getStatus(),
             'icon' => $this->getIcon(),
             'closeable' => $this->isCloseable(),
+            'actions' => collect($this->getActions())->toArray(),
         ];
     }
 
     /**
-     * @param  array{id: string, title: ?string, body: ?string, status: ?string, icon: ?string, closeable: bool}  $data
+     * @param  array{id: string, title: ?string, body: ?string, status: ?string, icon: string|\BackedEnum|Htmlable|null, closeable: bool, actions: array<array<string, mixed>>}  $data
      */
     public static function fromArray(array $data): AlertBanner
     {
@@ -66,6 +72,13 @@ final class AlertBanner extends ViewComponent implements Arrayable
         $static->status($data['status']);
         $static->icon($data['icon']);
         $static->closable($data['closeable']);
+        $static->actions(array_map(
+            fn (array $action): Action|ActionGroup => match (array_key_exists('actions', $action)) {
+                true => ActionGroup::fromArray($action),
+                false => Action::fromArray($action),
+            },
+            $data['actions'] ?? [],
+        ));
 
         return $static;
     }
@@ -93,15 +106,5 @@ final class AlertBanner extends ViewComponent implements Arrayable
         session()->push('alert-banners', $data);
 
         return $this;
-    }
-
-    public function getColorClasses(): string
-    {
-        return match ($this->getStatus()) {
-            'success' => 'text-success-600 dark:text-success-500',
-            'warning' => 'text-warning-600 dark:text-warning-500',
-            'danger' => 'text-danger-600 dark:text-danger-500',
-            default => 'text-info-600 dark:text-info-500',
-        };
     }
 }

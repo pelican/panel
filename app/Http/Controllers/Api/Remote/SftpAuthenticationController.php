@@ -122,7 +122,7 @@ class SftpAuthenticationController extends Controller
     /**
      * Rejects the request and increments the login attempts.
      */
-    protected function reject(Request $request, bool $increment = true): void
+    protected function reject(Request $request, bool $increment = true): never
     {
         if ($increment) {
             $this->incrementLoginAttempts($request);

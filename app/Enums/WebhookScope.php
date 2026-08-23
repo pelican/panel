@@ -10,8 +10,8 @@ enum WebhookScope: string
     public function getLabel(): string
     {
         return match ($this) {
-            self::Global => 'Global',
-            self::Server => 'Server',
+            self::Global => trans('admin/webhook.scope.global'),
+            self::Server => trans('admin/webhook.scope.server'),
         };
     }
 }

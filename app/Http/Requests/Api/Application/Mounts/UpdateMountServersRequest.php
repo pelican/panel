@@ -11,7 +11,9 @@ class UpdateMountServersRequest extends StoreMountRequest
     public function rules(?array $rules = null): array
     {
         return [
+            /** IDs of the servers this mount is attached to. Servers left out of this list are detached. */
             'servers' => 'required|array|exists:servers,id',
+            /** ID of a server this mount is attached to. */
             'servers.*' => 'integer',
         ];
     }

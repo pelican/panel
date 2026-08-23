@@ -26,6 +26,7 @@ class StoreServerDatabaseRequest extends ApplicationApiRequest
         $server = $this->route()->parameter('server');
 
         return [
+            /** Name of the database to create. The final name is prefixed with the server ID, and must not already be in use by this server. */
             'database' => [
                 'required',
                 'alpha_dash',
@@ -35,7 +36,9 @@ class StoreServerDatabaseRequest extends ApplicationApiRequest
                     $query->where('server_id', $server->id)->where('database', $this->databaseName());
                 }),
             ],
+            /** Addresses the database user may connect from. Use `%` to allow any address. */
             'remote' => 'required|string|regex:/^[0-9%.]{1,15}$/',
+            /** ID of the database host the database is created on. */
             'host' => 'required|integer|exists:database_hosts,id',
         ];
     }

@@ -12,6 +12,14 @@ return [
         'successful' => 'Successful',
         'failed' => 'Failed',
     ],
+    'notifications' => [
+        'action' => 'Notification Settings',
+        'toggle_manual' => 'Manual Backup Notifications',
+        'helper_manual' => 'Receive a notification and email when a manually created backup for this server completes or fails.',
+        'toggle_scheduled' => 'Scheduled Backup Notifications',
+        'helper_scheduled' => 'Receive a notification and email when a scheduled backup for this server completes or fails.',
+        'saved' => 'Notification Settings Updated',
+    ],
     'actions' => [
         'create' => [
             'title' => 'Create Backup',

@@ -1,7 +1,7 @@
 _comment: 'DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PANEL'
 meta:
   version: PLCN_v3
-  update_url: 'https://raw.githubusercontent.com/pelican-dev/panel/refs/heads/main/tests/Unit/Console/Command/Egg/egg-ptdlv2.yaml'
+  update_url: 'https://raw.githubusercontent.com/pelican/panel/refs/heads/main/tests/Unit/Console/Command/Egg/egg-ptdlv2.yaml'
 exported_at: '2026-06-01T01:02:03+00:00'
 name: 'Egg Example'
 author: example@example.com

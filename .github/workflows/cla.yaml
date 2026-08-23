@@ -23,8 +23,8 @@ jobs:
           PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_PERSONAL_ACCESS_TOKEN }}
         with:
           path-to-signatures: 'version1/cla.json'
-          path-to-document: 'https://github.com/pelican-dev/panel/blob/main/contributor_license_agreement.md'
+          path-to-document: 'https://github.com/pelican/panel/blob/main/contributor_license_agreement.md'
           branch: 'main'
           allowlist: dependabot[bot]
-          remote-organization-name: pelican-dev
+          remote-organization-name: pelican
           remote-repository-name: cla-signatures

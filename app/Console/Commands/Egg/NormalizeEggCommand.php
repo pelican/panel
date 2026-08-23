@@ -112,7 +112,7 @@ class NormalizeEggCommand extends Command
 
     private static function replaceExtension(string $path): string
     {
-        return preg_replace('/^(.*\.)(?:yml|json|yaml)$/', '$1yaml', $path);
+        return preg_replace('/^(.*\.)(?:yml|json|yaml)$/', '$1yaml', $path) ?? $path;
     }
 
     /**

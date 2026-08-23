@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\DatabaseHosts\RelationManagers;
 
+use App\Filament\Admin\Resources\Servers\Pages\EditServer;
 use App\Filament\Components\Actions\RotateDatabasePasswordAction;
 use App\Filament\Components\Tables\Columns\DateTimeColumn;
 use App\Models\Database;
@@ -50,7 +51,7 @@ class DatabasesRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('database')
-            ->heading('')
+            ->heading(null)
             ->columns([
                 TextColumn::make('database'),
                 TextColumn::make('username')
@@ -59,7 +60,7 @@ class DatabasesRelationManager extends RelationManager
                     ->label(trans('admin/databasehost.table.remote'))
                     ->formatStateUsing(fn (Database $record) => $record->remote === '%' ? trans('admin/databasehost.anywhere'). ' ( % )' : $record->remote),
                 TextColumn::make('server.name')
-                    ->url(fn (Database $database) => route('filament.admin.resources.servers.edit', ['record' => $database->server_id])),
+                    ->url(fn (Database $database) => user()?->can('update', $database->server) ? EditServer::getUrl(['record' => $database->server]) : null),
                 TextColumn::make('max_connections')
                     ->label(trans('admin/databasehost.table.max_connections'))
                     ->formatStateUsing(fn ($record) => $record->max_connections ?: trans('server/database.unlimited')),

@@ -60,5 +60,11 @@ return [
     ],
     'server' => [
         'marked_as_failed' => 'Ez a szerver még nem fejezte be a telepítési folyamatot, kérlek próbáld újra később.',
+        'file_too_large' => 'Ez a fájl túl nagy, hogy itt meg tudd nyitni.',
+        'state_conflict' => 'A szerver jelenleg nem elérhető, próbáld újra később.',
+        'suspended' => 'Ez a szerver fel van függesztve és ez nem elérhető.',
+        'maintenance' => 'A node szerver jelenleg karbantartás alatt van így ez nem elérhető.',
+        'restoring_backup' => 'A szerver jelenleg egy mentést állít vissza, kérlek próbáld újra később.',
+        'transferring' => 'Ez a szerver jelenleg egy új gépre van migrálva, kérlek próbáld újra később.',
     ],
 ];

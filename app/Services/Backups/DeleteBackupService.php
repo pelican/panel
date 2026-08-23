@@ -35,7 +35,11 @@ class DeleteBackupService
         }
 
         $this->connection->transaction(function () use ($schema, $backup) {
-            $schema->deleteBackup($backup);
+            try {
+                $schema->deleteBackup($backup);
+            } catch (Exception $exception) {
+                throw_if($backup->is_successful, $exception);
+            }
 
             $backup->delete();
         });

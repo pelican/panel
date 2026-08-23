@@ -15,6 +15,7 @@ class RenameBackupRequest extends ClientApiRequest
     public function rules(): array
     {
         return [
+            /** New name for the backup. */
             'name' => 'required|string|max:255',
         ];
     }

@@ -335,6 +335,21 @@ class Plugin extends Model implements HasPluginSettings
         return false;
     }
 
+    /** @return array<string, mixed> */
+    public function getSettingsFormData(): array
+    {
+        try {
+            $pluginObject = new ($this->fullClass());
+
+            if ($pluginObject instanceof HasPluginSettings) {
+                return $pluginObject->getSettingsFormData();
+            }
+        } catch (Exception) {
+        }
+
+        return [];
+    }
+
     /** @return Component[] */
     public function getSettingsForm(): array
     {

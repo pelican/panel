@@ -1,0 +1,13 @@
+{
+    "object": "mount",
+    "attributes": {
+        "id": 100,
+        "uuid": "00000000-0000-4000-8000-000000000500",
+        "name": "fixture-mount",
+        "description": "A pinned mount for the API test fixture suite.",
+        "source": "/srv/fixture",
+        "target": "/mnt/fixture",
+        "read_only": true,
+        "user_mountable": false
+    }
+}

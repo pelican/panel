@@ -453,7 +453,7 @@ class EditProfile extends BaseEditProfile
                         ->schema([
                             TextEntry::make('log')
                                 ->hiddenLabel()
-                                ->state(fn (ActivityLog $log) => new HtmlString($log->htmlable())),
+                                ->state(fn (ActivityLog $record) => new HtmlString($record->htmlable())),
                         ]),
                 ]),
             Tab::make('customization')

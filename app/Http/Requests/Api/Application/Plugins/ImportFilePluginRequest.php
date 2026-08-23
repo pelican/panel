@@ -7,6 +7,7 @@ class ImportFilePluginRequest extends WritePluginRequest
     public function rules(): array
     {
         return [
+            /** URL the plugin archive is downloaded from. */
             'url' => 'required|string',
         ];
     }

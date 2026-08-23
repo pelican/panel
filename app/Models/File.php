@@ -114,7 +114,7 @@ class File extends Model
 
     public function isImage(): bool
     {
-        return preg_match('/^image\/(?!svg\+xml)/', $this->mime_type);
+        return preg_match('/^image\/(?!svg\+xml)/', $this->mime_type) === 1;
     }
 
     public function getIcon(): BackedEnum

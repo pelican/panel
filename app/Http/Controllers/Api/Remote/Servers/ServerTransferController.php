@@ -49,7 +49,7 @@ class ServerTransferController extends Controller
 
             if ($transfer->new_allocation || $transfer->new_additional_allocations) {
                 $allocations = array_merge([$transfer->new_allocation], $transfer->new_additional_allocations);
-                Allocation::query()->whereIn('id', $allocations)->update(['server_id' => null]);
+                Allocation::query()->whereIn('id', $allocations)->update(Allocation::RELEASE_ATTRIBUTES);
             }
         });
 
@@ -81,7 +81,7 @@ class ServerTransferController extends Controller
                 $allocations = array_merge([$transfer->old_allocation], $transfer->old_additional_allocations);
                 // Remove the old allocations for the server and re-assign the server to the new
                 // primary allocation and node.
-                Allocation::query()->whereIn('id', $allocations)->update(['server_id' => null]);
+                Allocation::query()->whereIn('id', $allocations)->update(Allocation::RELEASE_ATTRIBUTES);
                 $data['allocation_id'] = $transfer->new_allocation;
             }
 

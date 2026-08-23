@@ -100,7 +100,7 @@
 
             <div class="hidden sm:block">
                 <p class="text-sm dark:text-gray-400">{{ trans('server/dashboard.network') }}</p>
-                <p class="text-md font-semibold">{{ $server->allocation?->address ?? trans('server/dashboard.none') }}</p>
+                <p class="text-md font-semibold">{{ $server->allocation?->display_address ?? trans('server/dashboard.none') }}</p>
             </div>
         </div>
     </div>

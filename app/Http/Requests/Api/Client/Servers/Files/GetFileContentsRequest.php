@@ -21,6 +21,7 @@ class GetFileContentsRequest extends ClientApiRequest implements ClientPermissio
     public function rules(): array
     {
         return [
+            /** Path of the file to read, relative to the server root. */
             'file' => 'required|string',
         ];
     }

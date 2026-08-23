@@ -18,7 +18,9 @@ class CreateFolderRequest extends ClientApiRequest
     public function rules(): array
     {
         return [
+            /** Directory the new folder is created in, relative to the server root. */
             'root' => 'sometimes|nullable|string',
+            /** Name of the folder to create. */
             'name' => 'required|string',
         ];
     }

@@ -33,6 +33,11 @@ return [
     'invalid_code' => 'Invalid 2FA Code',
     'code_help' => 'Scan the QR code above using your two-step authentication app, then enter the code generated.',
     '2fa_enabled' => 'Two Factor Authentication is currently enabled!',
+    'mfa' => [
+        'app' => 'App',
+        'email' => 'E-Mail',
+        'none' => 'None',
+    ],
     'backup_help' => 'These will not be shown again!',
     'backup_codes' => 'Backup Codes',
     'disable_2fa' => 'Disable 2FA',

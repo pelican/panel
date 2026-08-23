@@ -6,6 +6,7 @@ return [
     'delete' => 'Delete',
     'error_something_went_wrong_generating_the_passkey' => 'Something went wrong generating the passkey',
     'invalid' => 'Invalid passkey',
+    'invalid_origin' => 'Passkeys are tied to :domain, so they only work when the panel is opened at that address.',
     'last_used' => 'Last used',
     'name' => 'Name',
     'name_placeholder' => 'My passkey',

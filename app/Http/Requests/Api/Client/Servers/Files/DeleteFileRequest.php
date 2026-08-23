@@ -19,8 +19,11 @@ class DeleteFileRequest extends ClientApiRequest implements ClientPermissionsReq
     public function rules(): array
     {
         return [
+            /** Directory the files live in, relative to the server root. */
             'root' => 'required|nullable|string',
+            /** Files and directories to delete. Directories are removed with everything inside them. */
             'files' => 'required|array',
+            /** Name of a file or directory, relative to `root`. */
             'files.*' => 'string',
         ];
     }

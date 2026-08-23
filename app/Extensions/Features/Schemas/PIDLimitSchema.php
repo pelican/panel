@@ -4,6 +4,8 @@ namespace App\Extensions\Features\Schemas;
 
 use App\Enums\TablerIcon;
 use App\Extensions\Features\FeatureSchemaInterface;
+use App\Models\Server;
+use App\Models\User;
 use Filament\Actions\Action;
 use Illuminate\Support\HtmlString;
 
@@ -25,6 +27,11 @@ class PIDLimitSchema implements FeatureSchemaInterface
     public function getId(): string
     {
         return 'pid_limit';
+    }
+
+    public function authorize(User $user, Server $server): bool
+    {
+        return true;
     }
 
     public function getAction(): Action

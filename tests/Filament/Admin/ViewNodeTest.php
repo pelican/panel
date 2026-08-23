@@ -162,7 +162,7 @@ it('keeps the node relation managers read-only on the view page', function () {
         'ownerRecord' => $node,
         'pageClass' => ViewNode::class,
     ])
-        ->assertActionHidden(TestAction::make('create new allocation')->table())
+        ->assertActionHidden(TestAction::make('create')->table())
         ->call('updateTableColumnState', 'ip_alias', (string) $allocation->getKey(), 'hacked-alias');
 
     expect($allocation->refresh()->ip_alias)->toBe($alias);

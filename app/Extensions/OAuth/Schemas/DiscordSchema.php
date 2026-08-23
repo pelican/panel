@@ -35,7 +35,7 @@ final class DiscordSchema extends OAuthSchema
                         ->hiddenLabel()
                         ->state(new HtmlString('<p>Under <b>Redirects</b> add the below URL.</p>')),
                     TextInput::make('_noenv_callback')
-                        ->label('Redirect URL')
+                        ->label(trans('admin/setting.oauth.redirect'))
                         ->dehydrated()
                         ->disabled()
                         ->hintCopy()

@@ -37,8 +37,8 @@ abstract class BaseSchema
 
         return [
             TextInput::make("CAPTCHA_{$id}_SITE_KEY")
-                ->label('Site Key')
-                ->placeholder('Site Key')
+                ->label(trans('admin/setting.captcha.site_key'))
+                ->placeholder(trans('admin/setting.captcha.site_key'))
                 ->columnSpan(2)
                 ->required()
                 ->password()
@@ -46,8 +46,8 @@ abstract class BaseSchema
                 ->autocomplete(false)
                 ->default(env("CAPTCHA_{$id}_SITE_KEY")),
             TextInput::make("CAPTCHA_{$id}_SECRET_KEY")
-                ->label('Secret Key')
-                ->placeholder('Secret Key')
+                ->label(trans('admin/setting.captcha.secret_key'))
+                ->placeholder(trans('admin/setting.captcha.secret_key'))
                 ->columnSpan(2)
                 ->required()
                 ->password()

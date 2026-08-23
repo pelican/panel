@@ -5,6 +5,7 @@ namespace App\Services\Servers;
 use App\Exceptions\DisplayException;
 use App\Extensions\BackupAdapter\BackupAdapterService;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
+use App\Models\Allocation;
 use App\Models\Server;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Databases\DatabaseManagementService;
@@ -101,10 +102,7 @@ class ServerDeletionService
                 }
             }
 
-            $server->allocations()->update([
-                'server_id' => null,
-                'notes' => null,
-            ]);
+            $server->allocations()->update(Allocation::RELEASE_ATTRIBUTES);
 
             $server->delete();
         });

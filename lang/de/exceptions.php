@@ -60,5 +60,11 @@ return [
     ],
     'server' => [
         'marked_as_failed' => 'Dieser Server hat seinen Installationsprozess noch nicht abgeschlossen, bitte versuche es später erneut.',
+        'file_too_large' => 'Die Datei, die du versuchst zu öffnen, ist zu groß, um es im Dateieditor anzuzeigen.',
+        'state_conflict' => 'Dieser Server ist im Moment in einem nicht unterstütztem Zustand, bitte versuchen Sie es später erneut.',
+        'suspended' => 'Dieser Server ist im Moment suspendiert und die erwünschte Funktionalität ist nicht verfügbar.',
+        'maintenance' => 'Der Node dieses Servers ist im Moment in Wartung und die erwünschte Funktionalität ist nicht verfügbar.',
+        'restoring_backup' => 'Dieser Server ist im Moment am Wiederherstellen von einem Backup, bitte versuchen Sie es später erneut.',
+        'transferring' => 'Dieser Server wird im Moment zu einer neuen Maschine bewegt, bitte versuchen Sie es später erneut.',
     ],
 ];

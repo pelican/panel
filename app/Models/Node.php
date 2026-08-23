@@ -63,6 +63,9 @@ use Symfony\Component\Yaml\Yaml;
  * @property-read int|null $servers_count
  * @property-read Collection<int, BackupHost> $backupHosts
  * @property-read int|null $backup_hosts_count
+ * @property-read int|null $servers_sum_memory
+ * @property-read int|null $servers_sum_disk
+ * @property-read int|null $servers_sum_cpu
  *
  * @method static \Database\Factories\NodeFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Node newModelQuery()
@@ -190,12 +193,6 @@ class Node extends Model implements Validatable
         ];
     }
 
-    public int $servers_sum_memory = 0;
-
-    public int $servers_sum_disk = 0;
-
-    public int $servers_sum_cpu = 0;
-
     protected static function booted(): void
     {
         static::creating(function (self $node) {
@@ -224,8 +221,8 @@ class Node extends Model implements Validatable
      *
      * @return array{
      *     debug: bool,
-     *     uuid: string,
-     *     token_id: string,
+     *     uuid: string|null,
+     *     token_id: string|null,
      *     token: string,
      *     api: array{
      *         host: string,
@@ -234,7 +231,7 @@ class Node extends Model implements Validatable
      *         upload_limit: int
      *     },
      *     system: array{data: string, sftp: array{bind_port: int}},
-     *     allowed_mounts: string[],
+     *     allowed_mounts: array<mixed>,
      *     remote: string,
      * }
      */
@@ -262,7 +259,7 @@ class Node extends Model implements Validatable
                 ],
             ],
             'allowed_mounts' => $this->mounts->pluck('source')->toArray(),
-            'remote' => config('app.url'),
+            'remote' => (string) config('app.url'),
         ];
     }
 
@@ -276,10 +273,12 @@ class Node extends Model implements Validatable
 
     /**
      * Returns the configuration in JSON format.
+     *
+     * @throws \JsonException
      */
     public function getJsonConfiguration(bool $pretty = false): string
     {
-        return json_encode($this->getConfiguration(), $pretty ? JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT : JSON_UNESCAPED_SLASHES);
+        return json_encode($this->getConfiguration(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | ($pretty ? JSON_PRETTY_PRINT : 0));
     }
 
     public function isUnderMaintenance(): bool
@@ -332,22 +331,25 @@ class Node extends Model implements Validatable
     public function isViable(int $memory, int $disk, int $cpu): bool
     {
         if ($this->memory > 0 && $this->memory_overallocate >= 0) {
+            $memorySum = $this->servers_sum_memory ?? $this->servers()->sum('memory');
             $memoryLimit = $this->memory * (1 + ($this->memory_overallocate / 100));
-            if ($this->servers_sum_memory + $memory > $memoryLimit) {
+            if ($memorySum + $memory > $memoryLimit) {
                 return false;
             }
         }
 
         if ($this->disk > 0 && $this->disk_overallocate >= 0) {
+            $diskSum = $this->servers_sum_disk ?? $this->servers()->sum('disk');
             $diskLimit = $this->disk * (1 + ($this->disk_overallocate / 100));
-            if ($this->servers_sum_disk + $disk > $diskLimit) {
+            if ($diskSum + $disk > $diskLimit) {
                 return false;
             }
         }
 
         if ($this->cpu > 0 && $this->cpu_overallocate >= 0) {
+            $cpuSum = $this->servers_sum_cpu ?? $this->servers()->sum('cpu');
             $cpuLimit = $this->cpu * (1 + ($this->cpu_overallocate / 100));
-            if ($this->servers_sum_cpu + $cpu > $cpuLimit) {
+            if ($cpuSum + $cpu > $cpuLimit) {
                 return false;
             }
         }

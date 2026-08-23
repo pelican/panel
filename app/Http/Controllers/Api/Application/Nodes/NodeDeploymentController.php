@@ -33,7 +33,7 @@ class NodeDeploymentController extends ApplicationApiController
             $data['memory'] ?? 0,
             $data['disk'] ?? 0,
             $data['cpu'] ?? 0,
-            $data['tags'] ?? $data['location_ids'] ?? [],
+            $data['tags'] ?? [],
         );
 
         return $this->fractal->collection($nodes)

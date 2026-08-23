@@ -1,25 +1,43 @@
 @php
     $icon = $getIcon();
+    $status = $getStatus() ?? 'info';
     $title = $getTitle();
     $body = $getBody();
+    $actions = $getActions();
 @endphp
 
-<div class="{{$getColorClasses()}} flex p-4 mt-3 rounded-xl shadow-lg bg-white dark:bg-gray-900 ring-1 ring-gray-950/5 dark:ring-white/10">
-    @if (filled($icon))
-        <x-filament::icon :icon="$icon" class="h-8 w-8 mr-2" color="{{$getStatus()}}" />
+<x-filament::callout
+    :icon="$icon"
+    :color="$status"
+>
+    @if (filled($title))
+        <x-slot name="heading">
+            {{str($title)->sanitizeHtml()->toHtmlString()}}
+        </x-slot>
     @endif
 
-    <div class="flex flex-col flex-grow">
-        @if (filled($title))
-            <p class="font-bold">{{str($title)->sanitizeHtml()->toHtmlString()}}</p>
-        @endif
+    @if (filled($body))
+        <x-slot name="description">
+            {{str($body)->sanitizeHtml()->toHtmlString()}}
+        </x-slot>
+    @endif
 
-        @if (filled($body))
-            <p class="font-normal">{{str($body)->sanitizeHtml()->toHtmlString()}}</p>
-        @endif
-    </div>
-
+    @if (count($actions) > 0)
+        <x-slot name="footer">
+            @foreach ($actions as $action)
+                {{ $action }}
+            @endforeach
+        </x-slot>
+    @endif
+    
     @if ($isCloseable())
-        <x-filament::icon-button color="gray" icon="tabler-x" wire:click="remove('{{$getId()}}')" />
+        <x-slot name="controls">
+            <x-filament::icon-button
+                icon="tabler-x"
+                color="gray"
+                label="Close"
+                wire:click="remove('{{$getId()}}')"
+            />
+        </x-slot>
     @endif
-</div>
+</x-filament::callout>

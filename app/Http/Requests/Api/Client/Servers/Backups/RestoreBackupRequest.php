@@ -14,6 +14,9 @@ class RestoreBackupRequest extends ClientApiRequest
 
     public function rules(): array
     {
-        return ['truncate' => 'required|boolean'];
+        return [
+            /** Delete everything in the server directory before the backup is unpacked. */
+            'truncate' => 'required|boolean',
+        ];
     }
 }

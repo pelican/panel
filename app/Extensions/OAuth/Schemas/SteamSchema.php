@@ -38,8 +38,8 @@ final class SteamSchema extends OAuthSchema
     {
         return [
             TextInput::make('OAUTH_STEAM_CLIENT_SECRET')
-                ->label('Web API Key')
-                ->placeholder('Web API Key')
+                ->label(trans('admin/setting.oauth.web_api_key'))
+                ->placeholder(trans('admin/setting.oauth.web_api_key'))
                 ->columnSpan(4)
                 ->required()
                 ->password()

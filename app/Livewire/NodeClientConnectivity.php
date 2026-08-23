@@ -64,22 +64,24 @@ class NodeClientConnectivity extends Component
             'httpUrl' => $httpUrl,
             'wsUrl' => $wsUrl,
             'wsToken' => $wsToken,
-            'loadingIcon' => $this->makeIcon(TablerIcon::WorldQuestion, 'warning', 'Checking...'),
-            'offlineIcon' => $this->makeIcon(TablerIcon::WorldX, 'danger', 'Node is not reachable from your browser'),
-            'onlineIcon' => $this->makeIcon(TablerIcon::WorldCheck, 'success', 'Node is reachable'),
-            'warningIcon' => $this->makeIcon(TablerIcon::WorldExclamation, 'warning', 'Node is reachable, but WebSocket failed. Check reverse proxy config.'),
-            'onlineNoWsIcon' => $this->makeIcon(TablerIcon::WorldCheck, 'success', 'Node is reachable (WebSocket not tested — no servers)'),
+            'loadingIcon' => $this->makeIcon(TablerIcon::WorldQuestion, 'warning', trans('admin/node.connectivity.checking')),
+            'offlineIcon' => $this->makeIcon(TablerIcon::WorldX, 'danger', trans('admin/node.connectivity.offline')),
+            'onlineIcon' => $this->makeIcon(TablerIcon::WorldCheck, 'success', trans('admin/node.connectivity.online')),
+            'warningIcon' => $this->makeIcon(TablerIcon::WorldExclamation, 'warning', trans('admin/node.connectivity.websocket_failed')),
+            'onlineNoWsIcon' => $this->makeIcon(TablerIcon::WorldCheck, 'success', trans('admin/node.connectivity.websocket_not_tested')),
         ]);
     }
 
     private function makeIcon(TablerIcon $icon, string $color, string $tooltip): string
     {
+        $tooltip = json_encode($tooltip, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+
         return generate_icon_html($icon, attributes: (new ComponentAttributeBag())
             ->merge([
                 'x-tooltip' => '{
-                    content: "' . $tooltip . '",
+                    content: ' . $tooltip . ',
                     theme: $store.theme,
-                    allowHTML: true,
+                    allowHTML: false,
                     placement: "bottom",
                 }',
                 'style' => 'color: var(--dark-text, var(--text))',

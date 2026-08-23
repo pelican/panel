@@ -3,7 +3,6 @@
 namespace App\Filament\Components\Tables\Columns\Concerns;
 
 use Closure;
-use Filament\Support\Colors\Color;
 
 /**
  * Trait extracted for progress-related shared functionality between columns.
@@ -17,19 +16,19 @@ trait HasProgress
     protected float|Closure|null $dangerThresholdPercent = null;
 
     /**
-     * @var string|array<int|string,string>|Closure|Color|null
+     * @var string|array<int|string,int|string>|Closure|null
      */
-    protected string|array|Closure|Color|null $dangerColor = null;
+    protected string|array|Closure|null $dangerColor = null;
 
     /**
-     * @var string|array<int|string,string>|Closure|Color|null
+     * @var string|array<int|string,int|string>|Closure|null
      */
-    protected string|array|Closure|Color|null $warningColor = null;
+    protected string|array|Closure|null $warningColor = null;
 
     /**
-     * @var string|array<int|string,string>|Closure|Color|null
+     * @var string|array<int|string,int|string>|Closure|null
      */
-    protected string|array|Closure|Color|null $color = null;
+    protected string|array|Closure|null $color = null;
 
     public function warningThresholdPercent(float|Closure $value): static
     {
@@ -56,9 +55,9 @@ trait HasProgress
     }
 
     /**
-     * @param  string|array<int|string,string>|Closure|Color  $color
+     * @param  string|array<int|string,int|string>|Closure  $color
      */
-    public function dangerColor(string|array|Closure|Color $color): static
+    public function dangerColor(string|array|Closure $color): static
     {
         $this->dangerColor = $color;
 
@@ -66,17 +65,17 @@ trait HasProgress
     }
 
     /**
-     * @return string|array<int|string,string>|Color|null
+     * @return string|array<int|string,int|string>|null
      */
-    public function getDangerColor(): string|array|Color|null
+    public function getDangerColor(): string|array|null
     {
         return $this->evaluate($this->dangerColor);
     }
 
     /**
-     * @param  string|array<int|string,string>|Closure|Color  $color
+     * @param  string|array<int|string,int|string>|Closure  $color
      */
-    public function warningColor(string|array|Closure|Color $color): static
+    public function warningColor(string|array|Closure $color): static
     {
         $this->warningColor = $color;
 
@@ -84,17 +83,17 @@ trait HasProgress
     }
 
     /**
-     * @return string|array<int|string,string>|Color|null
+     * @return string|array<int|string,int|string>|null
      */
-    public function getWarningColor(): string|array|Color|null
+    public function getWarningColor(): string|array|null
     {
         return $this->evaluate($this->warningColor);
     }
 
     /**
-     * @param  string|array<int|string,string>|Closure|Color  $color
+     * @param  string|array<int|string,int|string>|Closure  $color
      */
-    public function color(string|array|Closure|Color $color): static
+    public function color(string|array|Closure $color): static
     {
         $this->color = $color;
 
@@ -102,9 +101,9 @@ trait HasProgress
     }
 
     /**
-     * @return string|array<int|string,string>|Color|null
+     * @return string|array<int|string,int|string>|null
      */
-    public function getColor(): string|array|Color|null
+    public function getColor(): string|array|null
     {
         return $this->evaluate($this->color);
     }
@@ -112,9 +111,9 @@ trait HasProgress
     /**
      * Resolve a progress color for a given status string ('danger','warning','success').
      *
-     * @return string|array<int|string,string>|Color
+     * @return string|array<int|string,int|string>
      */
-    public function getProgressColorForStatus(string $status): string|array|Color
+    public function getProgressColorForStatus(string $status): string|array
     {
         $color = match ($status) {
             'danger' => $this->getDangerColor(),

@@ -26,6 +26,7 @@ class WriteFileContentRequest extends ClientApiRequest implements ClientPermissi
     public function rules(): array
     {
         return [
+            /** Path of the file to write, relative to the server root. It is created when it does not exist. */
             'file' => 'required|string',
         ];
     }

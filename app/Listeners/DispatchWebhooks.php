@@ -61,7 +61,7 @@ class DispatchWebhooks
 
         /** @var WebhookConfiguration $webhookConfig */
         foreach ($webhooks as $webhookConfig) {
-            $webhookConfig->run($eventName, [$webhookData]);
+            $webhookConfig->run($eventName, $webhookData);
         }
     }
 
@@ -92,13 +92,17 @@ class DispatchWebhooks
         }
 
         foreach ($matchingHooks as $webhookConfig) {
-            $webhookConfig->run($eventName, [$webhookData]);
+            $webhookConfig->run($eventName, $webhookData);
         }
     }
 
     protected function handleActivityLogged(ActivityLogged $activityLogged): void
     {
         $eventName = $activityLogged->model->event;
+
+        if ($eventName === null) {
+            return;
+        }
 
         if (!$activityLogged->isServerEvent()) {
             return;
@@ -135,7 +139,7 @@ class DispatchWebhooks
         }
 
         foreach ($webhooks as $webhookConfig) {
-            $webhookConfig->run($eventName, [$webhookData]);
+            $webhookConfig->run($eventName, $webhookData);
         }
     }
 
@@ -177,6 +181,10 @@ class DispatchWebhooks
         $eventName = $activityLogged->model->event;
         $activityLoggedClass = ActivityLogged::class;
 
+        if ($eventName === null) {
+            return;
+        }
+
         $matchingHooks = collect();
 
         if ($this->eventIsWatched($eventName)) {
@@ -206,12 +214,16 @@ class DispatchWebhooks
         }
 
         foreach ($matchingHooks as $webhookConfig) {
-            $webhookConfig->run($eventName, [$webhookData]);
+            $webhookConfig->run($eventName, $webhookData);
         }
     }
 
-    protected function eventIsWatched(string $eventName): bool
+    protected function eventIsWatched(?string $eventName): bool
     {
+        if ($eventName === null) {
+            return false;
+        }
+
         $watchedEvents = cache()->rememberForever('watchedWebhooks', function () {
             return WebhookConfiguration::where('scope', WebhookScope::Global)
                 ->pluck('events')

@@ -205,6 +205,9 @@ class FileController extends ClientApiController
     /**
      * Compress files
      *
+     * Create an archive from the selected files and directories. The response describes the
+     * archive that was written into the same directory as the files it was created from.
+     *
      * @return array<array-key, mixed>
      *
      * @throws ConnectionException
@@ -231,6 +234,9 @@ class FileController extends ClientApiController
 
     /**
      * Decompress files
+     *
+     * Extract the contents of an archive into the directory it lives in. The server must have
+     * enough remaining disk space to hold everything the archive contains.
      *
      * @throws ConnectionException
      */

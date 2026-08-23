@@ -73,11 +73,11 @@ final class AuthentikSchema extends OAuthSchema
 
     public function getName(): string
     {
-        return env('OAUTH_AUTHENTIK_DISPLAY_NAME', 'Authentik');
+        return (string) env('OAUTH_AUTHENTIK_DISPLAY_NAME', 'Authentik');
     }
 
     public function getHexColor(): string
     {
-        return env('OAUTH_AUTHENTIK_DISPLAY_COLOR', '#fd4b2d');
+        return (string) env('OAUTH_AUTHENTIK_DISPLAY_COLOR', '#fd4b2d');
     }
 }
