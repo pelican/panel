@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\ActivityLogData;
 use App\Enums\SubuserPermission;
 use App\Http\Controllers\Api\Client\ClientApiController;
 use App\Http\Requests\Api\Client\ClientApiRequest;
@@ -9,7 +10,6 @@ use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\User;
-use App\Transformers\Api\Client\ActivityLogTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
@@ -56,8 +56,8 @@ class ActivityLogController extends ClientApiController
             ->paginate(min($request->query('per_page', '25'), 100))
             ->appends($request->query());
 
-        return $this->fractal->collection($activity)
-            ->transformWith($this->getTransformer(ActivityLogTransformer::class))
+        return $this->response->collection($activity)
+            ->transformWith(ActivityLogData::class)
             ->toArray();
     }
 }

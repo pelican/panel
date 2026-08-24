@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\BackupData;
 use App\Enums\ServerState;
 use App\Enums\SubuserPermission;
 use App\Extensions\BackupAdapter\BackupAdapterService;
@@ -16,7 +17,6 @@ use App\Repositories\Daemon\DaemonBackupRepository;
 use App\Services\Backups\DeleteBackupService;
 use App\Services\Backups\DownloadLinkService;
 use App\Services\Backups\InitiateBackupService;
-use App\Transformers\Api\Client\BackupTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
@@ -54,8 +54,8 @@ class BackupController extends ClientApiController
 
         $limit = min($request->query('per_page') ?? 20, 50);
 
-        return $this->fractal->collection($server->backups()->paginate($limit))
-            ->transformWith($this->getTransformer(BackupTransformer::class))
+        return $this->response->collection($server->backups()->paginate($limit))
+            ->transformWith(BackupData::class)
             ->addMeta([
                 'backup_count' => $server->backups()->nonFailed()->count(),
             ])
@@ -99,8 +99,8 @@ class BackupController extends ClientApiController
             return $backup;
         });
 
-        return $this->fractal->item($backup)
-            ->transformWith($this->getTransformer(BackupTransformer::class))
+        return $this->response->item($backup)
+            ->transformWith(BackupData::class)
             ->toArray();
     }
 
@@ -124,8 +124,8 @@ class BackupController extends ClientApiController
 
         Activity::event($action)->subject($backup)->property('name', $backup->name)->log();
 
-        return $this->fractal->item($backup)
-            ->transformWith($this->getTransformer(BackupTransformer::class))
+        return $this->response->item($backup)
+            ->transformWith(BackupData::class)
             ->toArray();
     }
 
@@ -142,8 +142,8 @@ class BackupController extends ClientApiController
     {
         throw_unless($request->user()->can(SubuserPermission::BackupRead, $server), new AuthorizationException());
 
-        return $this->fractal->item($backup)
-            ->transformWith($this->getTransformer(BackupTransformer::class))
+        return $this->response->item($backup)
+            ->transformWith(BackupData::class)
             ->toArray();
     }
 
@@ -222,8 +222,8 @@ class BackupController extends ClientApiController
                 ->log();
         }
 
-        return $this->fractal->item($backup)
-            ->transformWith($this->getTransformer(BackupTransformer::class))
+        return $this->response->item($backup)
+            ->transformWith(BackupData::class)
             ->toArray();
     }
 

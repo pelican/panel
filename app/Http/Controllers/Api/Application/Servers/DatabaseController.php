@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\Servers;
 
+use App\Data\Api\Application\ServerDatabaseData;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Servers\Databases\GetServerDatabaseRequest;
 use App\Http\Requests\Api\Application\Servers\Databases\GetServerDatabasesRequest;
@@ -10,7 +11,6 @@ use App\Http\Requests\Api\Application\Servers\Databases\StoreServerDatabaseReque
 use App\Models\Database;
 use App\Models\Server;
 use App\Services\Databases\DatabaseManagementService;
-use App\Transformers\Api\Application\ServerDatabaseTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
@@ -37,8 +37,8 @@ class DatabaseController extends ApplicationApiController
      */
     public function index(GetServerDatabasesRequest $request, Server $server): array
     {
-        return $this->fractal->collection($server->databases)
-            ->transformWith($this->getTransformer(ServerDatabaseTransformer::class))
+        return $this->response->collection($server->databases)
+            ->transformWith(ServerDatabaseData::class)
             ->toArray();
     }
 
@@ -51,8 +51,8 @@ class DatabaseController extends ApplicationApiController
      */
     public function view(GetServerDatabaseRequest $request, Server $server, Database $database): array
     {
-        return $this->fractal->item($database)
-            ->transformWith($this->getTransformer(ServerDatabaseTransformer::class))
+        return $this->response->item($database)
+            ->transformWith(ServerDatabaseData::class)
             ->toArray();
     }
 
@@ -83,8 +83,8 @@ class DatabaseController extends ApplicationApiController
             'database' => $request->databaseName(),
         ]));
 
-        return $this->fractal->item($database)
-            ->transformWith($this->getTransformer(ServerDatabaseTransformer::class))
+        return $this->response->item($database)
+            ->transformWith(ServerDatabaseData::class)
             ->addMeta([
                 'resource' => route('api.application.servers.databases.view', [
                     'server' => $server->id,

@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api\Application\Users;
 
+use App\Data\Api\Application\UserData;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Users\GetExternalUserRequest;
 use App\Models\User;
-use App\Transformers\Api\Application\UserTransformer;
 use Dedoc\Scramble\Attributes\Group;
 
 #[Group('User', weight: 1)]
@@ -22,8 +22,8 @@ class ExternalUserController extends ApplicationApiController
     {
         $user = User::query()->where('external_id', $externalId)->firstOrFail();
 
-        return $this->fractal->item($user)
-            ->transformWith($this->getTransformer(UserTransformer::class))
+        return $this->response->item($user)
+            ->transformWith(UserData::class)
             ->toArray();
     }
 }

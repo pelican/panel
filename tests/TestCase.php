@@ -7,6 +7,8 @@ use Carbon\CarbonImmutable;
 use Exception;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Carbon;
+use Ramsey\Uuid\Uuid;
+use Ramsey\Uuid\UuidFactory;
 use Spatie\Permission\PermissionRegistrar;
 
 abstract class TestCase extends BaseTestCase
@@ -58,6 +60,11 @@ abstract class TestCase extends BaseTestCase
 
         Carbon::setTestNow();
         CarbonImmutable::setTestNow();
+
+        // MocksUuids pins the global Ramsey factory through setKnownUuidFactory and
+        // nothing restored it, so the pinned uuid leaked into every later test in the
+        // same process and collided on unique columns.
+        Uuid::setFactory(new UuidFactory());
     }
 
     /**

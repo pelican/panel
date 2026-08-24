@@ -119,13 +119,9 @@ class BuildModificationService
             }
 
             // Remove any of the allocations we got that are currently assigned to this server on
-            // this node. Also set the notes to null, otherwise when re-allocated to a new server those
-            // notes will be carried over.
-            $allocations
-                ->update([
-                    'notes' => null,
-                    'server_id' => null,
-                ]);
+            // this node. Also reset the per-server state (notes, lock, port visibility) so it
+            // isn't carried over when re-allocated to a new server.
+            $allocations->update(Allocation::RELEASE_ATTRIBUTES);
         }
     }
 }

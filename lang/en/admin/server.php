@@ -13,6 +13,7 @@ return [
     'ip_address_helper' => 'Usually your machine\'s public IP unless you are port forwarding.',
     'port' => 'Port',
     'ports' => 'Ports',
+    'show_port' => 'Show port',
     'alias' => 'Alias',
     'alias_helper' => 'Optional display name to help you remember what these are.',
     'no_alias' => 'No Alias',

@@ -22,6 +22,8 @@ class BackupRemoteUploadController extends Controller
 
     public const MAX_MAX_PART_SIZE = 5 * 1024 * 1024 * 1024; // 5 GiB
 
+    public const MAX_CONCURRENT_UPLOADS = 10;
+
     /**
      * BackupRemoteUploadController constructor.
      */

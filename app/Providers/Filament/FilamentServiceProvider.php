@@ -55,7 +55,6 @@ class FilamentServiceProvider extends ServiceProvider
             'primary' => Color::Blue,
             'success' => Color::Green,
             'warning' => Color::Amber,
-            'blurple' => Color::hex('#5865F2'),
         ]);
 
         FilamentView::registerRenderHook(

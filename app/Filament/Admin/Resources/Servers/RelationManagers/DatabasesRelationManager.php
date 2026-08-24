@@ -46,7 +46,8 @@ class DatabasesRelationManager extends RelationManager
                     ->label(trans('admin/databasehost.table.password'))
                     ->password()
                     ->revealable()
-                    ->hintAction(RotateDatabasePasswordAction::make())
+                    ->hintAction(RotateDatabasePasswordAction::make()
+                        ->hidden(fn () => $this->isReadOnly()))
                     ->formatStateUsing(fn (Database $database) => $database->password),
                 TextInput::make('remote')
                     ->label(trans('admin/databasehost.table.remote'))
@@ -88,6 +89,7 @@ class DatabasesRelationManager extends RelationManager
                 ViewAction::make()
                     ->color('primary'),
                 DeleteAction::make()
+                    ->hidden(fn () => $this->isReadOnly())
                     ->successNotificationTitle(null)
                     ->using(function (Database $database, DatabaseManagementService $service) {
                         try {
@@ -109,6 +111,7 @@ class DatabasesRelationManager extends RelationManager
             ])
             ->toolbarActions([
                 CreateAction::make()
+                    ->hidden(fn () => $this->isReadOnly())
                     ->hiddenLabel()
                     ->disabled(fn () => DatabaseHost::count() < 1)
                     ->tooltip(fn () => DatabaseHost::count() < 1 ? trans('admin/server.no_db_hosts') : trans('admin/server.create_database'))

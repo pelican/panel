@@ -1,0 +1,12 @@
+{
+    "object": "database_host",
+    "attributes": {
+        "id": 100,
+        "name": "fixture-database-host",
+        "host": "192.0.2.20",
+        "port": 3306,
+        "username": "fixture",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00"
+    }
+}

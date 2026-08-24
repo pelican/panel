@@ -1,0 +1,19 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "server_database",
+            "attributes": {
+                "id": 100,
+                "host": {
+                    "address": "192.0.2.20",
+                    "port": 3306
+                },
+                "name": "s100_fixture",
+                "username": "u100_fixture",
+                "connections_from": "%",
+                "max_connections": 0
+            }
+        }
+    ]
+}

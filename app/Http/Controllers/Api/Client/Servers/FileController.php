@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\FileObjectData;
 use App\Enums\NodeJwtScope;
 use App\Facades\Activity;
 use App\Http\Controllers\Api\Client\ClientApiController;
@@ -19,7 +20,6 @@ use App\Http\Requests\Api\Client\Servers\Files\WriteFileContentRequest;
 use App\Models\Server;
 use App\Repositories\Daemon\DaemonFileRepository;
 use App\Services\Nodes\NodeJWTService;
-use App\Transformers\Api\Client\FileObjectTransformer;
 use Carbon\CarbonImmutable;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Client\ConnectionException;
@@ -55,8 +55,8 @@ class FileController extends ClientApiController
             ->setServer($server)
             ->getDirectory($request->get('directory') ?? '/');
 
-        return $this->fractal->collection($contents)
-            ->transformWith($this->getTransformer(FileObjectTransformer::class))
+        return $this->response->collection($contents)
+            ->transformWith(FileObjectData::class)
             ->toArray();
     }
 
@@ -227,8 +227,8 @@ class FileController extends ClientApiController
             ->property('files', $request->input('files'))
             ->log();
 
-        return $this->fractal->item($file)
-            ->transformWith($this->getTransformer(FileObjectTransformer::class))
+        return $this->response->item($file)
+            ->transformWith(FileObjectData::class)
             ->toArray();
     }
 

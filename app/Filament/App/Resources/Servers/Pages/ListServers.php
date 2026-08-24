@@ -83,12 +83,12 @@ class ListServers extends ListRecords
                 ->grow()
                 ->searchable()
                 ->sortable(),
-            TextColumn::make('allocation.address')
+            TextColumn::make('allocation.display_address')
                 ->label('')
                 ->badge()
                 ->visibleFrom('md')
                 ->copyable()
-                ->state(fn (Server $server) => $server->allocation->address ?? 'None'),
+                ->state(fn (Server $server) => $server->allocation->display_address ?? 'None'),
             ProgressBarColumn::make('cpuUsage')
                 ->label('')
                 ->warningThresholdPercent(static::WARNING_THRESHOLD)
@@ -113,15 +113,31 @@ class ListServers extends ListRecords
         ];
     }
 
+    protected function usingGrid(): bool
+    {
+        return user()?->getCustomization(CustomizationKey::DashboardLayout) === 'grid';
+    }
+
+    public function getTablePerPageSessionKey(): string
+    {
+        // Grid and list offer different page options, so a session value cached in
+        // one layout must not bleed into (and get invalidated by) the other.
+        return parent::getTablePerPageSessionKey() . ($this->usingGrid() ? '_grid' : '_list');
+    }
+
     public function table(Table $table): Table
     {
         $baseQuery = user()?->accessibleServers();
 
-        $usingGrid = user()?->getCustomization(CustomizationKey::DashboardLayout) === 'grid';
+        $usingGrid = $this->usingGrid();
+
+        $pageOptions = $usingGrid ? [10, 20, 30, 40] : [10, 20, 50, 100];
+        $storedPerPage = (int) user()?->getCustomization(CustomizationKey::ServersPerPage);
+        $defaultPerPage = in_array($storedPerPage, $pageOptions, true) ? $storedPerPage : ($usingGrid ? 10 : 20);
 
         return $table
-            ->paginated($usingGrid ? [10, 20, 30, 40] : [10, 20, 50, 100])
-            ->defaultPaginationPageOption($usingGrid ? 10 : 20)
+            ->paginated($pageOptions)
+            ->defaultPaginationPageOption($defaultPerPage)
             ->query(fn () => $baseQuery)
             ->poll($usingGrid ? null : '15s')
             ->columns($usingGrid ? $this->gridColumns() : $this->tableColumns())
@@ -149,6 +165,21 @@ class ListServers extends ListRecords
     public function updatedActiveTab(): void
     {
         $this->resetTable();
+    }
+
+    public function updatedTableRecordsPerPage(): void
+    {
+        parent::updatedTableRecordsPerPage();
+
+        // Livewire delivers the <select> value as a numeric string, and the
+        // client can send anything, so only persist a currently offered option.
+        $perPage = (int) $this->getTableRecordsPerPage();
+
+        if (!in_array($perPage, $this->getTable()->getPaginationPageOptions(), true)) {
+            return;
+        }
+
+        user()?->setCustomization(CustomizationKey::ServersPerPage, $perPage);
     }
 
     public function getTabs(): array

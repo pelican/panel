@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\Servers;
 
+use App\Data\Api\Application\ServerData;
 use App\Exceptions\DisplayException;
 use App\Exceptions\Model\DataValidationException;
 use App\Exceptions\Service\Deployment\NoViableAllocationException;
@@ -13,7 +14,6 @@ use App\Http\Requests\Api\Application\Servers\StoreServerRequest;
 use App\Models\Server;
 use App\Services\Servers\ServerCreationService;
 use App\Services\Servers\ServerDeletionService;
-use App\Transformers\Api\Application\ServerTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
@@ -48,8 +48,8 @@ class ServerController extends ApplicationApiController
             ->allowedSorts(['id', 'uuid'])
             ->paginate($request->query('per_page') ?? 50);
 
-        return $this->fractal->collection($servers)
-            ->transformWith($this->getTransformer(ServerTransformer::class))
+        return $this->response->collection($servers)
+            ->transformWith(ServerData::class)
             ->toArray();
     }
 
@@ -68,8 +68,8 @@ class ServerController extends ApplicationApiController
     {
         $server = $this->creationService->handle($request->validated(), $request->getDeploymentObject());
 
-        return $this->fractal->item($server)
-            ->transformWith($this->getTransformer(ServerTransformer::class))
+        return $this->response->item($server)
+            ->transformWith(ServerData::class)
             ->respond(201);
     }
 
@@ -82,8 +82,8 @@ class ServerController extends ApplicationApiController
      */
     public function view(GetServerRequest $request, Server $server): array
     {
-        return $this->fractal->item($server)
-            ->transformWith($this->getTransformer(ServerTransformer::class))
+        return $this->response->item($server)
+            ->transformWith(ServerData::class)
             ->toArray();
     }
 

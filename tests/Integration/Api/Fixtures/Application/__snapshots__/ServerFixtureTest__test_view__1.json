@@ -1,0 +1,45 @@
+{
+    "object": "server",
+    "attributes": {
+        "id": 100,
+        "external_id": "fixture-external-1",
+        "uuid": "00000000-0000-4000-8000-000000000400",
+        "identifier": "fixture",
+        "name": "Fixture Server",
+        "description": "A pinned server for the API test fixture suite.",
+        "status": null,
+        "suspended": false,
+        "limits": {
+            "memory": 512,
+            "swap": 0,
+            "disk": 512,
+            "io": 500,
+            "cpu": 0,
+            "threads": null,
+            "oom_disabled": true,
+            "oom_killer": false
+        },
+        "feature_limits": {
+            "databases": null,
+            "allocations": null,
+            "backups": 0
+        },
+        "user": 101,
+        "node": 100,
+        "allocation": 100,
+        "egg": 100,
+        "container": {
+            "startup_command": "java -jar {{SERVER_JARFILE}}",
+            "image": "ghcr.io/fixture/java:21",
+            "installed": 1,
+            "environment": {
+                "HIDDEN_TOKEN": "internal",
+                "SERVER_JARFILE": "custom.jar",
+                "STARTUP": "java -jar {{SERVER_JARFILE}}",
+                "P_SERVER_UUID": "00000000-0000-4000-8000-000000000400"
+            }
+        },
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "created_at": "2026-01-01T00:00:00+00:00"
+    }
+}

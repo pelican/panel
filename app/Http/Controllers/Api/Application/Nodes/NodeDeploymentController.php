@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api\Application\Nodes;
 
+use App\Data\Api\Application\NodeData;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Nodes\GetDeployableNodesRequest;
 use App\Services\Deployment\FindViableNodesService;
-use App\Transformers\Api\Application\NodeTransformer;
 use Dedoc\Scramble\Attributes\Group;
 
 #[Group('Node', weight: 2)]
@@ -33,11 +33,11 @@ class NodeDeploymentController extends ApplicationApiController
             $data['memory'] ?? 0,
             $data['disk'] ?? 0,
             $data['cpu'] ?? 0,
-            $data['tags'] ?? $data['location_ids'] ?? [],
+            $data['tags'] ?? [],
         );
 
-        return $this->fractal->collection($nodes)
-            ->transformWith($this->getTransformer(NodeTransformer::class))
+        return $this->response->collection($nodes)
+            ->transformWith(NodeData::class)
             ->toArray();
     }
 }

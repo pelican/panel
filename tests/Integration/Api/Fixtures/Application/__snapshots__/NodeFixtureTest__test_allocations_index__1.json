@@ -1,0 +1,48 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "allocation",
+            "attributes": {
+                "id": 100,
+                "ip": "192.0.2.10",
+                "alias": null,
+                "port": 25565,
+                "notes": null,
+                "assigned": true
+            }
+        },
+        {
+            "object": "allocation",
+            "attributes": {
+                "id": 101,
+                "ip": "192.0.2.10",
+                "alias": null,
+                "port": 25566,
+                "notes": "Secondary allocation",
+                "assigned": true
+            }
+        },
+        {
+            "object": "allocation",
+            "attributes": {
+                "id": 102,
+                "ip": "192.0.2.10",
+                "alias": null,
+                "port": 25567,
+                "notes": null,
+                "assigned": false
+            }
+        }
+    ],
+    "meta": {
+        "pagination": {
+            "total": 3,
+            "count": 3,
+            "per_page": 50,
+            "current_page": 1,
+            "total_pages": 1,
+            "links": {}
+        }
+    }
+}

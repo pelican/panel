@@ -44,11 +44,11 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Enums\PaginationMode;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route as RouteFacade;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 
 class ListFiles extends ListRecords
 {
@@ -520,7 +520,7 @@ class ListFiles extends ListRecords
                     ->color('primary')
                     ->action(function ($data) {
                         try {
-                            $this->createFolder($data['name']);
+                            $this->getDaemonFileRepository()->createDirectory($data['name'], $this->path);
 
                             Activity::event('server:file.create-directory')
                                 ->property(['directory' => $this->path, 'name' => $data['name']])
@@ -619,55 +619,10 @@ class ListFiles extends ListRecords
         };
     }
 
-    public function getUploadSizeLimit(): int
+    #[On('server-files-uploaded')]
+    public function refreshAfterUpload(): void
     {
-        /** @var Server $server */
-        $server = Filament::getTenant();
-
-        return $server->node->upload_size * 1024 * 1024;
-    }
-
-    /**
-     * @throws ConnectionException
-     * @throws FileExistsException
-     * @throws \Throwable
-     */
-    public function createFolder(string $folderPath): void
-    {
-        /** @var Server $server */
-        $server = Filament::getTenant();
-
-        abort_unless(user()?->can(SubuserPermission::FileCreate, $server), 403, 'You do not have permission to create folders.');
-
-        try {
-            $this->getDaemonFileRepository()->createDirectory($folderPath, $this->path);
-
-            Activity::event('server:file.create-directory')
-                ->property(['directory' => $this->path, 'name' => $folderPath])
-                ->log();
-
-        } catch (FileExistsException) {
-            // Ignore if the folder already exists.
-        } catch (ConnectionException $e) {
-            Notification::make()
-                ->body($e->getMessage())
-                ->danger()
-                ->send();
-
-        }
-    }
-
-    /**
-     * @param  string[]  $files
-     */
-    public function logUploadedFiles(array $files): void
-    {
-        $filesCollection = collect($files);
-
-        Activity::event('server:files.uploaded')
-            ->property('directory', $this->path)
-            ->property('files', $filesCollection)
-            ->log();
+        // Re-renders the table once the upload manager finishes a batch.
     }
 
     private function getDaemonFileRepository(): DaemonFileRepository

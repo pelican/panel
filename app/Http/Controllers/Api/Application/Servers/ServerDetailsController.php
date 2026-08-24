@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\Servers;
 
+use App\Data\Api\Application\ServerData;
 use App\Exceptions\DisplayException;
 use App\Exceptions\Model\DataValidationException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
@@ -10,7 +11,6 @@ use App\Http\Requests\Api\Application\Servers\UpdateServerDetailsRequest;
 use App\Models\Server;
 use App\Services\Servers\BuildModificationService;
 use App\Services\Servers\DetailsModificationService;
-use App\Transformers\Api\Application\ServerTransformer;
 use Dedoc\Scramble\Attributes\Group;
 
 #[Group('Server', weight: 2)]
@@ -46,8 +46,8 @@ class ServerDetailsController extends ApplicationApiController
             $validated,
         );
 
-        return $this->fractal->item($updated)
-            ->transformWith($this->getTransformer(ServerTransformer::class))
+        return $this->response->item($updated)
+            ->transformWith(ServerData::class)
             ->toArray();
     }
 
@@ -65,8 +65,8 @@ class ServerDetailsController extends ApplicationApiController
     {
         $server = $this->buildModificationService->handle($server, $request->validated());
 
-        return $this->fractal->item($server)
-            ->transformWith($this->getTransformer(ServerTransformer::class))
+        return $this->response->item($server)
+            ->transformWith(ServerData::class)
             ->toArray();
     }
 }

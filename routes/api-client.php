@@ -70,21 +70,21 @@ Route::prefix('/servers/{server:uuid}')->middleware([ServerSubject::class, Authe
         Route::delete('/{database}', [Client\Servers\DatabaseController::class, 'delete']);
     });
 
-    Route::prefix('/files')->group(function () {
-        Route::get('/list', [Client\Servers\FileController::class, 'directory']);
-        Route::get('/contents', [Client\Servers\FileController::class, 'contents']);
-        Route::get('/download', [Client\Servers\FileController::class, 'download']);
-        Route::put('/rename', [Client\Servers\FileController::class, 'rename']);
-        Route::post('/copy', [Client\Servers\FileController::class, 'copy']);
-        Route::post('/write', [Client\Servers\FileController::class, 'write']);
-        Route::post('/compress', [Client\Servers\FileController::class, 'compress']);
-        Route::post('/decompress', [Client\Servers\FileController::class, 'decompress']);
-        Route::post('/delete', [Client\Servers\FileController::class, 'delete']);
-        Route::post('/create-folder', [Client\Servers\FileController::class, 'create']);
-        Route::post('/chmod', [Client\Servers\FileController::class, 'chmod']);
+    Route::prefix('/files')->name('api:client:server.files.')->group(function () {
+        Route::get('/list', [Client\Servers\FileController::class, 'directory'])->name('list');
+        Route::get('/contents', [Client\Servers\FileController::class, 'contents'])->name('contents');
+        Route::get('/download', [Client\Servers\FileController::class, 'download'])->name('download');
+        Route::put('/rename', [Client\Servers\FileController::class, 'rename'])->name('rename');
+        Route::post('/copy', [Client\Servers\FileController::class, 'copy'])->name('copy');
+        Route::post('/write', [Client\Servers\FileController::class, 'write'])->name('write');
+        Route::post('/compress', [Client\Servers\FileController::class, 'compress'])->name('compress');
+        Route::post('/decompress', [Client\Servers\FileController::class, 'decompress'])->name('decompress');
+        Route::post('/delete', [Client\Servers\FileController::class, 'delete'])->name('delete');
+        Route::post('/create-folder', [Client\Servers\FileController::class, 'create'])->name('create-folder');
+        Route::post('/chmod', [Client\Servers\FileController::class, 'chmod'])->name('chmod');
         Route::middleware([ResourceLimit::FilePull->middleware()])
-            ->post('/pull', [Client\Servers\FileController::class, 'pull']);
-        Route::get('/upload', Client\Servers\FileUploadController::class);
+            ->post('/pull', [Client\Servers\FileController::class, 'pull'])->name('pull');
+        Route::get('/upload', Client\Servers\FileUploadController::class)->name('upload');
     });
 
     Route::prefix('/schedules')->group(function () {

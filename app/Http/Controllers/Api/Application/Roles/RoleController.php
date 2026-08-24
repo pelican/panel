@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\Roles;
 
+use App\Data\Api\Application\RoleData;
 use App\Exceptions\PanelException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Roles\DeleteRoleRequest;
@@ -9,7 +10,6 @@ use App\Http\Requests\Api\Application\Roles\GetRoleRequest;
 use App\Http\Requests\Api\Application\Roles\StoreRoleRequest;
 use App\Http\Requests\Api\Application\Roles\UpdateRoleRequest;
 use App\Models\Role;
-use App\Transformers\Api\Application\RoleTransformer;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
@@ -32,8 +32,8 @@ class RoleController extends ApplicationApiController
             ->allowedSorts(['id', 'name'])
             ->paginate($request->query('per_page') ?? 10);
 
-        return $this->fractal->collection($roles)
-            ->transformWith($this->getTransformer(RoleTransformer::class))
+        return $this->response->collection($roles)
+            ->transformWith(RoleData::class)
             ->toArray();
     }
 
@@ -46,8 +46,8 @@ class RoleController extends ApplicationApiController
      */
     public function view(GetRoleRequest $request, Role $role): array
     {
-        return $this->fractal->item($role)
-            ->transformWith($this->getTransformer(RoleTransformer::class))
+        return $this->response->item($role)
+            ->transformWith(RoleData::class)
             ->toArray();
     }
 
@@ -63,8 +63,8 @@ class RoleController extends ApplicationApiController
     {
         $role = Role::create($request->validated());
 
-        return $this->fractal->item($role)
-            ->transformWith($this->getTransformer(RoleTransformer::class))
+        return $this->response->item($role)
+            ->transformWith(RoleData::class)
             ->addMeta([
                 'resource' => route('api.application.roles.view', [
                     'role' => $role->id,
@@ -88,8 +88,8 @@ class RoleController extends ApplicationApiController
 
         $role->update($request->validated());
 
-        return $this->fractal->item($role)
-            ->transformWith($this->getTransformer(RoleTransformer::class))
+        return $this->response->item($role)
+            ->transformWith(RoleData::class)
             ->toArray();
     }
 

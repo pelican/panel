@@ -1,0 +1,39 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "server_database",
+            "attributes": {
+                "id": 100,
+                "server": 100,
+                "host": 100,
+                "database": "s100_fixture",
+                "username": "u100_fixture",
+                "remote": "%",
+                "max_connections": 0,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "relationships": {
+                    "password": {
+                        "object": "database_password",
+                        "attributes": {
+                            "password": "fixture-database-password"
+                        }
+                    },
+                    "host": {
+                        "object": "database_host",
+                        "attributes": {
+                            "id": 100,
+                            "name": "fixture-database-host",
+                            "host": "192.0.2.20",
+                            "port": 3306,
+                            "username": "fixture",
+                            "created_at": "2026-01-01T00:00:00+00:00",
+                            "updated_at": "2026-01-01T00:00:00+00:00"
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

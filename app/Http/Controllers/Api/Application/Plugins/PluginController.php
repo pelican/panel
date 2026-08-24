@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\Plugins;
 
+use App\Data\Api\Application\PluginData;
 use App\Enums\PluginStatus;
 use App\Exceptions\PanelException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
@@ -11,7 +12,6 @@ use App\Http\Requests\Api\Application\Plugins\UninstallPluginRequest;
 use App\Http\Requests\Api\Application\Plugins\WritePluginRequest;
 use App\Models\Plugin;
 use App\Services\Helpers\PluginService;
-use App\Transformers\Api\Application\PluginTransformer;
 use Exception;
 use Illuminate\Http\Response;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -40,8 +40,8 @@ class PluginController extends ApplicationApiController
             ->allowedSorts(['id', 'name', 'author', 'category'])
             ->paginate($request->query('per_page') ?? 10);
 
-        return $this->fractal->collection($plugins)
-            ->transformWith($this->getTransformer(PluginTransformer::class))
+        return $this->response->collection($plugins)
+            ->transformWith(PluginData::class)
             ->toArray();
     }
 
@@ -54,8 +54,8 @@ class PluginController extends ApplicationApiController
      */
     public function view(ReadPluginRequest $request, Plugin $plugin): array
     {
-        return $this->fractal->item($plugin)
-            ->transformWith($this->getTransformer(PluginTransformer::class))
+        return $this->response->item($plugin)
+            ->transformWith(PluginData::class)
             ->toArray();
     }
 
@@ -104,8 +104,8 @@ class PluginController extends ApplicationApiController
 
         $this->pluginService->installPlugin($plugin);
 
-        return $this->fractal->item($plugin)
-            ->transformWith($this->getTransformer(PluginTransformer::class))
+        return $this->response->item($plugin)
+            ->transformWith(PluginData::class)
             ->toArray();
     }
 
@@ -124,8 +124,8 @@ class PluginController extends ApplicationApiController
 
         $this->pluginService->updatePlugin($plugin);
 
-        return $this->fractal->item($plugin)
-            ->transformWith($this->getTransformer(PluginTransformer::class))
+        return $this->response->item($plugin)
+            ->transformWith(PluginData::class)
             ->toArray();
     }
 
@@ -144,8 +144,8 @@ class PluginController extends ApplicationApiController
 
         $this->pluginService->uninstallPlugin($plugin, $request->boolean('delete'));
 
-        return $this->fractal->item($plugin)
-            ->transformWith($this->getTransformer(PluginTransformer::class))
+        return $this->response->item($plugin)
+            ->transformWith(PluginData::class)
             ->toArray();
     }
 
@@ -164,8 +164,8 @@ class PluginController extends ApplicationApiController
 
         $this->pluginService->enablePlugin($plugin);
 
-        return $this->fractal->item($plugin)
-            ->transformWith($this->getTransformer(PluginTransformer::class))
+        return $this->response->item($plugin)
+            ->transformWith(PluginData::class)
             ->toArray();
     }
 
@@ -184,8 +184,8 @@ class PluginController extends ApplicationApiController
 
         $this->pluginService->disablePlugin($plugin);
 
-        return $this->fractal->item($plugin)
-            ->transformWith($this->getTransformer(PluginTransformer::class))
+        return $this->response->item($plugin)
+            ->transformWith(PluginData::class)
             ->toArray();
     }
 }

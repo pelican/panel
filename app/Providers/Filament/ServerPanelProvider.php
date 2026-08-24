@@ -12,6 +12,8 @@ use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Navigation\NavigationItem;
 use Filament\Panel;
+use Filament\View\PanelsRenderHook;
+use Illuminate\Support\Facades\Blade;
 
 class ServerPanelProvider extends PanelProvider
 {
@@ -40,6 +42,11 @@ class ServerPanelProvider extends PanelProvider
                     ->icon(TablerIcon::ArrowBack)
                     ->sort(99),
             ])
+            // Persisted across SPA navigation so file uploads keep running when switching pages.
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn () => Blade::render('@persist("file-upload-manager") @livewire(\App\Livewire\FileUploadManager::class) @endpersist'),
+            )
             ->discoverResources(in: app_path('Filament/Server/Resources'), for: 'App\\Filament\\Server\\Resources')
             ->discoverPages(in: app_path('Filament/Server/Pages'), for: 'App\\Filament\\Server\\Pages')
             ->discoverWidgets(in: app_path('Filament/Server/Widgets'), for: 'App\\Filament\\Server\\Widgets')

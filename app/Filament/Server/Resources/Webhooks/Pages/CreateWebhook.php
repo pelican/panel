@@ -7,6 +7,7 @@ use App\Filament\Server\Resources\Webhooks\WebhookResource;
 use App\Models\Server;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
+use App\Traits\Filament\MutatesWebhookFormData;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Facades\Filament;
@@ -16,6 +17,7 @@ class CreateWebhook extends CreateRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;
+    use MutatesWebhookFormData;
 
     protected static string $resource = WebhookResource::class;
 
@@ -43,7 +45,7 @@ class CreateWebhook extends CreateRecord
         $data['server_id'] = $server->id;
         $data['scope'] = WebhookScope::Server;
 
-        return $data;
+        return $this->mutateWebhookDataBeforeSave($data);
     }
 
     protected function getRedirectUrl(): string

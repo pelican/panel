@@ -2,7 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Enums\WebhookType;
+use App\Extensions\Webhooks\Schemas\FallbackSchema;
+use App\Extensions\Webhooks\WebhookTypeService;
 use App\Models\WebhookConfiguration;
 use Exception;
 use Illuminate\Bus\Queueable;
@@ -11,12 +12,16 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Http;
 
 class ProcessWebhook implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    /**
+     * Upper bound for schema requested retries. Set on the job so a released
+     * delivery survives a worker running with the default --tries=1.
+     */
+    public int $tries = 3;
 
     /**
      * @param  array<mixed>  $data
@@ -27,61 +32,62 @@ class ProcessWebhook implements ShouldQueue
         private array $data
     ) {}
 
-    public function handle(): void
+    public function handle(WebhookTypeService $webhookTypeService): void
     {
-        $data = $this->data[0] ?? [];
-        if (count($data) === 1) {
-            $data = reset($data);
-        }
-
-        $data = $this->normalizeData($data);
+        $data = $this->normalizeData($this->data[0] ?? []);
         $data['event'] = $this->webhookConfiguration->transformClassName($this->eventName);
 
-        if ($this->webhookConfiguration->type === WebhookType::Discord) {
-            $payload = json_encode($this->webhookConfiguration->payload);
-            $tmp = $this->webhookConfiguration->replaceVars($data, $payload);
-            $data = json_decode($tmp, true);
+        // A type without a registered schema still delivers with its stored template
+        $schema = $webhookTypeService->get($this->webhookConfiguration->type) ?? new FallbackSchema();
 
-            $embeds = data_get($data, 'embeds');
-            if ($embeds) {
-                foreach ($embeds as &$embed) {
-                    if (data_get($embed, 'has_timestamp')) {
-                        $embed['timestamp'] = Carbon::now();
-                        unset($embed['has_timestamp']);
-                    }
-                }
-                $data['embeds'] = $embeds;
-                if (isset($data['flags'])) {
-                    $data['flags'] &= ~(1 << 2);
-                }
-            }
+        $payload = $schema->preparePayload($this->webhookConfiguration, $data);
+        $headers = $schema->prepareHeaders($this->webhookConfiguration, $payload, $data);
 
-            if (isset($data['content']) && $data['content'] === '') {
-                unset($data['content']);
-            }
-        }
+        $retryAfter = null;
 
         try {
-            $headers = [];
+            // The type owns the request, so it is free to change the verb, encoding or timeout
+            $response = $schema->deliver($this->webhookConfiguration, $payload, $headers);
 
-            if ($this->webhookConfiguration->type === WebhookType::Regular) {
-                foreach ($this->webhookConfiguration->headers as $key => $value) {
-                    $headers[$key] = $this->webhookConfiguration->replaceVars($data, $value);
-                }
+            $successful = $schema->wasSuccessful($response) ? now() : null;
+
+            if (!$successful) {
+                report(sprintf(
+                    'Webhook #%d delivery to %s failed with status %d.',
+                    $this->webhookConfiguration->id,
+                    $this->redactedEndpoint(),
+                    $response->status(),
+                ));
+
+                $retryAfter = $schema->retryAfter($response);
             }
-            Http::withHeaders($headers)->post($this->webhookConfiguration->endpoint, $data)->throw();
-            $successful = now();
         } catch (Exception $exception) {
-            report($exception->getMessage());
+            report($exception);
             $successful = null;
         }
 
         $this->webhookConfiguration->webhooks()->create([
-            'payload' => $data,
+            'payload' => $payload,
             'successful_at' => $successful,
             'event' => $this->eventName,
             'endpoint' => $this->webhookConfiguration->endpoint,
         ]);
+
+        // Only types that ask for it are retried, so default behaviour is unchanged.
+        // Every attempt performs a real POST, so the delivery row per attempt above
+        // is an audit trail, not a duplicate.
+        if ($retryAfter !== null && $this->attempts() < $this->tries) {
+            $this->release($retryAfter);
+        }
+    }
+
+    /**
+     * Webhook URLs routinely embed a secret, a Discord webhook token for example, so
+     * only the host is ever written to the logs.
+     */
+    private function redactedEndpoint(): string
+    {
+        return parse_url($this->webhookConfiguration->endpoint, PHP_URL_HOST) ?: 'unknown host';
     }
 
     /** @return array<mixed> */

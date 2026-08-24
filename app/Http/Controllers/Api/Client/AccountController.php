@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api\Client;
 
+use App\Data\Api\Client\UserData;
 use App\Facades\Activity;
 use App\Http\Requests\Api\Client\Account\UpdateEmailRequest;
 use App\Http\Requests\Api\Client\Account\UpdatePasswordRequest;
 use App\Http\Requests\Api\Client\Account\UpdateUsernameRequest;
 use App\Services\Users\UserUpdateService;
-use App\Transformers\Api\Client\UserTransformer;
 use Illuminate\Auth\AuthManager;
 use Illuminate\Auth\SessionGuard;
 use Illuminate\Http\JsonResponse;
@@ -41,8 +41,8 @@ class AccountController extends ClientApiController
      */
     public function index(Request $request): array
     {
-        return $this->fractal->item($request->user())
-            ->transformWith($this->getTransformer(UserTransformer::class))
+        return $this->response->item($request->user())
+            ->transformWith(UserData::class)
             ->toArray();
     }
 

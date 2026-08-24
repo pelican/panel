@@ -1,0 +1,20 @@
+{
+    "object": "user",
+    "attributes": {
+        "id": 103,
+        "external_id": null,
+        "is_managed_externally": false,
+        "uuid": "ffb5c3a6-ab17-43ab-97f0-8ff37ccd7f5f",
+        "username": "fixture.stored",
+        "email": "stored@fixture.test",
+        "language": "en",
+        "root_admin": false,
+        "2fa_enabled": false,
+        "2fa": false,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00"
+    },
+    "meta": {
+        "resource": "http://localhost/api/application/users/103"
+    }
+}

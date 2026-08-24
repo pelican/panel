@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\DatabaseHosts;
 
+use App\Data\Api\Application\DatabaseHostData;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\DatabaseHosts\DeleteDatabaseHostRequest;
 use App\Http\Requests\Api\Application\DatabaseHosts\GetDatabaseHostRequest;
@@ -10,7 +11,6 @@ use App\Http\Requests\Api\Application\DatabaseHosts\UpdateDatabaseHostRequest;
 use App\Models\DatabaseHost;
 use App\Services\Databases\Hosts\HostCreationService;
 use App\Services\Databases\Hosts\HostUpdateService;
-use App\Transformers\Api\Application\DatabaseHostTransformer;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
@@ -43,8 +43,8 @@ class DatabaseHostController extends ApplicationApiController
             ->allowedSorts(['id', 'name', 'host'])
             ->paginate($request->query('per_page') ?? 10);
 
-        return $this->fractal->collection($databases)
-            ->transformWith($this->getTransformer(DatabaseHostTransformer::class))
+        return $this->response->collection($databases)
+            ->transformWith(DatabaseHostData::class)
             ->toArray();
     }
 
@@ -57,8 +57,8 @@ class DatabaseHostController extends ApplicationApiController
      */
     public function view(GetDatabaseHostRequest $request, DatabaseHost $databaseHost): array
     {
-        return $this->fractal->item($databaseHost)
-            ->transformWith($this->getTransformer(DatabaseHostTransformer::class))
+        return $this->response->item($databaseHost)
+            ->transformWith(DatabaseHostData::class)
             ->toArray();
     }
 
@@ -74,8 +74,8 @@ class DatabaseHostController extends ApplicationApiController
     {
         $databaseHost = $this->creationService->handle($request->validated());
 
-        return $this->fractal->item($databaseHost)
-            ->transformWith($this->getTransformer(DatabaseHostTransformer::class))
+        return $this->response->item($databaseHost)
+            ->transformWith(DatabaseHostData::class)
             ->addMeta([
                 'resource' => route('api.application.databasehosts.view', [
                     'database_host' => $databaseHost->id,
@@ -97,8 +97,8 @@ class DatabaseHostController extends ApplicationApiController
     {
         $databaseHost = $this->updateService->handle($databaseHost->id, $request->validated());
 
-        return $this->fractal->item($databaseHost)
-            ->transformWith($this->getTransformer(DatabaseHostTransformer::class))
+        return $this->response->item($databaseHost)
+            ->transformWith(DatabaseHostData::class)
             ->toArray();
     }
 

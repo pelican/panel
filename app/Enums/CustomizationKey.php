@@ -14,6 +14,8 @@ enum CustomizationKey: string
     case ButtonStyle = 'button_style';
     case RedirectToAdmin = 'redirect_to_admin';
 
+    case ServersPerPage = 'servers_per_page';
+
     public function getDefaultValue(): string|int|bool
     {
         return match ($this) {
@@ -25,6 +27,8 @@ enum CustomizationKey: string
             self::DashboardLayout => 'grid',
             self::ButtonStyle => true,
             self::RedirectToAdmin => false,
+            // 0 means "unset", the table falls back to its contextual default (see ListServers).
+            self::ServersPerPage => 0,
         };
     }
 

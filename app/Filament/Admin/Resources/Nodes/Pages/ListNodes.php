@@ -12,6 +12,7 @@ use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -62,6 +63,9 @@ class ListNodes extends ListRecords
                     ->sortable(),
             ])
             ->recordActions([
+                ViewAction::make()
+                    ->tooltip(trans('filament-actions::view.single.label'))
+                    ->hidden(fn (Node $record) => NodeResource::getEditAuthorizationResponse($record)->allowed()),
                 EditAction::make(),
             ])
             ->toolbarActions([

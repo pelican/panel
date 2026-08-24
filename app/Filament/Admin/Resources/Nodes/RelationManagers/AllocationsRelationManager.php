@@ -71,7 +71,8 @@ class AllocationsRelationManager extends RelationManager
                     ->selectablePlaceholder(false)
                     ->searchable()
                     ->sortable()
-                    ->label(trans('admin/node.table.ip')),
+                    ->label(trans('admin/node.table.ip'))
+                    ->disabled(fn () => $this->isReadOnly()),
                 TextColumn::make('port')
                     ->searchable()
                     ->sortable()
@@ -80,10 +81,12 @@ class AllocationsRelationManager extends RelationManager
                     ->searchable()
                     ->sortable()
                     ->label(trans('admin/node.table.alias'))
-                    ->placeholder(trans('admin/node.table.no_alias')),
+                    ->placeholder(trans('admin/node.table.no_alias'))
+                    ->disabled(fn () => $this->isReadOnly()),
                 TextInputColumn::make('notes')
                     ->label(trans('admin/node.table.allocation_notes'))
-                    ->placeholder(trans('admin/node.table.no_notes')),
+                    ->placeholder(trans('admin/node.table.no_notes'))
+                    ->disabled(fn () => $this->isReadOnly()),
                 TextColumn::make('server.name')
                     ->label(trans('admin/node.table.servers'))
                     ->placeholder(trans('admin/node.table.no_server'))
@@ -100,6 +103,7 @@ class AllocationsRelationManager extends RelationManager
                 CreateAction::make()
                     ->createAnother(false)
                     ->icon(TablerIcon::WorldPlus)
+                    ->visible(fn () => !$this->isReadOnly())
                     ->schema(fn () => [
                         Select::make('allocation_ip')
                             ->options(fn (Get $get) => collect($this->getOwnerRecord()->ipAddresses())
@@ -152,8 +156,10 @@ class AllocationsRelationManager extends RelationManager
                     ->action(fn (array $data, AssignmentService $service) => $service->handle($this->getOwnerRecord(), $data)),
                 UpdateNodeAllocations::make()
                     ->nodeRecord($this->getOwnerRecord())
-                    ->authorize(fn () => user()?->can('update', $this->getOwnerRecord())),
-                DeleteBulkAction::make(),
+                    ->authorize(fn () => user()?->can('update', $this->getOwnerRecord()))
+                    ->hidden(fn () => $this->isReadOnly()),
+                DeleteBulkAction::make()
+                    ->hidden(fn () => $this->isReadOnly()),
             ]);
     }
 }

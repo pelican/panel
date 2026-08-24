@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\AllocationData;
 use App\Exceptions\DisplayException;
 use App\Exceptions\Model\DataValidationException;
 use App\Facades\Activity;
@@ -14,7 +15,6 @@ use App\Http\Requests\Api\Client\Servers\Network\UpdateAllocationRequest;
 use App\Models\Allocation;
 use App\Models\Server;
 use App\Services\Allocations\FindAssignableAllocationService;
-use App\Transformers\Api\Client\AllocationTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\JsonResponse;
 
@@ -40,8 +40,8 @@ class NetworkAllocationController extends ClientApiController
      */
     public function index(GetNetworkRequest $request, Server $server): array
     {
-        return $this->fractal->collection($server->allocations)
-            ->transformWith($this->getTransformer(AllocationTransformer::class))
+        return $this->response->collection($server->allocations)
+            ->transformWith(AllocationData::class)
             ->toArray();
     }
 
@@ -67,8 +67,8 @@ class NetworkAllocationController extends ClientApiController
                 ->log();
         }
 
-        return $this->fractal->item($allocation)
-            ->transformWith($this->getTransformer(AllocationTransformer::class))
+        return $this->response->item($allocation)
+            ->transformWith(AllocationData::class)
             ->toArray();
     }
 
@@ -91,8 +91,8 @@ class NetworkAllocationController extends ClientApiController
             ->property('allocation', $allocation->address)
             ->log();
 
-        return $this->fractal->item($allocation)
-            ->transformWith($this->getTransformer(AllocationTransformer::class))
+        return $this->response->item($allocation)
+            ->transformWith(AllocationData::class)
             ->toArray();
     }
 
@@ -119,8 +119,8 @@ class NetworkAllocationController extends ClientApiController
             return $allocation;
         });
 
-        return $this->fractal->item($allocation)
-            ->transformWith($this->getTransformer(AllocationTransformer::class))
+        return $this->response->item($allocation)
+            ->transformWith(AllocationData::class)
             ->toArray();
     }
 
@@ -137,10 +137,7 @@ class NetworkAllocationController extends ClientApiController
         // allocation limit set.
         throw_if(empty($server->allocation_limit), new DisplayException('You cannot delete allocations for this server: no allocation limit is set.'));
 
-        Allocation::query()->where('id', $allocation->id)->update([
-            'notes' => null,
-            'server_id' => null,
-        ]);
+        Allocation::query()->where('id', $allocation->id)->update(Allocation::RELEASE_ATTRIBUTES);
 
         Activity::event('server:allocation.delete')
             ->subject($allocation)

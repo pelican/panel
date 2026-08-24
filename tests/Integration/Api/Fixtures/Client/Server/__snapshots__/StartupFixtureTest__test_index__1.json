@@ -1,0 +1,24 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "egg_variable",
+            "attributes": {
+                "name": "Server Jar",
+                "description": "The jar file to run.",
+                "env_variable": "SERVER_JARFILE",
+                "default_value": "server.jar",
+                "server_value": "custom.jar",
+                "is_editable": true,
+                "rules": "required|string"
+            }
+        }
+    ],
+    "meta": {
+        "startup_command": "java -jar custom.jar",
+        "docker_images": {
+            "Java 21": "ghcr.io/fixture/java:21"
+        },
+        "raw_startup_command": "java -jar {{SERVER_JARFILE}}"
+    }
+}
