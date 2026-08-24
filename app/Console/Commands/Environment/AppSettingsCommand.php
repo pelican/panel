@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Environment;
 
 use App\Traits\EnvironmentWriterTrait;
+use Exception;
 use Illuminate\Console\Command;
 
 class AppSettingsCommand extends Command
@@ -25,20 +26,9 @@ class AppSettingsCommand extends Command
             }
         }
 
-        $appUrl = $this->option('url');
-
-        if (blank($appUrl)) {
-            $appUrl = $this->ask('Application URL', config('app.url'));
-        }
-
-        if (blank($appUrl)) {
-            $this->error('Application URL is required.');
-
+        if (!$this->handleAppUrl()) {
             return 1;
         }
-
-        $this->comment('Writing APP_URL to .env file');
-        $this->writeToEnvironment(['APP_URL' => $appUrl]);
 
         if (!config('app.key')) {
             $this->comment('Generating app key');
@@ -61,5 +51,37 @@ class AppSettingsCommand extends Command
         }
 
         return 0;
+    }
+
+    private function handleAppUrl(): bool
+    {
+        $appUrl = $this->option('url');
+
+        if (blank($appUrl) && $this->input->isInteractive()) {
+            $appUrl = $this->ask('Application URL', config('app.url'));
+        }
+
+        if (blank($appUrl)) {
+            $this->error('Application URL is required.');
+
+            return false;
+        }
+
+        if (!str_starts_with($appUrl, 'http://') && !str_starts_with($appUrl, 'https://')) {
+            $this->error('Application URL need to start with either http:// or https://.');
+
+            return false;
+        }
+
+        try {
+            $this->comment('Writing APP_URL to .env file');
+            $this->writeToEnvironment(['APP_URL' => $appUrl]);
+
+            return true;
+        } catch (Exception $exception) {
+            $this->error('Could not write .env file: ' . $exception->getMessage());
+
+            return false;
+        }
     }
 }
