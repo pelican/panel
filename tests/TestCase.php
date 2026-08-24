@@ -36,6 +36,10 @@ abstract class TestCase extends BaseTestCase
         config()->set('app.debug', false);
         config()->set('panel.auth.2fa_required', 0);
 
+        // CI runs the test jobs without building the frontend, so rendered views
+        // must not require a Vite manifest.
+        $this->withoutVite();
+
         $this->setKnownUuidFactory();
 
         $this->app->make(PermissionRegistrar::class)->forgetCachedPermissions();
