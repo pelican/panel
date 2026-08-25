@@ -23,6 +23,67 @@ return [
         ],
         'exception' => 'Some requirements are missing',
     ],
+    'health' => [
+        'preflight_failed' => 'Some server requirements are not met',
+        'php' => [
+            'label' => 'PHP Version',
+            'passed' => 'PHP :current meets the minimum supported version (:minimum).',
+            'failed' => 'PHP :current is below the minimum supported version (:minimum).',
+            'remediation' => 'Install PHP :minimum or newer before continuing.',
+        ],
+        'extensions' => [
+            'label' => 'PHP Extensions',
+            'passed' => 'All required PHP extensions are available.',
+            'failed' => 'The following PHP extensions are missing: :extensions',
+            'remediation' => 'Install the missing extensions for the PHP binary that runs the Panel.',
+        ],
+        'database_extension' => [
+            'label' => 'Database Extension',
+            'passed' => 'The required :extension extension is available.',
+            'failed' => ':driver requires the :extension PHP extension.',
+            'unsupported' => 'The configured database driver ":driver" is not supported.',
+            'unsupported_remediation' => 'Set DB_CONNECTION to sqlite, mariadb, mysql, or pgsql.',
+        ],
+        'database' => [
+            'label' => 'Database Connection',
+        ],
+        'app_key' => [
+            'label' => 'Application Key',
+            'passed' => 'The application encryption key is valid.',
+            'failed' => 'The application encryption key is missing or invalid.',
+            'remediation' => 'Run php artisan key:generate before continuing.',
+        ],
+        'migrations' => [
+            'label' => 'Database Migrations',
+            'passed' => 'All database migrations have completed.',
+            'failed' => ':count database migration(s) are still pending.',
+            'repository_missing' => 'The database migration repository does not exist.',
+            'exception' => 'The migration state could not be read: :error',
+            'remediation' => 'Run php artisan migrate --force and resolve any reported errors.',
+        ],
+        'cache' => [
+            'label' => 'Cache',
+        ],
+        'admin' => [
+            'label' => 'Administrator Account',
+            'passed' => 'At least one root administrator account exists.',
+            'failed' => 'No root administrator account exists.',
+            'exception' => 'The administrator account check failed: :error',
+            'remediation' => 'Create an administrator through the installer or php artisan p:user:make.',
+        ],
+        'installed' => [
+            'label' => 'Installation State',
+            'passed' => 'The Panel is marked as installed.',
+            'failed' => 'The Panel is not marked as installed.',
+            'remediation' => 'Complete the installer before serving the Panel.',
+        ],
+        'paths' => [
+            'label' => 'Writable Paths',
+            'passed' => 'The Panel can write to every required path.',
+            'failed' => 'The following paths are not writable: :paths',
+            'remediation' => 'Grant the web server user write access to these paths before continuing.',
+        ],
+    ],
     'environment' => [
         'title' => 'Environment',
         'fields' => [
@@ -57,6 +118,7 @@ return [
             'password_help' => 'The password of your database user. Can be empty.',
         ],
         'exceptions' => [
+            'extension' => 'Database extension missing',
             'connection' => 'Database connection failed',
             'migration' => 'Migrations failed',
         ],

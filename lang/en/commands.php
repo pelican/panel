@@ -1,6 +1,18 @@
 <?php
 
 return [
+    'environment_check' => [
+        'check' => 'Check',
+        'status' => 'Status',
+        'details' => 'Details',
+        'passed' => 'Passed',
+        'warning' => 'Warning',
+        'failed' => 'Failed',
+        'preflight_passed' => 'All requested preflight checks passed.',
+        'preflight_failed' => 'Preflight failed. Resolve the checks above before continuing.',
+        'health_passed' => 'The Panel installation is healthy.',
+        'health_failed' => 'The Panel installation has failing health checks.',
+    ],
     'appsettings' => [
         'comment' => [
             'author' => 'Provide the email address that eggs exported by this Panel should be from. This should be a valid email address.',

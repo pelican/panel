@@ -15,14 +15,6 @@ class MakeUserCommand extends Command
     protected $signature = 'p:user:make {--email=} {--username=} {--password=} {--admin=} {--no-password}';
 
     /**
-     * MakeUserCommand constructor.
-     */
-    public function __construct(private UserCreationService $creationService)
-    {
-        parent::__construct();
-    }
-
-    /**
      * Handle command request to create a new user.
      *
      * @throws Exception
@@ -38,6 +30,9 @@ class MakeUserCommand extends Command
             return 1;
         }
 
+        /** @var UserCreationService $creationService */
+        $creationService = $this->getLaravel()->make(UserCreationService::class);
+
         $root_admin = $this->option('admin') ?? $this->confirm(trans('command/messages.user.ask_admin'));
         $email = $this->option('email') ?? $this->ask(trans('command/messages.user.ask_email'));
         $username = $this->option('username') ?? $this->ask(trans('command/messages.user.ask_username'));
@@ -48,7 +43,7 @@ class MakeUserCommand extends Command
             $password = $this->secret(trans('command/messages.user.ask_password'));
         }
 
-        $user = $this->creationService->handle(compact('email', 'username', 'password', 'root_admin'));
+        $user = $creationService->handle(compact('email', 'username', 'password', 'root_admin'));
         $this->table(['Field', 'Value'], [
             ['UUID', $user->uuid],
             ['Email', $user->email],

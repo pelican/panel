@@ -2,14 +2,21 @@
 
 namespace App\Providers;
 
+use App\Checks\AdminUserCheck;
+use App\Checks\ApplicationKeyCheck;
 use App\Checks\CacheCheck;
 use App\Checks\DatabaseCheck;
 use App\Checks\DebugModeCheck;
 use App\Checks\EnvironmentCheck;
+use App\Checks\InstallationFlagCheck;
+use App\Checks\MigrationsCheck;
 use App\Checks\NodeVersionsCheck;
 use App\Checks\PanelVersionCheck;
+use App\Checks\PhpExtensionsCheck;
+use App\Checks\PhpVersionCheck;
 use App\Checks\ScheduleCheck;
 use App\Checks\UsedDiskSpaceCheck;
+use App\Checks\WritablePathsCheck;
 use App\Extensions\Dedoc\Scramble\FractalResponseTypeInfer;
 use App\Extensions\Dedoc\Scramble\TransformerFactoryTypeInfer;
 use App\Extensions\Dedoc\Scramble\TransformerModelBindingExtension;
@@ -111,6 +118,13 @@ class AppServiceProvider extends ServiceProvider
                 EnvironmentCheck::new(),
                 CacheCheck::new(),
                 DatabaseCheck::new(),
+                ApplicationKeyCheck::new(),
+                PhpVersionCheck::new(),
+                PhpExtensionsCheck::new(),
+                WritablePathsCheck::new(),
+                MigrationsCheck::new(),
+                AdminUserCheck::new(),
+                InstallationFlagCheck::new(),
                 QueueCheck::new(),
                 ScheduleCheck::new(),
                 UsedDiskSpaceCheck::new(),

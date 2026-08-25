@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Environment;
 
+use App\Enums\DatabaseDriver;
 use App\Traits\EnvironmentWriterTrait;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\Kernel;
@@ -11,13 +12,6 @@ use PDOException;
 class DatabaseSettingsCommand extends Command
 {
     use EnvironmentWriterTrait;
-
-    public const DATABASE_DRIVERS = [
-        'sqlite' => 'SQLite (recommended)',
-        'mariadb' => 'MariaDB',
-        'mysql' => 'MySQL',
-        'pgsql' => 'PostgreSQL',
-    ];
 
     protected $description = 'Configure database settings for the Panel.';
 
@@ -46,6 +40,13 @@ class DatabaseSettingsCommand extends Command
      */
     public function handle(): int
     {
+        $driver = $this->option('driver');
+        if ($driver !== null && (!is_string($driver) || DatabaseDriver::tryFrom($driver) === null)) {
+            $this->error(sprintf('Unsupported database driver [%s].', is_scalar($driver) ? $driver : get_debug_type($driver)));
+
+            return self::FAILURE;
+        }
+
         $this->error('Changing the database driver will NOT move any database data!');
         $this->error('Please make sure you made a database backup first!');
         $this->error('After changing the driver you will have to manually move the old data to the new database.');
@@ -54,10 +55,11 @@ class DatabaseSettingsCommand extends Command
         }
 
         $selected = config('database.default', 'sqlite');
-        $this->variables['DB_CONNECTION'] = $this->option('driver') ?? $this->choice(
+        $databaseDrivers = DatabaseDriver::options(recommendSQLite: true);
+        $this->variables['DB_CONNECTION'] = $driver ?? $this->choice(
             'Database Driver',
-            self::DATABASE_DRIVERS,
-            array_key_exists($selected, self::DATABASE_DRIVERS) ? $selected : null
+            $databaseDrivers,
+            array_key_exists($selected, $databaseDrivers) ? $selected : null
         );
 
         if ($this->variables['DB_CONNECTION'] === 'mysql') {

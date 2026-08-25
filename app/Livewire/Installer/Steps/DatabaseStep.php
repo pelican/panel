@@ -2,9 +2,10 @@
 
 namespace App\Livewire\Installer\Steps;
 
+use App\Enums\DatabaseDriver;
 use App\Enums\TablerIcon;
 use App\Livewire\Installer\PanelInstaller;
-use Exception;
+use App\Services\Environment\InstallationHealthService;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
 use Filament\Notifications\Notification;
@@ -12,17 +13,12 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Components\Wizard\Step;
 use Filament\Support\Exceptions\Halt;
-use Illuminate\Support\Facades\DB;
 
 class DatabaseStep
 {
-    public const DATABASE_DRIVERS = [
-        'sqlite' => 'SQLite',
-        'mariadb' => 'MariaDB',
-        'mysql' => 'MySQL',
-        'pgsql' => 'PostgreSQL',
-    ];
-
+    /**
+     * Build the database configuration step and validate it before persistence.
+     */
     public static function make(PanelInstaller $installer): Step
     {
         return Step::make('database')
@@ -34,7 +30,7 @@ class DatabaseStep
                     ->hintIcon(TablerIcon::QuestionMark, trans('installer.database.driver_help'))
                     ->required()
                     ->inline()
-                    ->options(self::DATABASE_DRIVERS)
+                    ->options(DatabaseDriver::options())
                     ->default(config('database.default'))
                     ->live()
                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
@@ -61,9 +57,9 @@ class DatabaseStep
                         }
                     }),
                 TextInput::make('env_database.DB_DATABASE')
-                    ->label(fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite' ? trans('installer.database.fields.path') : trans('installer.database.fields.name'))
-                    ->placeholder(fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite' ? 'database.sqlite' : 'panel')
-                    ->hintIcon(TablerIcon::QuestionMark, fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite' ? trans('installer.database.fields.path_help') : trans('installer.database.fields.name_help'))
+                    ->label(fn (Get $get) => $get('env_database.DB_CONNECTION') === DatabaseDriver::SQLite->value ? trans('installer.database.fields.path') : trans('installer.database.fields.name'))
+                    ->placeholder(fn (Get $get) => $get('env_database.DB_CONNECTION') === DatabaseDriver::SQLite->value ? 'database.sqlite' : 'panel')
+                    ->hintIcon(TablerIcon::QuestionMark, fn (Get $get) => $get('env_database.DB_CONNECTION') === DatabaseDriver::SQLite->value ? trans('installer.database.fields.path_help') : trans('installer.database.fields.name_help'))
                     ->required()
                     ->default(fn (Get $get) => self::getConnectionDefault($get, 'database', 'panel')),
                 TextInput::make('env_database.DB_HOST')
@@ -99,12 +95,43 @@ class DatabaseStep
                     ->hintIcon(TablerIcon::QuestionMark, trans('installer.database.fields.password_help'))
                     ->password()
                     ->revealable()
-                    ->hidden(fn (Get $get) => $get('env_database.DB_CONNECTION') === 'sqlite'),
+                    ->hidden(fn (Get $get) => $get('env_database.DB_CONNECTION') === DatabaseDriver::SQLite->value),
             ])
             ->afterValidation(function (Get $get) use ($installer) {
-                $driver = $get('env_database.DB_CONNECTION');
+                $health = app(InstallationHealthService::class); // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
+                $driver = DatabaseDriver::from($get('env_database.DB_CONNECTION'));
+                $extensionResult = $health->databaseDriverExtension($driver);
 
-                throw_unless(self::testConnection($driver, $get('env_database.DB_HOST'), $get('env_database.DB_PORT'), $get('env_database.DB_DATABASE'), $get('env_database.DB_USERNAME'), $get('env_database.DB_PASSWORD')), new Halt(trans('installer.database.exceptions.connection')));
+                if ($health->hasFailures([$extensionResult])) {
+                    Notification::make()
+                        ->title(trans('installer.database.exceptions.extension'))
+                        ->body($extensionResult->getNotificationMessage())
+                        ->danger()
+                        ->send();
+
+                    throw new Halt($extensionResult->getNotificationMessage());
+                }
+
+                $connectionResult = $health->databaseConnection($driver, [
+                    'host' => $get('env_database.DB_HOST'),
+                    'port' => $get('env_database.DB_PORT'),
+                    'database' => $get('env_database.DB_DATABASE'),
+                    'username' => $get('env_database.DB_USERNAME'),
+                    'password' => self::getConnectionPassword(
+                        $driver->value,
+                        $get('env_database.DB_PASSWORD'),
+                    ),
+                ]);
+
+                if ($health->hasFailures([$connectionResult])) {
+                    Notification::make()
+                        ->title(trans('installer.database.exceptions.connection'))
+                        ->body($connectionResult->getNotificationMessage())
+                        ->danger()
+                        ->send();
+
+                    throw new Halt($connectionResult->getNotificationMessage());
+                }
 
                 $installer->writeToEnv('env_database');
             });
@@ -119,7 +146,7 @@ class DatabaseStep
 
     private static function getConfiguredConnectionValue(mixed $driver, string $key, mixed $fallback): mixed
     {
-        if ($driver === 'sqlite') {
+        if ($driver === DatabaseDriver::SQLite->value) {
             return $key === 'database' ? 'database.sqlite' : null;
         }
 
@@ -128,42 +155,6 @@ class DatabaseStep
         }
 
         return config("database.connections.{$driver}.{$key}", $fallback);
-    }
-
-    private static function testConnection(string $driver, ?string $host, null|string|int $port, ?string $database, ?string $username, ?string $password): bool
-    {
-        if ($driver === 'sqlite') {
-            return true;
-        }
-
-        $password = self::getConnectionPassword($driver, $password);
-
-        try {
-            config()->set('database.connections._panel_install_test', [
-                'driver' => $driver,
-                'host' => $host,
-                'port' => $port,
-                'database' => $database,
-                'username' => $username,
-                'password' => $password,
-                'collation' => 'utf8mb4_unicode_ci',
-                'strict' => true,
-            ]);
-
-            DB::connection('_panel_install_test')->getPdo();
-        } catch (Exception $exception) {
-            DB::disconnect('_panel_install_test');
-
-            Notification::make()
-                ->title(trans('installer.database.exceptions.connection'))
-                ->body($exception->getMessage())
-                ->danger()
-                ->send();
-
-            return false;
-        }
-
-        return true;
     }
 
     private static function getConnectionPassword(string $driver, ?string $password): ?string
