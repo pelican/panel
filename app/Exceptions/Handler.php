@@ -37,6 +37,14 @@ class Handler extends ExceptionHandler
     private const PANEL_RULE_STRING = 'App\_rules\_';
 
     /**
+     * Message prefixes web-auth/webauthn-lib 5.3 uses when it rejects a ceremony over its
+     * origin, in CheckAllowedOrigins and CheckOrigin. Matching on wording is unpleasant,
+     * but the library throws one exception type for every verification failure and carries
+     * no code to switch on. Recheck these whenever that dependency is bumped.
+     */
+    private const PASSKEY_ORIGIN_FAILURES = ['Invalid origin', 'Invalid scheme'];
+
+    /**
      * A list of the exception types that should not be reported.
      */
     protected $dontReport = [
@@ -101,19 +109,29 @@ class Handler extends ExceptionHandler
      * Turn a failed WebAuthn ceremony into an actionable response.
      *
      * The library only reports that the browser's origin wasn't accepted, which on its
-     * own is impossible to act on, so log the origin we received alongside the ones the
-     * panel is configured for and tell the user which address passkeys work at.
+     * own is impossible to act on, so log the origin the ceremony ran on alongside the
+     * ones being enforced and tell the user which address passkeys work at.
+     *
+     * Returns null for requests that aren't expecting JSON so they fall through to the
+     * normal renderer, the way unauthenticated() does.
      */
-    private function invalidPasskey(AuthenticatorResponseVerificationException $exception, Request $request): JsonResponse
+    private function invalidPasskey(AuthenticatorResponseVerificationException $exception, Request $request): ?JsonResponse
     {
-        $isOriginFailure = Str::startsWith($exception->getMessage(), ['Invalid origin', 'Invalid scheme']);
+        $isOriginFailure = Str::startsWith($exception->getMessage(), self::PASSKEY_ORIGIN_FAILURES);
 
-        if ($isOriginFailure) {
-            logger()->warning('Passkey rejected: ' . $exception->getMessage(), [
-                'origin' => $request->headers->get('Origin'),
-                'allowed_origins' => Passkeys::allowedOrigins(),
-                'relying_party_id' => Passkeys::relyingPartyId(),
-            ]);
+        // Every failure, not just the origin ones. This exception also covers signature
+        // mismatches, failed user verification and clone detection, and it's in $dontReport
+        // so nothing else logs it.
+        logger()->warning($exception, [
+            'ceremony_origin' => $this->passkeyCeremonyOrigin($request),
+            'request_origin' => $request->headers->get('Origin'),
+            'relying_party_id' => Passkeys::relyingPartyId(),
+            // As enforced, so this includes whatever AllowPasskeyOrigin added this request.
+            'enforced_origins' => config('passkeys.allowed_origins'),
+        ]);
+
+        if (!$request->expectsJson()) {
+            return null;
         }
 
         $detail = $isOriginFailure
@@ -124,6 +142,31 @@ class Handler extends ExceptionHandler
             $this->convertExceptionToArray($exception, ['detail' => $detail]),
             JsonResponse::HTTP_UNPROCESSABLE_ENTITY,
         );
+    }
+
+    /**
+     * The origin the ceremony actually ran on. This is the value the library compared and
+     * the only one worth debugging against, and it lives base64url encoded in the signed
+     * client data rather than in a header the browser may not have sent.
+     */
+    private function passkeyCeremonyOrigin(Request $request): ?string
+    {
+        $clientData = $request->input('credential.response.clientDataJSON');
+
+        if (!is_string($clientData)) {
+            return null;
+        }
+
+        $decoded = base64_decode(strtr($clientData, '-_', '+/'), true);
+
+        if ($decoded === false) {
+            return null;
+        }
+
+        $clientDataJson = json_decode($decoded, true);
+        $origin = is_array($clientDataJson) ? $clientDataJson['origin'] ?? null : null;
+
+        return is_string($origin) ? $origin : null;
     }
 
     private function generateCleanedExceptionStack(Throwable $exception): string

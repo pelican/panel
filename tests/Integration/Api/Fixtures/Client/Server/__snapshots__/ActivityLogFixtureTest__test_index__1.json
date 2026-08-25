@@ -1,0 +1,28 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "activity_log",
+            "attributes": {
+                "id": "310b86e0b62b828562fc91c7be5380a992b2786a",
+                "event": "server:power.start",
+                "is_api": false,
+                "ip": "192.0.2.1",
+                "description": null,
+                "properties": [],
+                "has_additional_metadata": false,
+                "timestamp": "2026-01-01T00:00:00+00:00"
+            }
+        }
+    ],
+    "meta": {
+        "pagination": {
+            "total": 1,
+            "count": 1,
+            "per_page": 25,
+            "current_page": 1,
+            "total_pages": 1,
+            "links": {}
+        }
+    }
+}

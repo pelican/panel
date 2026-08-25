@@ -23,30 +23,17 @@ class UpdateServerBuildConfigurationRequest extends ServerWriteRequest
             /** Resource limits applied to the server's container. */
             'limits' => 'sometimes|array',
             /** Memory the server may use, in MiB. Use `0` for unlimited. */
-            'limits.memory' => $this->requiredToOptional('memory', $rules['memory'], true),
+            'limits.memory' => $this->requiredToOptional($rules['memory']),
             /** Swap the server may use, in MiB. Use `0` to disable swap and `-1` for unlimited. */
-            'limits.swap' => $this->requiredToOptional('swap', $rules['swap'], true),
+            'limits.swap' => $this->requiredToOptional($rules['swap']),
             /** Block IO weight of the container relative to other containers on the node. */
-            'limits.io' => $this->requiredToOptional('io', $rules['io'], true),
+            'limits.io' => $this->requiredToOptional($rules['io']),
             /** CPU the server may use, where each 100 is one core. Use `0` for unlimited. */
-            'limits.cpu' => $this->requiredToOptional('cpu', $rules['cpu'], true),
+            'limits.cpu' => $this->requiredToOptional($rules['cpu']),
             /** Physical CPU threads the container is pinned to, such as `0`, `0-2` or `0,2`. */
-            'limits.threads' => $this->requiredToOptional('threads', $rules['threads'], true),
+            'limits.threads' => $this->requiredToOptional($rules['threads']),
             /** Disk space the server may use, in MiB. Use `0` for unlimited. */
-            'limits.disk' => $this->requiredToOptional('disk', $rules['disk'], true),
-
-            /** @deprecated Use `limits.memory` instead. */
-            'memory' => $this->requiredToOptional('memory', $rules['memory']),
-            /** @deprecated Use `limits.swap` instead. */
-            'swap' => $this->requiredToOptional('swap', $rules['swap']),
-            /** @deprecated Use `limits.io` instead. */
-            'io' => $this->requiredToOptional('io', $rules['io']),
-            /** @deprecated Use `limits.cpu` instead. */
-            'cpu' => $this->requiredToOptional('cpu', $rules['cpu']),
-            /** @deprecated Use `limits.threads` instead. */
-            'threads' => $this->requiredToOptional('threads', $rules['threads']),
-            /** @deprecated Use `limits.disk` instead. */
-            'disk' => $this->requiredToOptional('disk', $rules['disk']),
+            'limits.disk' => $this->requiredToOptional($rules['disk']),
 
             /** IDs of allocations to assign to the server on top of the ones it already has. */
             'add_allocations' => 'bail|array',
@@ -114,14 +101,13 @@ class UpdateServerBuildConfigurationRequest extends ServerWriteRequest
     }
 
     /**
-     * Converts existing rules for certain limits into a format that maintains backwards
-     * compatability with the old API endpoint while also supporting a more correct API
-     * call.
+     * Model rules mark these fields required, but on this endpoint they are only
+     * required when the limits block is present at all.
      *
      * @param  array<array-key, mixed>  $rules
      * @return array<array-key, string>
      */
-    protected function requiredToOptional(string $field, array $rules, bool $limits = false): array
+    protected function requiredToOptional(array $rules): array
     {
         if (!in_array('required', $rules)) {
             return $rules;
@@ -131,7 +117,7 @@ class UpdateServerBuildConfigurationRequest extends ServerWriteRequest
             ->filter(function ($value) {
                 return $value !== 'required';
             })
-            ->prepend($limits ? 'required_with:limits' : 'required_without:limits')
+            ->prepend('required_with:limits')
             ->toArray();
     }
 }

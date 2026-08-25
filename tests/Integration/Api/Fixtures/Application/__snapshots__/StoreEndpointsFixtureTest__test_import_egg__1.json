@@ -1,0 +1,40 @@
+{
+    "object": "egg",
+    "attributes": {
+        "id": 101,
+        "uuid": "00000000-0000-4000-8000-000000000700",
+        "name": "Fixture Imported Egg",
+        "author": "import@fixture.test",
+        "description": "A pinned imported egg for the API test fixture suite.",
+        "icon": null,
+        "features": null,
+        "tags": [],
+        "docker_image": "ghcr.io/fixture/java:21",
+        "docker_images": {
+            "Java 21": "ghcr.io/fixture/java:21"
+        },
+        "config": {
+            "files": [],
+            "startup": {
+                "done": "Done"
+            },
+            "stop": "stop",
+            "logs": [],
+            "file_denylist": [],
+            "extends": null
+        },
+        "startup": "java -jar server.jar",
+        "startup_commands": {
+            "Default": "java -jar server.jar"
+        },
+        "script": {
+            "privileged": true,
+            "install": "echo install",
+            "entry": "ash",
+            "container": "ghcr.io/fixture/installer:latest",
+            "extends": null
+        },
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00"
+    }
+}

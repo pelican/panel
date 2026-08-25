@@ -105,6 +105,11 @@ class Node extends Model implements Validatable
     use Notifiable;
 
     /**
+     * Stand-in for the daemon token when the configuration is rendered read-only.
+     */
+    public const REDACTED = '********';
+
+    /**
      * The resource name for this model when it is transformed into an
      * API representation using fractal. Also used as name for api key permissions.
      */
@@ -219,6 +224,9 @@ class Node extends Model implements Validatable
     /**
      * Returns the configuration as an array.
      *
+     * Pass $redacted to mask the daemon token, for read-only surfaces that show the
+     * config without granting the credential wings authenticates with.
+     *
      * @return array{
      *     debug: bool,
      *     uuid: string|null,
@@ -235,13 +243,13 @@ class Node extends Model implements Validatable
      *     remote: string,
      * }
      */
-    public function getConfiguration(): array
+    public function getConfiguration(bool $redacted = false): array
     {
         return [
             'debug' => false,
             'uuid' => $this->uuid,
-            'token_id' => $this->daemon_token_id,
-            'token' => $this->daemon_token,
+            'token_id' => $redacted ? self::REDACTED : $this->daemon_token_id,
+            'token' => $redacted ? self::REDACTED : $this->daemon_token,
             'api' => [
                 'host' => '0.0.0.0',
                 'port' => $this->daemon_listen,
@@ -266,9 +274,9 @@ class Node extends Model implements Validatable
     /**
      * Returns the configuration in Yaml format.
      */
-    public function getYamlConfiguration(): string
+    public function getYamlConfiguration(bool $redacted = false): string
     {
-        return Yaml::dump($this->getConfiguration(), 4, 2, Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE);
+        return Yaml::dump($this->getConfiguration($redacted), 4, 2, Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE);
     }
 
     /**

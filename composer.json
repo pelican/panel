@@ -57,7 +57,8 @@
         "nunomaduro/collision": "^8.9",
         "pestphp/pest": "^4.7",
         "pestphp/pest-plugin-faker": "^4.0",
-        "pestphp/pest-plugin-livewire": "^4.0"
+        "pestphp/pest-plugin-livewire": "^4.0",
+        "spatie/pest-plugin-snapshots": "^2.3"
     },
     "autoload": {
         "files": [

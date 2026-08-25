@@ -47,7 +47,7 @@ class ServersRelationManager extends RelationManager
                     ->sortable(),
                 SelectColumn::make('allocation.id')
                     ->label(trans('admin/node.primary_allocation'))
-                    ->disabled(fn (Server $server) => $server->allocations->count() <= 1)
+                    ->disabled(fn (Server $server) => $this->isReadOnly() || $server->allocations->count() <= 1)
                     ->options(fn (Server $server) => $server->allocations->take(1)->mapWithKeys(fn ($allocation) => [$allocation->id => $allocation->address]))
                     ->selectablePlaceholder(fn (Server $server) => $server->allocations->count() <= 1)
                     ->placeholder(trans('admin/server.none')),

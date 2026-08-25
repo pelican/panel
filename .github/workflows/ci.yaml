@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   APP_ENV: testing
   APP_DEBUG: "false"
@@ -72,6 +75,14 @@ jobs:
 
       - name: Integration tests
         run: vendor/bin/pest tests/Integration --parallel --do-not-fail-on-phpunit-warning
+        env:
+          CREATE_SNAPSHOTS: "false"
+
+      # Panel/authorization tests, nothing database specific, so the sqlite job covers them.
+      - name: Filament tests
+        run: vendor/bin/pest tests/Filament --parallel --do-not-fail-on-phpunit-warning
+        env:
+          CREATE_SNAPSHOTS: "false"
 
   mysql:
     name: MySQL
@@ -130,7 +141,7 @@ jobs:
           DB_USERNAME: root
 
       - name: Integration tests
-        run: vendor/bin/pest tests/Integration --parallel --do-not-fail-on-phpunit-warning
+        run: vendor/bin/pest tests/Integration --parallel --do-not-fail-on-phpunit-warning --exclude-group api-fixtures
         env:
           DB_PORT: ${{ job.services.database.ports[3306] }}
           DB_USERNAME: root
@@ -192,7 +203,7 @@ jobs:
           DB_USERNAME: root
 
       - name: Integration tests
-        run: vendor/bin/pest tests/Integration --parallel --do-not-fail-on-phpunit-warning
+        run: vendor/bin/pest tests/Integration --parallel --do-not-fail-on-phpunit-warning --exclude-group api-fixtures
         env:
           DB_PORT: ${{ job.services.database.ports[3306] }}
           DB_USERNAME: root
@@ -266,4 +277,79 @@ jobs:
         run: php artisan migrate --force --seed
 
       - name: Integration tests
-        run: vendor/bin/pest tests/Integration --parallel --do-not-fail-on-phpunit-warning
+        run: vendor/bin/pest tests/Integration --parallel --do-not-fail-on-phpunit-warning --exclude-group api-fixtures
+
+  openapi:
+    name: OpenAPI
+    runs-on: ubuntu-latest
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: testing.sqlite
+      COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v6
+
+      - name: Get cache directory
+        id: composer-cache
+        run: |
+          echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-8.4-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-8.4-
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.4
+          extensions: bcmath, curl, gd, mbstring, mysql, openssl, pdo, tokenizer, xml, zip
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-suggest --no-progress --no-scripts
+
+      # Scramble Pro adds native laravel-data schema inference. The satis credentials
+      # live in the COMPOSER_AUTH secret, so fork PRs skip this step and the job still
+      # exports and lints with the free package.
+      - name: Install Scramble Pro
+        if: env.COMPOSER_AUTH != ''
+        run: |
+          composer config repositories.dedoc composer https://satis.dedoc.co
+          composer require dedoc/scramble-pro:0.9.15 --no-interaction --no-progress --no-scripts
+
+      - name: Create SQLite file
+        run: touch database/testing.sqlite
+
+      - name: Run Migrations
+        run: php artisan migrate --force --seed
+
+      - name: Export OpenAPI specs
+        run: |
+          php artisan scramble:export --api=application --path=application-openapi.json
+          php artisan scramble:export --api=client --path=client-openapi.json
+
+      # Scramble emits the additionalItems keyword, which JSON Schema 2020-12 dropped,
+      # so the raw export fails structural validation.
+      - name: Normalize specs
+        run: |
+          for f in application-openapi.json client-openapi.json; do
+            jq 'walk(if type == "object" then del(.additionalItems) else . end)' "$f" > "$f.tmp"
+            mv "$f.tmp" "$f"
+          done
+
+      - name: Lint specs
+        run: npx --yes @redocly/cli@2.47.0 lint application-openapi.json client-openapi.json
+
+      - name: Upload specs
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-specs
+          path: |
+            application-openapi.json
+            client-openapi.json

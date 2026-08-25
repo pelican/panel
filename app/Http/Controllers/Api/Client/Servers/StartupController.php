@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\EggVariableData;
 use App\Exceptions\Model\DataValidationException;
 use App\Facades\Activity;
 use App\Http\Controllers\Api\Client\ClientApiController;
@@ -10,7 +11,6 @@ use App\Http\Requests\Api\Client\Servers\Startup\UpdateStartupVariableRequest;
 use App\Models\Server;
 use App\Models\ServerVariable;
 use App\Services\Servers\StartupCommandService;
-use App\Transformers\Api\Client\EggVariableTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -38,10 +38,10 @@ class StartupController extends ClientApiController
     {
         $startup = $this->startupCommandService->handle($server);
 
-        return $this->fractal->collection(
+        return $this->response->collection(
             $server->variables()->where('user_viewable', true)->orderBy('sort')->get()
         )
-            ->transformWith($this->getTransformer(EggVariableTransformer::class))
+            ->transformWith(EggVariableData::class)
             ->addMeta([
                 'startup_command' => $startup,
                 'docker_images' => $server->egg->docker_images,
@@ -96,8 +96,8 @@ class StartupController extends ClientApiController
                 ->log();
         }
 
-        return $this->fractal->item($variable)
-            ->transformWith($this->getTransformer(EggVariableTransformer::class))
+        return $this->response->item($variable)
+            ->transformWith(EggVariableData::class)
             ->addMeta([
                 'startup_command' => $startup,
                 'raw_startup_command' => $server->startup,

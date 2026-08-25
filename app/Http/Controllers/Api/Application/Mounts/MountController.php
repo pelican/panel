@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers\Api\Application\Mounts;
 
+use App\Data\Api\Application\EggData;
+use App\Data\Api\Application\MountData;
+use App\Data\Api\Application\NodeData;
+use App\Data\Api\Application\ServerData;
 use App\Exceptions\Model\DataValidationException;
 use App\Exceptions\Service\HasActiveServersException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
@@ -17,10 +21,6 @@ use App\Http\Requests\Api\Application\Mounts\UpdateMountServersRequest;
 use App\Http\Requests\Api\Application\Nodes\GetNodesRequest;
 use App\Http\Requests\Api\Application\Servers\GetServerRequest;
 use App\Models\Mount;
-use App\Transformers\Api\Application\EggTransformer;
-use App\Transformers\Api\Application\MountTransformer;
-use App\Transformers\Api\Application\NodeTransformer;
-use App\Transformers\Api\Application\ServerTransformer;
 use Illuminate\Http\JsonResponse;
 use Ramsey\Uuid\Uuid;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -42,8 +42,8 @@ class MountController extends ApplicationApiController
             ->allowedSorts(['id', 'uuid'])
             ->paginate($request->query('per_page') ?? 50);
 
-        return $this->fractal->collection($mounts)
-            ->transformWith($this->getTransformer(MountTransformer::class))
+        return $this->response->collection($mounts)
+            ->transformWith(MountData::class)
             ->toArray();
     }
 
@@ -56,8 +56,8 @@ class MountController extends ApplicationApiController
      */
     public function view(GetMountRequest $request, Mount $mount): array
     {
-        return $this->fractal->item($mount)
-            ->transformWith($this->getTransformer(MountTransformer::class))
+        return $this->response->item($mount)
+            ->transformWith(MountData::class)
             ->toArray();
     }
 
@@ -77,8 +77,8 @@ class MountController extends ApplicationApiController
         $model->saveOrFail();
         $mount = $model->fresh();
 
-        return $this->fractal->item($mount)
-            ->transformWith($this->getTransformer(MountTransformer::class))
+        return $this->response->item($mount)
+            ->transformWith(MountData::class)
             ->addMeta([
                 'resource' => route('api.application.mounts.view', [
                     'mount' => $mount->id,
@@ -100,8 +100,8 @@ class MountController extends ApplicationApiController
     {
         $mount->forceFill($request->validated())->save();
 
-        return $this->fractal->item($mount)
-            ->transformWith($this->getTransformer(MountTransformer::class))
+        return $this->response->item($mount)
+            ->transformWith(MountData::class)
             ->toArray();
     }
 
@@ -132,8 +132,8 @@ class MountController extends ApplicationApiController
      */
     public function getEggs(GetEggsRequest $request, Mount $mount): array
     {
-        return $this->fractal->collection($mount->eggs)
-            ->transformWith($this->getTransformer(EggTransformer::class))
+        return $this->response->collection($mount->eggs)
+            ->transformWith(EggData::class)
             ->toArray();
     }
 
@@ -147,8 +147,8 @@ class MountController extends ApplicationApiController
      */
     public function getNodes(GetNodesRequest $request, Mount $mount): array
     {
-        return $this->fractal->collection($mount->nodes)
-            ->transformWith($this->getTransformer(NodeTransformer::class))
+        return $this->response->collection($mount->nodes)
+            ->transformWith(NodeData::class)
             ->toArray();
     }
 
@@ -161,8 +161,8 @@ class MountController extends ApplicationApiController
      */
     public function getServers(GetServerRequest $request, Mount $mount): array
     {
-        return $this->fractal->collection($mount->servers)
-            ->transformWith($this->getTransformer(ServerTransformer::class))
+        return $this->response->collection($mount->servers)
+            ->transformWith(ServerData::class)
             ->toArray();
     }
 
@@ -177,8 +177,8 @@ class MountController extends ApplicationApiController
     {
         $mount->eggs()->attach($request->validated('eggs'));
 
-        return $this->fractal->item($mount)
-            ->transformWith($this->getTransformer(MountTransformer::class))
+        return $this->response->item($mount)
+            ->transformWith(MountData::class)
             ->toArray();
     }
 
@@ -193,8 +193,8 @@ class MountController extends ApplicationApiController
     {
         $mount->nodes()->attach($request->validated('nodes'));
 
-        return $this->fractal->item($mount)
-            ->transformWith($this->getTransformer(MountTransformer::class))
+        return $this->response->item($mount)
+            ->transformWith(MountData::class)
             ->toArray();
     }
 
@@ -209,8 +209,8 @@ class MountController extends ApplicationApiController
     {
         $mount->servers()->attach($request->validated('servers'));
 
-        return $this->fractal->item($mount)
-            ->transformWith($this->getTransformer(MountTransformer::class))
+        return $this->response->item($mount)
+            ->transformWith(MountData::class)
             ->toArray();
     }
 

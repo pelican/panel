@@ -1,0 +1,17 @@
+{
+    "object": "server_database",
+    "attributes": {
+        "id": 101,
+        "server": 100,
+        "host": 100,
+        "database": "s100_stored",
+        "username": "u100_aaaaaaaaaa",
+        "remote": "%",
+        "max_connections": null,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00"
+    },
+    "meta": {
+        "resource": "http://localhost/api/application/servers/100/databases/101"
+    }
+}

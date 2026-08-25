@@ -17,13 +17,6 @@ class GetDeployableNodesRequest extends GetNodesRequest
             'cpu' => 'sometimes|integer|min:0',
             /** Only return nodes carrying all of these tags. */
             'tags' => 'sometimes|array',
-
-            /**
-             * Only return nodes in these locations.
-             *
-             * @deprecated Use `tags` instead.
-             */
-            'location_ids' => 'sometimes|array',
         ];
     }
 }

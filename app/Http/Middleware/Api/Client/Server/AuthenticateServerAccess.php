@@ -18,6 +18,7 @@ class AuthenticateServerAccess
      */
     protected array $except = [
         'api:client:server.ws',
+        'api:client:server.files.*',
     ];
 
     /**
@@ -50,8 +51,7 @@ class AuthenticateServerAccess
             // Still allow users to get information about their server if it is installing or
             // being transferred.
             if (!$request->routeIs('api:client:server.view')) {
-                throw_if(($server->isSuspended() || $server->node->isUnderMaintenance()) && !$request->routeIs('api:client:server.resources'), $exception);
-                throw_if($user->cannot('update server', $server) || !$request->routeIs($this->except), $exception);
+                throw_unless($user->can('update server', $server) && $request->routeIs($this->except), $exception);
             }
         }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\Users;
 
+use App\Data\Api\Application\UserData;
 use App\Exceptions\Model\DataValidationException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Users\AssignUserRolesRequest;
@@ -13,7 +14,6 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Users\UserCreationService;
 use App\Services\Users\UserUpdateService;
-use App\Transformers\Api\Application\UserTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Exception;
 use Illuminate\Http\JsonResponse;
@@ -48,8 +48,8 @@ class UserController extends ApplicationApiController
             ->allowedSorts(['id', 'uuid'])
             ->paginate($request->query('per_page') ?? 50);
 
-        return $this->fractal->collection($users)
-            ->transformWith($this->getTransformer(UserTransformer::class))
+        return $this->response->collection($users)
+            ->transformWith(UserData::class)
             ->toArray();
     }
 
@@ -63,8 +63,8 @@ class UserController extends ApplicationApiController
      */
     public function view(GetUsersRequest $request, User $user): array
     {
-        return $this->fractal->item($user)
-            ->transformWith($this->getTransformer(UserTransformer::class))
+        return $this->response->item($user)
+            ->transformWith(UserData::class)
             ->toArray();
     }
 
@@ -87,8 +87,8 @@ class UserController extends ApplicationApiController
         $this->updateService->setUserLevel(User::USER_LEVEL_ADMIN);
         $user = $this->updateService->handle($user, $request->validated());
 
-        $response = $this->fractal->item($user)
-            ->transformWith($this->getTransformer(UserTransformer::class));
+        $response = $this->response->item($user)
+            ->transformWith(UserData::class);
 
         return $response->toArray();
     }
@@ -113,8 +113,8 @@ class UserController extends ApplicationApiController
             }
         }
 
-        $response = $this->fractal->item($user)
-            ->transformWith($this->getTransformer(UserTransformer::class));
+        $response = $this->response->item($user)
+            ->transformWith(UserData::class);
 
         return $response->toArray();
     }
@@ -139,8 +139,8 @@ class UserController extends ApplicationApiController
             }
         }
 
-        $response = $this->fractal->item($user)
-            ->transformWith($this->getTransformer(UserTransformer::class));
+        $response = $this->response->item($user)
+            ->transformWith(UserData::class);
 
         return $response->toArray();
     }
@@ -158,8 +158,8 @@ class UserController extends ApplicationApiController
     {
         $user = $this->creationService->handle($request->validated());
 
-        return $this->fractal->item($user)
-            ->transformWith($this->getTransformer(UserTransformer::class))
+        return $this->response->item($user)
+            ->transformWith(UserData::class)
             ->addMeta([
                 'resource' => route('api.application.users.view', [
                     'user' => $user->id,

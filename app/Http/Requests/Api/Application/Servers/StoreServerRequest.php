@@ -76,18 +76,6 @@ class StoreServerRequest extends ApplicationApiRequest
 
             /** Ask the Panel to pick a node and allocation instead of naming one in `allocation`. */
             'deploy' => 'sometimes|required|array',
-            /**
-             * IDs of the locations the server may be deployed to.
-             *
-             * @deprecated Use `deploy.tags` instead.
-             */
-            'deploy.locations' => 'sometimes|array',
-            /**
-             * ID of a location the server may be deployed to.
-             *
-             * @deprecated Use `deploy.tags` instead.
-             */
-            'deploy.locations.*' => 'required_with:deploy.locations|integer|min:1',
             /** Only deploy to nodes carrying all of these tags. */
             'deploy.tags' => 'array',
             /** A tag the destination node has to carry. */
@@ -186,11 +174,6 @@ class StoreServerRequest extends ApplicationApiRequest
             return !$input->deploy;
         });
 
-        /** @deprecated use tags instead */
-        $validator->sometimes('deploy.locations', 'present', function ($input) {
-            return $input->deploy;
-        });
-
         $validator->sometimes('deploy.tags', 'present', function ($input) {
             return $input->deploy;
         });
@@ -211,7 +194,7 @@ class StoreServerRequest extends ApplicationApiRequest
 
         $object = new DeploymentObject();
         $object->setDedicated($this->input('deploy.dedicated_ip', false));
-        $object->setTags($this->input('deploy.tags', $this->input('deploy.locations', [])));
+        $object->setTags($this->input('deploy.tags', []));
         $object->setPorts($this->input('deploy.port_range', []));
 
         return $object;

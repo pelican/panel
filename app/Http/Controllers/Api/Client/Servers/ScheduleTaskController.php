@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\TaskData;
 use App\Enums\SubuserPermission;
 use App\Exceptions\Http\HttpForbiddenException;
 use App\Exceptions\Model\DataValidationException;
@@ -13,7 +14,6 @@ use App\Http\Requests\Api\Client\Servers\Schedules\StoreTaskRequest;
 use App\Models\Schedule;
 use App\Models\Server;
 use App\Models\Task;
-use App\Transformers\Api\Client\TaskTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Exception;
 use Illuminate\Database\ConnectionInterface;
@@ -89,8 +89,8 @@ class ScheduleTaskController extends ClientApiController
             ->property(['name' => $schedule->name, 'action' => $task->action, 'payload' => $task->payload])
             ->log();
 
-        return $this->fractal->item($task)
-            ->transformWith($this->getTransformer(TaskTransformer::class))
+        return $this->response->item($task)
+            ->transformWith(TaskData::class)
             ->toArray();
     }
 
@@ -143,8 +143,8 @@ class ScheduleTaskController extends ClientApiController
             ->property(['name' => $schedule->name, 'action' => $task->action, 'payload' => $task->payload])
             ->log();
 
-        return $this->fractal->item($task->refresh())
-            ->transformWith($this->getTransformer(TaskTransformer::class))
+        return $this->response->item($task->refresh())
+            ->transformWith(TaskData::class)
             ->toArray();
     }
 

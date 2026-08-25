@@ -67,8 +67,8 @@ it('describes request body fields from the rules they belong to', function () {
         ->toBe('Memory the server may use, in MiB. Use `0` for unlimited.')
         // Descriptions given as attributes, for rules that come straight off a model.
         ->and($schemas['StoreUserRequest']['properties']['email']['description'])->not->toBeEmpty()
-        // @deprecated on a rule marks the field rather than only reading as prose.
-        ->and($schemas['UpdateServerBuildConfigurationRequest']['properties']['memory']['deprecated'])->toBeTrue();
+        // The deprecated flat build fields are gone entirely, not merely marked.
+        ->and($schemas['UpdateServerBuildConfigurationRequest']['properties'])->not->toHaveKey('memory');
 });
 
 it('leaves operation descriptions as they are written in the controller', function () {

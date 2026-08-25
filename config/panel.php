@@ -75,6 +75,12 @@ return [
 
     'webhook' => [
         'prune_days' => env('APP_WEBHOOK_PRUNE_DAYS', 30),
+
+        /*
+        | Request timeout in seconds used when delivering a webhook. A webhook type can
+        | override this by implementing its own deliver() method.
+        */
+        'timeout' => env('APP_WEBHOOK_TIMEOUT', 30),
     ],
 
     'plugin' => [

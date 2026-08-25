@@ -1,0 +1,66 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "user",
+            "attributes": {
+                "id": 100,
+                "external_id": null,
+                "is_managed_externally": false,
+                "uuid": "00000000-0000-4000-8000-000000000100",
+                "username": "fixture.admin",
+                "email": "admin@fixture.test",
+                "language": "en",
+                "root_admin": true,
+                "2fa_enabled": false,
+                "2fa": false,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00"
+            }
+        },
+        {
+            "object": "user",
+            "attributes": {
+                "id": 101,
+                "external_id": "fixture-owner-ext",
+                "is_managed_externally": false,
+                "uuid": "00000000-0000-4000-8000-000000000101",
+                "username": "fixture.owner",
+                "email": "owner@fixture.test",
+                "language": "en",
+                "root_admin": false,
+                "2fa_enabled": false,
+                "2fa": false,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00"
+            }
+        },
+        {
+            "object": "user",
+            "attributes": {
+                "id": 102,
+                "external_id": null,
+                "is_managed_externally": false,
+                "uuid": "00000000-0000-4000-8000-000000000102",
+                "username": "fixture.subuser",
+                "email": "subuser@fixture.test",
+                "language": "en",
+                "root_admin": false,
+                "2fa_enabled": false,
+                "2fa": false,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00"
+            }
+        }
+    ],
+    "meta": {
+        "pagination": {
+            "total": 3,
+            "count": 3,
+            "per_page": 50,
+            "current_page": 1,
+            "total_pages": 1,
+            "links": {}
+        }
+    }
+}

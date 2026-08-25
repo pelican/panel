@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\StatsData;
 use App\Http\Controllers\Api\Client\ClientApiController;
 use App\Http\Requests\Api\Client\Servers\GetServerRequest;
 use App\Models\Server;
 use App\Repositories\Daemon\DaemonServerRepository;
-use App\Transformers\Api\Client\StatsTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Cache\Repository;
 use Illuminate\Http\Client\ConnectionException;
@@ -41,8 +41,8 @@ class ResourceUtilizationController extends ClientApiController
             return $this->repository->setServer($server)->getDetails();
         });
 
-        return $this->fractal->item($stats)
-            ->transformWith($this->getTransformer(StatsTransformer::class))
+        return $this->response->item($stats)
+            ->transformWith(StatsData::class)
             ->toArray();
     }
 }

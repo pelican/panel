@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api\Application\Servers;
 
+use App\Data\Api\Application\ServerData;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Servers\GetExternalServerRequest;
 use App\Models\Server;
-use App\Transformers\Api\Application\ServerTransformer;
 use Dedoc\Scramble\Attributes\Group;
 
 #[Group('Server', weight: 1)]
@@ -22,8 +22,8 @@ class ExternalServerController extends ApplicationApiController
     {
         $server = Server::query()->where('external_id', $external_id)->firstOrFail();
 
-        return $this->fractal->item($server)
-            ->transformWith($this->getTransformer(ServerTransformer::class))
+        return $this->response->item($server)
+            ->transformWith(ServerData::class)
             ->toArray();
     }
 }

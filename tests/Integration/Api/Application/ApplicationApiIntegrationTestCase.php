@@ -12,6 +12,7 @@ use App\Models\Node;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\User;
+use App\Models\WebhookConfiguration;
 use App\Services\Acl\Api\AdminAcl;
 use App\Tests\Integration\IntegrationTestCase;
 use App\Tests\Traits\Http\IntegrationJsonRequestAssertions;
@@ -97,6 +98,7 @@ abstract class ApplicationApiIntegrationTestCase extends IntegrationTestCase
                 Database::RESOURCE_NAME => AdminAcl::READ | AdminAcl::WRITE,
                 Mount::RESOURCE_NAME => AdminAcl::READ | AdminAcl::WRITE,
                 Role::RESOURCE_NAME => AdminAcl::READ | AdminAcl::WRITE,
+                WebhookConfiguration::RESOURCE_NAME => AdminAcl::READ | AdminAcl::WRITE,
             ], $permissions),
         ]);
     }

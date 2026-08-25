@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\ScheduleData;
 use App\Exceptions\DisplayException;
 use App\Exceptions\Model\DataValidationException;
 use App\Facades\Activity;
@@ -15,7 +16,6 @@ use App\Http\Requests\Api\Client\Servers\Schedules\ViewScheduleRequest;
 use App\Models\Schedule;
 use App\Models\Server;
 use App\Services\Schedules\ProcessScheduleService;
-use App\Transformers\Api\Client\ScheduleTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Exception;
 use Illuminate\Http\JsonResponse;
@@ -47,8 +47,8 @@ class ScheduleController extends ClientApiController
     {
         $schedules = $server->schedules->loadMissing('tasks');
 
-        return $this->fractal->collection($schedules)
-            ->transformWith($this->getTransformer(ScheduleTransformer::class))
+        return $this->response->collection($schedules)
+            ->transformWith(ScheduleData::class)
             ->toArray();
     }
 
@@ -83,8 +83,8 @@ class ScheduleController extends ClientApiController
             ->property('name', $model->name)
             ->log();
 
-        return $this->fractal->item($model)
-            ->transformWith($this->getTransformer(ScheduleTransformer::class))
+        return $this->response->item($model)
+            ->transformWith(ScheduleData::class)
             ->toArray();
     }
 
@@ -101,8 +101,8 @@ class ScheduleController extends ClientApiController
 
         $schedule->loadMissing('tasks');
 
-        return $this->fractal->item($schedule)
-            ->transformWith($this->getTransformer(ScheduleTransformer::class))
+        return $this->response->item($schedule)
+            ->transformWith(ScheduleData::class)
             ->toArray();
     }
 
@@ -145,8 +145,8 @@ class ScheduleController extends ClientApiController
             ->property(['name' => $schedule->name, 'active' => $active])
             ->log();
 
-        return $this->fractal->item($schedule->refresh())
-            ->transformWith($this->getTransformer(ScheduleTransformer::class))
+        return $this->response->item($schedule->refresh())
+            ->transformWith(ScheduleData::class)
             ->toArray();
     }
 

@@ -88,6 +88,7 @@
                         },
                         wordWrap: 'on',
                         wrappingIndent: 'same',
+                        readOnly: {{ $isDisabled() ? 'true' : 'false' }},
                     });
                     $el.style.zIndex = '1';
                     monacoEditor(document.getElementById(monacoId).editor);

@@ -68,21 +68,26 @@
         :secondary="$isSecondary"
     >
         <x-slot name="heading">
+            {{-- Mirror the fields the webhook type asked for into the preview component --}}
             <span
                 x-data
                 x-init="$watch(() => JSON.stringify($wire.data), (json) => {
                     try {
-                        const d = JSON.parse(json);
-                        $wire.dispatch('discord-form-changed', {
-                            content: d.content ?? '',
-                            username: d.username ?? '',
-                            avatar_url: d.avatar_url ?? '',
-                            embeds: d.embeds ?? [],
-                        });
+                        const formData = JSON.parse(json);
+                        // A field name may be a dotted path, because Filament nests grouped
+                        // fields rather than storing them under a literal dotted key
+                        const read = (source, path) => path
+                            .split('.')
+                            .reduce((value, key) => (value == null ? null : value[key]), source);
+                        const payload = {};
+                        @foreach ($previewFields as $previewField)
+                            payload[@js($previewField)] = read(formData, @js($previewField)) ?? null;
+                        @endforeach
+                        $wire.dispatch('webhook-form-changed', { data: payload });
                     } catch (_) {}
                 })"
             ></span>
-            @livewire('discord-preview', ['record' => $getRecord()])
+            @livewire($previewComponent, ['record' => $getRecord(), 'scope' => $previewScope])
         </x-slot>
 
         {{ $getChildSchema()->gap(! $isDivided)->extraAttributes(['class' => 'fi-section-content']) }}

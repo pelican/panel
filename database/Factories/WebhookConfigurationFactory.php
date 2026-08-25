@@ -12,6 +12,7 @@ class WebhookConfigurationFactory extends Factory
     public function definition(): array
     {
         return [
+            'name' => fake()->words(2, true),
             'endpoint' => fake()->url(),
             'description' => fake()->sentence(),
             'events' => [],

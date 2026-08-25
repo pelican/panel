@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\DatabaseData;
 use App\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledException;
 use App\Exceptions\Service\Database\TooManyDatabasesException;
 use App\Facades\Activity;
@@ -14,7 +15,6 @@ use App\Models\Database;
 use App\Models\Server;
 use App\Services\Databases\DatabaseManagementService;
 use App\Services\Databases\DeployServerDatabaseService;
-use App\Transformers\Api\Client\DatabaseTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Response;
 use Throwable;
@@ -41,8 +41,8 @@ class DatabaseController extends ClientApiController
      */
     public function index(GetDatabasesRequest $request, Server $server): array
     {
-        return $this->fractal->collection($server->databases)
-            ->transformWith($this->getTransformer(DatabaseTransformer::class))
+        return $this->response->collection($server->databases)
+            ->transformWith(DatabaseData::class)
             ->toArray();
     }
 
@@ -69,9 +69,9 @@ class DatabaseController extends ClientApiController
             return $database;
         });
 
-        return $this->fractal->item($database)
+        return $this->response->item($database)
             ->parseIncludes(['password'])
-            ->transformWith($this->getTransformer(DatabaseTransformer::class))
+            ->transformWith(DatabaseData::class)
             ->toArray();
     }
 
@@ -92,9 +92,9 @@ class DatabaseController extends ClientApiController
             ->property('name', $database->database)
             ->transaction(fn () => $this->managementService->rotatePassword($database));
 
-        return $this->fractal->item($database->refresh())
+        return $this->response->item($database->refresh())
             ->parseIncludes(['password'])
-            ->transformWith($this->getTransformer(DatabaseTransformer::class))
+            ->transformWith(DatabaseData::class)
             ->toArray();
     }
 

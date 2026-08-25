@@ -33,6 +33,11 @@ return [
     'invalid_code' => '無效的雙重驗證代碼',
     'code_help' => '請使用您的雙重驗證應用程式掃描上方的 QR Code，然後輸入產生的代碼。',
     '2fa_enabled' => '目前已啟用雙重驗證！',
+    'mfa' => [
+        'app' => '應用程式',
+        'email' => '電子郵件',
+        'none' => '無',
+    ],
     'backup_help' => '這些代碼將不會再次顯示！',
     'backup_codes' => '備用代碼',
     'disable_2fa' => '停用雙重驗證',

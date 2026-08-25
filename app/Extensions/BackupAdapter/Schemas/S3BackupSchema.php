@@ -141,12 +141,15 @@ final class S3BackupSchema extends BackupAdapterSchema
             )->getUri()->__toString();
         }
 
+        $maxConcurrentUploads = config('backups.max_concurrent_uploads', BackupRemoteUploadController::MAX_CONCURRENT_UPLOADS);
+
         // Set the upload_id on the backup in the database.
         $backup->update(['upload_id' => $params['UploadId']]);
 
         return [
             'parts' => $parts,
             'part_size' => $maxPartSize,
+            'max_concurrent_uploads' => $maxConcurrentUploads,
         ];
     }
 

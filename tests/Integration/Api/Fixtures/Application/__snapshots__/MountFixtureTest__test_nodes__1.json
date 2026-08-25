@@ -1,0 +1,46 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "node",
+            "attributes": {
+                "id": 100,
+                "public": true,
+                "name": "fixture-node",
+                "fqdn": "node.fixture.test",
+                "scheme": "http",
+                "memory": 1024,
+                "memory_overallocate": 0,
+                "disk": 10240,
+                "disk_overallocate": 0,
+                "daemon_listen": 8080,
+                "daemon_sftp": 2022,
+                "daemon_base": "/var/lib/panel/volumes",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "upload_size": 100,
+                "behind_proxy": false,
+                "description": null,
+                "maintenance_mode": false,
+                "uuid": "00000000-0000-4000-8000-000000000200",
+                "tags": [
+                    "fixture"
+                ],
+                "cpu": 100,
+                "cpu_overallocate": 0,
+                "daemon_sftp_alias": null,
+                "daemon_connect": 8080,
+                "pivot": {
+                    "mountable_type": "node",
+                    "mount_id": 100,
+                    "mountable_id": 100
+                },
+                "allocated_resources": {
+                    "memory": 512,
+                    "disk": 512,
+                    "cpu": 0
+                }
+            }
+        }
+    ]
+}

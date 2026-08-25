@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api\Client;
 
+use App\Data\Api\Client\UserSSHKeyData;
 use App\Facades\Activity;
 use App\Http\Requests\Api\Client\Account\StoreSSHKeyRequest;
 use App\Http\Requests\Api\Client\ClientApiRequest;
 use App\Models\UserSSHKey;
-use App\Transformers\Api\Client\UserSSHKeyTransformer;
 use Illuminate\Http\JsonResponse;
 
 class SSHKeyController extends ClientApiController
@@ -20,8 +20,8 @@ class SSHKeyController extends ClientApiController
      */
     public function index(ClientApiRequest $request): array
     {
-        return $this->fractal->collection($request->user()->sshKeys)
-            ->transformWith($this->getTransformer(UserSSHKeyTransformer::class))
+        return $this->response->collection($request->user()->sshKeys)
+            ->transformWith(UserSSHKeyData::class)
             ->toArray();
     }
 
@@ -45,8 +45,8 @@ class SSHKeyController extends ClientApiController
             ->property('fingerprint', $request->getKeyFingerprint())
             ->log();
 
-        return $this->fractal->item($model)
-            ->transformWith($this->getTransformer(UserSSHKeyTransformer::class))
+        return $this->response->item($model)
+            ->transformWith(UserSSHKeyData::class)
             ->toArray();
     }
 

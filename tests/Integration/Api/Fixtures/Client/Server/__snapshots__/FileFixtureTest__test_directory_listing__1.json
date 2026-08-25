@@ -1,0 +1,33 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "file_object",
+            "attributes": {
+                "name": "server.jar",
+                "mode": "-rw-r--r--",
+                "mode_bits": "644",
+                "size": 1024,
+                "is_file": true,
+                "is_symlink": false,
+                "mimetype": "application/jar",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "modified_at": "2026-01-01T00:00:00+00:00"
+            }
+        },
+        {
+            "object": "file_object",
+            "attributes": {
+                "name": "plugins",
+                "mode": "drwxr-xr-x",
+                "mode_bits": "755",
+                "size": 4096,
+                "is_file": false,
+                "is_symlink": false,
+                "mimetype": "inode/directory",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "modified_at": "2026-01-01T00:00:00+00:00"
+            }
+        }
+    ]
+}

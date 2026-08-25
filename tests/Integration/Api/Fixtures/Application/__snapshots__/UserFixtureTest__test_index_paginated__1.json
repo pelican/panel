@@ -1,0 +1,35 @@
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "user",
+            "attributes": {
+                "id": 101,
+                "external_id": "fixture-owner-ext",
+                "is_managed_externally": false,
+                "uuid": "00000000-0000-4000-8000-000000000101",
+                "username": "fixture.owner",
+                "email": "owner@fixture.test",
+                "language": "en",
+                "root_admin": false,
+                "2fa_enabled": false,
+                "2fa": false,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00"
+            }
+        }
+    ],
+    "meta": {
+        "pagination": {
+            "total": 3,
+            "count": 1,
+            "per_page": 1,
+            "current_page": 2,
+            "total_pages": 3,
+            "links": {
+                "previous": "http://localhost/api/application/users?page=1",
+                "next": "http://localhost/api/application/users?page=3"
+            }
+        }
+    }
+}

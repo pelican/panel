@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\Nodes;
 
+use App\Data\Api\Application\NodeData;
 use App\Exceptions\Model\DataValidationException;
 use App\Exceptions\Service\HasActiveServersException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
@@ -13,7 +14,6 @@ use App\Http\Requests\Api\Application\Nodes\UpdateNodeRequest;
 use App\Models\Node;
 use App\Services\Nodes\NodeDeletionService;
 use App\Services\Nodes\NodeUpdateService;
-use App\Transformers\Api\Application\NodeTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Exception;
 use Illuminate\Http\JsonResponse;
@@ -47,8 +47,8 @@ class NodeController extends ApplicationApiController
             ->allowedSorts(['id', 'uuid', 'memory', 'disk', 'cpu'])
             ->paginate($request->query('per_page') ?? 50);
 
-        return $this->fractal->collection($nodes)
-            ->transformWith($this->getTransformer(NodeTransformer::class))
+        return $this->response->collection($nodes)
+            ->transformWith(NodeData::class)
             ->toArray();
     }
 
@@ -61,8 +61,8 @@ class NodeController extends ApplicationApiController
      */
     public function view(GetNodeRequest $request, Node $node): array
     {
-        return $this->fractal->item($node)
-            ->transformWith($this->getTransformer(NodeTransformer::class))
+        return $this->response->item($node)
+            ->transformWith(NodeData::class)
             ->toArray();
     }
 
@@ -78,8 +78,8 @@ class NodeController extends ApplicationApiController
     {
         $node = Node::create($request->validated());
 
-        return $this->fractal->item($node)
-            ->transformWith($this->getTransformer(NodeTransformer::class))
+        return $this->response->item($node)
+            ->transformWith(NodeData::class)
             ->addMeta([
                 'resource' => route('api.application.nodes.view', [
                     'node' => $node->id,
@@ -109,8 +109,8 @@ class NodeController extends ApplicationApiController
             report($exception);
         }
 
-        return $this->fractal->item($node)
-            ->transformWith($this->getTransformer(NodeTransformer::class))
+        return $this->response->item($node)
+            ->transformWith(NodeData::class)
             ->toArray();
     }
 

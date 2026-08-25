@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Client\Servers;
 
+use App\Data\Api\Client\SubuserData;
 use App\Enums\SubuserPermission;
 use App\Exceptions\Model\DataValidationException;
 use App\Exceptions\Service\Subuser\ServerSubuserExistsException;
@@ -18,7 +19,6 @@ use App\Models\User;
 use App\Services\Subusers\SubuserCreationService;
 use App\Services\Subusers\SubuserDeletionService;
 use App\Services\Subusers\SubuserUpdateService;
-use App\Transformers\Api\Client\SubuserTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,8 +47,8 @@ class SubuserController extends ClientApiController
      */
     public function index(GetSubuserRequest $request, Server $server): array
     {
-        return $this->fractal->collection($server->subusers)
-            ->transformWith($this->getTransformer(SubuserTransformer::class))
+        return $this->response->collection($server->subusers)
+            ->transformWith(SubuserData::class)
             ->toArray();
     }
 
@@ -63,8 +63,8 @@ class SubuserController extends ClientApiController
     {
         $subuser = $request->attributes->get('subuser');
 
-        return $this->fractal->item($subuser)
-            ->transformWith($this->getTransformer(SubuserTransformer::class))
+        return $this->response->item($subuser)
+            ->transformWith(SubuserData::class)
             ->toArray();
     }
 
@@ -92,8 +92,8 @@ class SubuserController extends ClientApiController
             ->property(['email' => $email, 'permissions' => $subuser->permissions])
             ->log();
 
-        return $this->fractal->item($subuser)
-            ->transformWith($this->getTransformer(SubuserTransformer::class))
+        return $this->response->item($subuser)
+            ->transformWith(SubuserData::class)
             ->toArray();
     }
 
@@ -113,8 +113,8 @@ class SubuserController extends ClientApiController
 
         $this->updateService->handle($subuser, $server, $this->getCleanedPermissions($request));
 
-        return $this->fractal->item($subuser->refresh())
-            ->transformWith($this->getTransformer(SubuserTransformer::class))
+        return $this->response->item($subuser->refresh())
+            ->transformWith(SubuserData::class)
             ->toArray();
     }
 

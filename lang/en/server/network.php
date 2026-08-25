@@ -6,6 +6,7 @@ return [
     'limit' => 'Allocation limit reached',
     'address' => 'Address',
     'port' => 'Port',
+    'port_hidden' => 'Hidden',
     'notes' => 'Notes',
     'no_notes' => 'No Notes',
     'make_primary' => 'Make Primary',

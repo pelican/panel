@@ -18,6 +18,7 @@ use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ReplicateAction;
+use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Columns\ImageColumn;
@@ -61,6 +62,9 @@ class ListEggs extends ListRecords
                     ->label(trans('admin/egg.servers')),
             ])
             ->recordActions([
+                ViewAction::make()
+                    ->tooltip(trans('filament-actions::view.single.label'))
+                    ->hidden(fn (Egg $record) => EggResource::getEditAuthorizationResponse($record)->allowed()),
                 EditAction::make()
                     ->tooltip(trans('filament-actions::edit.single.label')),
                 ExportEggAction::make()

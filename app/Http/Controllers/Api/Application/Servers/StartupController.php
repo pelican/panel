@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api\Application\Servers;
 
+use App\Data\Api\Application\ServerData;
 use App\Exceptions\Model\DataValidationException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Servers\UpdateServerStartupRequest;
 use App\Models\Server;
 use App\Models\User;
 use App\Services\Servers\StartupModificationService;
-use App\Transformers\Api\Application\ServerTransformer;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Validation\ValidationException;
@@ -41,8 +41,8 @@ class StartupController extends ApplicationApiController
             ->setUserLevel(User::USER_LEVEL_ADMIN)
             ->handle($server, $request->validated());
 
-        return $this->fractal->item($server)
-            ->transformWith($this->getTransformer(ServerTransformer::class))
+        return $this->response->item($server)
+            ->transformWith(ServerData::class)
             ->toArray();
     }
 }

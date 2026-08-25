@@ -13,6 +13,7 @@ use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -99,6 +100,9 @@ class ListServers extends ListRecords
                     ->toggledHiddenByDefault(),
             ])
             ->recordActions([
+                ViewAction::make()
+                    ->tooltip(trans('filament-actions::view.single.label'))
+                    ->hidden(fn (Server $record) => ServerResource::getEditAuthorizationResponse($record)->allowed()),
                 ViewConsoleAction::make(),
                 EditAction::make(),
             ])

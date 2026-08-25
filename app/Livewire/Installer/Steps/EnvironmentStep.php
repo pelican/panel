@@ -25,7 +25,7 @@ class EnvironmentStep
                     ->label(trans('installer.environment.fields.app_url'))
                     ->hintIcon(TablerIcon::QuestionMark, trans('installer.environment.fields.app_url_help'))
                     ->required()
-                    ->default(url('')),
+                    ->default(config('app.url')),
                 Fieldset::make('admin_user')
                     ->label(trans('installer.environment.fields.account.section'))
                     ->columns(3)

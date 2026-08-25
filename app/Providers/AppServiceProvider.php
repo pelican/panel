@@ -50,6 +50,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Passkeys\Passkeys;
 use Laravel\Sanctum\Sanctum;
+use Spatie\Health\Checks\Checks\QueueCheck;
 use Spatie\Health\Facades\Health;
 
 class AppServiceProvider extends ServiceProvider
@@ -124,6 +125,7 @@ class AppServiceProvider extends ServiceProvider
                 MigrationsCheck::new(),
                 AdminUserCheck::new(),
                 InstallationFlagCheck::new(),
+                QueueCheck::new(),
                 ScheduleCheck::new(),
                 UsedDiskSpaceCheck::new(),
                 PanelVersionCheck::new(),

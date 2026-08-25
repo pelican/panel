@@ -1,0 +1,37 @@
+{
+    "object": "node",
+    "attributes": {
+        "public": true,
+        "behind_proxy": false,
+        "memory": 2048,
+        "memory_overallocate": 0,
+        "disk": 20480,
+        "disk_overallocate": 0,
+        "cpu": 200,
+        "cpu_overallocate": 0,
+        "daemon_base": "/var/lib/pelican/volumes",
+        "daemon_sftp": 2022,
+        "daemon_listen": 8080,
+        "daemon_connect": 8080,
+        "maintenance_mode": false,
+        "tags": [
+            "fixture-store"
+        ],
+        "name": "fixture-stored-node",
+        "fqdn": "stored.fixture.test",
+        "scheme": "https",
+        "upload_size": 256,
+        "uuid": "ffb5c3a6-ab17-43ab-97f0-8ff37ccd7f5f",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "id": 101,
+        "allocated_resources": {
+            "memory": 0,
+            "disk": 0,
+            "cpu": 0
+        }
+    },
+    "meta": {
+        "resource": "http://localhost/api/application/nodes/101"
+    }
+}
