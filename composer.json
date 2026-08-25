@@ -20,7 +20,7 @@
         "laravel/helpers": "^1.8",
         "laravel/passkeys": "^0.2",
         "laravel/sanctum": "^4.3",
-        "laravel/socialite": "^5.29",
+        "laravel/socialite": "^5.30",
         "laravel/tinker": "^3.0",
         "laravel/ui": "^4.6",
         "lcobucci/jwt": "^5.6",
