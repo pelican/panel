@@ -85,8 +85,13 @@ class AppSettingsCommand extends Command
             return false;
         }
 
-        if (!str_starts_with($appUrl, 'http://') && !str_starts_with($appUrl, 'https://')) {
-            $this->error('Application URL need to start with either http:// or https://.');
+        $url = is_string($appUrl) ? parse_url($appUrl) : false;
+        if (
+            !is_array($url)
+            || !in_array($url['scheme'] ?? null, ['http', 'https'], true)
+            || blank($url['host'] ?? null)
+        ) {
+            $this->error('Application URL must be a valid HTTP or HTTPS URL.');
 
             return false;
         }

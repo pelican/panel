@@ -124,10 +124,26 @@ it('only bypasses failed setup preflight checks when explicitly requested', func
         ->expectsOutputToContain(trans('commands.environment_check.preflight_failed'))
         ->assertFailed();
 
-    $this->artisan('p:environment:setup', ['--skip-preflight' => true])
+    $this->artisan('p:environment:setup', [
+        '--url' => config('app.url'),
+        '--skip-preflight' => true,
+    ])
         ->expectsOutputToContain('Creating storage link')
         ->assertSuccessful();
 });
+
+it('rejects malformed application URLs during setup', function (string $url) {
+    $this->artisan('p:environment:setup', [
+        '--url' => $url,
+        '--skip-preflight' => true,
+    ])
+        ->expectsOutput('Application URL must be a valid HTTP or HTTPS URL.')
+        ->assertFailed();
+})->with([
+    'scheme without host' => 'https://',
+    'query without host' => 'http://?host=value',
+    'unsupported scheme' => 'ftp://example.com',
+]);
 
 it('runs the shared preflight from the command line', function () {
     $this->artisan('p:environment:preflight', ['--with-database' => true])

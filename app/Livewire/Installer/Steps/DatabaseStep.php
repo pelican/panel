@@ -156,7 +156,7 @@ class DatabaseStep
 
         return config("database.connections.{$driver}.{$key}", $fallback);
     }
-  
+
     private static function getConnectionPassword(string $driver, ?string $password): ?string
     {
         $configuredPassword = config("database.connections.{$driver}.password");
