@@ -9,7 +9,7 @@
         "ext-mbstring": "*",
         "ext-pdo": "*",
         "ext-zip": "*",
-        "aws/aws-sdk-php": "^3.393",
+        "aws/aws-sdk-php": "^3.394",
         "calebporzio/sushi": "^2.5",
         "charrafimed/global-search-modal": "^5.0",
         "dedoc/scramble": "^0.13",
