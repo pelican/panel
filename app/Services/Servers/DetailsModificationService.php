@@ -38,6 +38,9 @@ class DetailsModificationService
         throw_if($owner->isSuspended(), new DisplayException('Servers cannot be assigned to a suspended account.'));
 
         return $this->connection->transaction(function () use ($data, $server) {
+            $owner = User::query()->lockForUpdate()->findOrFail(Arr::get($data, 'owner_id'));
+            throw_if($owner->isSuspended(), new DisplayException('Servers cannot be assigned to a suspended account.'));
+
             $oldOwner = $server->user;
 
             $server->forceFill([

@@ -18,7 +18,11 @@ class UserSuspensionController extends ApplicationApiController
         parent::__construct();
     }
 
-    /** @return array<array-key, mixed> */
+    /**
+     * Suspend a user account.
+     *
+     * @return array<array-key, mixed>
+     */
     public function suspend(SuspendUserRequest $request, User $user): array
     {
         /** @var User $actor */
@@ -35,7 +39,11 @@ class UserSuspensionController extends ApplicationApiController
             ->toArray();
     }
 
-    /** @return array<array-key, mixed> */
+    /**
+     * Unsuspend a user account.
+     *
+     * @return array<array-key, mixed>
+     */
     public function unsuspend(UnsuspendUserRequest $request, User $user): array
     {
         /** @var User $actor */

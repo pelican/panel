@@ -3,9 +3,11 @@
 namespace App\Filament\Admin\Resources\Servers\Pages;
 
 use App\Enums\TablerIcon;
+use App\Exceptions\DisplayException;
 use App\Filament\Admin\Resources\Servers\ServerResource;
 use App\Filament\Server\Pages\Console;
 use App\Models\Server;
+use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Servers\ServerDeletionService;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -18,7 +20,9 @@ use Filament\Resources\Pages\EditRecord;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\DB;
 use Random\RandomException;
 
 class EditServer extends EditRecord
@@ -134,6 +138,18 @@ class EditServer extends EditRecord
     protected function getFormActions(): array
     {
         return [];
+    }
+
+    protected function handleRecordUpdate(Model $record, array $data): Model
+    {
+        return DB::transaction(function () use ($record, $data) {
+            if (isset($data['owner_id'])) {
+                $owner = User::query()->lockForUpdate()->findOrFail($data['owner_id']);
+                throw_if($owner->isSuspended(), new DisplayException('Servers cannot be assigned to a suspended account.'));
+            }
+
+            return parent::handleRecordUpdate($record, $data);
+        }, 5);
     }
 
     protected function mutateFormDataBeforeSave(array $data): array

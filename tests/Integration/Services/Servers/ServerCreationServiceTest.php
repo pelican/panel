@@ -2,6 +2,7 @@
 
 namespace App\Tests\Integration\Services\Servers;
 
+use App\Exceptions\DisplayException;
 use App\Models\Allocation;
 use App\Models\Egg;
 use App\Models\Node;
@@ -11,6 +12,7 @@ use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Servers\ServerCreationService;
 use App\Tests\Integration\IntegrationTestCase;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\WithFaker;
 use Illuminate\Http\Client\ConnectionException;
@@ -276,6 +278,47 @@ class ServerCreationServiceTest extends IntegrationTestCase
         $this->getService()->handle($data);
 
         $this->assertDatabaseMissing('servers', ['owner_id' => $user->id]);
+    }
+
+    public function test_owner_is_rechecked_inside_the_creation_transaction(): void
+    {
+        $user = User::factory()->create();
+        $node = Node::factory()->create();
+        $allocation = Allocation::factory()->create(['node_id' => $node->id]);
+        $connection = \Mockery::mock(ConnectionInterface::class);
+        $connection->expects('transaction')
+            ->once()
+            ->andReturnUsing(function (callable $callback, int $attempts) use ($user) {
+                $this->assertSame(5, $attempts);
+                $user->forceFill(['suspended_at' => now()])->save();
+
+                return $callback();
+            });
+        $this->app->instance(ConnectionInterface::class, $connection);
+
+        $data = [
+            'name' => $this->faker->name(),
+            'owner_id' => $user->id,
+            'allocation_id' => $allocation->id,
+            'node_id' => $node->id,
+            'memory' => 256,
+            'swap' => 128,
+            'disk' => 100,
+            'io' => 500,
+            'cpu' => 0,
+            'startup' => 'java server2.jar',
+            'image' => 'java:8',
+            'egg_id' => $this->bungeecord->id,
+            'environment' => [
+                'BUNGEE_VERSION' => '123',
+                'SERVER_JARFILE' => 'server2.jar',
+            ],
+        ];
+
+        $this->expectException(DisplayException::class);
+        $this->expectExceptionMessage('Servers cannot be assigned to a suspended account.');
+
+        $this->getService()->handle($data);
     }
 
     private function getService(): ServerCreationService

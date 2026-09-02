@@ -28,13 +28,8 @@ class AccountSuspensionService
         throw_if($user->isSuspended(), new DisplayException('This account is already suspended.'));
         throw_if($reason === '', new DisplayException('A suspension reason is required.'));
 
-        $servers = $suspendServers ? $user->servers()->with('transfer')->get() : collect();
-        foreach ($servers as $server) {
-            Gate::forUser($actor)->authorize('update', $server);
-        }
-
         /** @var UserSuspension $suspension */
-        $suspension = DB::transaction(function () use ($actor, $user, $reason, $suspendServers, $servers) {
+        $suspension = DB::transaction(function () use ($actor, $user, $reason, $suspendServers) {
             $lockedUser = User::query()->lockForUpdate()->findOrFail($user->id);
             throw_if($lockedUser->isSuspended(), new DisplayException('This account is already suspended.'));
 
@@ -46,6 +41,14 @@ class AccountSuspensionService
                     ->get(['users.id']);
 
                 throw_if($activeRootAdmins->count() <= 1, new DisplayException('The last active root administrator cannot be suspended.'));
+            }
+
+            $servers = $suspendServers
+                ? $lockedUser->servers()->with('transfer')->lockForUpdate()->get()
+                : collect();
+
+            foreach ($servers as $server) {
+                Gate::forUser($actor)->authorize('update', $server);
             }
 
             $suspension = $lockedUser->suspensions()->create([

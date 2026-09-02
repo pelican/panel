@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\RolePermissionModels;
+use App\Exceptions\DisplayException;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
 use App\Filament\Admin\Resources\Servers\Pages\ListServers;
 use App\Filament\Admin\Resources\Servers\Pages\ViewServer;
@@ -9,6 +10,7 @@ use App\Models\Allocation;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\ServerVariable;
+use App\Models\User;
 use Filament\Actions\CreateAction;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
@@ -71,6 +73,17 @@ it('forbids the edit page for a view-only user', function () {
     $this->actingAs($user);
     livewire(EditServer::class, ['record' => $server->getKey()])
         ->assertForbidden();
+});
+
+it('rejects assigning a server to a suspended owner from the edit page', function () {
+    $server = createServerModel();
+    $suspendedOwner = User::factory()->create(['suspended_at' => now()]);
+    $method = new ReflectionMethod(EditServer::class, 'handleRecordUpdate');
+
+    expect(fn () => $method->invoke(new EditServer(), $server, ['owner_id' => $suspendedOwner->id]))
+        ->toThrow(DisplayException::class, 'Servers cannot be assigned to a suspended account.');
+
+    expect($server->refresh()->owner_id)->not->toBe($suspendedOwner->id);
 });
 
 it('does not materialize server variables when the view page is mounted', function () {

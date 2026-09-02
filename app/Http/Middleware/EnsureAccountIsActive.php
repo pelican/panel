@@ -21,7 +21,7 @@ class EnsureAccountIsActive
         }
 
         if ($user->isSuspended()) {
-            if ($request->expectsJson()) {
+            if ($request->is('api/*') || $request->expectsJson()) {
                 throw new AccessDeniedHttpException(User::suspensionMessage());
             }
 
@@ -43,8 +43,10 @@ class EnsureAccountIsActive
     private function logout(Request $request, string $message): mixed
     {
         auth()->guard()->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
 
         Notification::make()->title($message)->danger()->persistent()->send();
 
