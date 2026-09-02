@@ -2,8 +2,10 @@
 
 namespace App\Services\Servers;
 
+use App\Exceptions\DisplayException;
 use App\Jobs\RevokeSftpAccessJob;
 use App\Models\Server;
+use App\Models\User;
 use App\Traits\Services\ReturnsUpdatedModels;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Arr;
@@ -32,6 +34,9 @@ class DetailsModificationService
      */
     public function handle(Server $server, array $data): Server
     {
+        $owner = User::query()->findOrFail(Arr::get($data, 'owner_id'));
+        throw_if($owner->isSuspended(), new DisplayException('Servers cannot be assigned to a suspended account.'));
+
         return $this->connection->transaction(function () use ($data, $server) {
             $oldOwner = $server->user;
 

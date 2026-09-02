@@ -2,6 +2,8 @@
 
 namespace App\Tests\Integration\Api\Application\Users;
 
+use App\Jobs\ProcessUserSuspensionServersJob;
+use App\Jobs\RevokeSftpAccessJob;
 use App\Models\Server;
 use App\Models\User;
 use App\Services\Acl\Api\AdminAcl;
@@ -9,6 +11,7 @@ use App\Tests\Integration\Api\Application\ApplicationApiIntegrationTestCase;
 use App\Transformers\Api\Application\ServerTransformer;
 use App\Transformers\Api\Application\UserTransformer;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Bus;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 class UserControllerTest extends ApplicationApiIntegrationTestCase
@@ -26,8 +29,8 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
         $response->assertJsonStructure([
             'object',
             'data' => [
-                ['object', 'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', '2fa_enabled', '2fa', 'created_at', 'updated_at']],
-                ['object', 'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', '2fa_enabled', '2fa', 'created_at', 'updated_at']],
+                ['object', 'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', 'suspended', 'suspended_at', '2fa_enabled', '2fa', 'created_at', 'updated_at']],
+                ['object', 'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', 'suspended', 'suspended_at', '2fa_enabled', '2fa', 'created_at', 'updated_at']],
             ],
             'meta' => ['pagination' => ['total', 'count', 'per_page', 'current_page', 'total_pages']],
         ]);
@@ -57,6 +60,8 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
                     'email' => $this->getApiUser()->email,
                     'language' => $this->getApiUser()->language,
                     'root_admin' => $this->getApiUser()->isRootAdmin(),
+                    'suspended' => false,
+                    'suspended_at' => null,
                     '2fa_enabled' => filled($this->getApiUser()->mfa_app_secret),
                     '2fa' => filled($this->getApiUser()->mfa_app_secret),
                     'created_at' => $this->formatTimestamp($this->getApiUser()->created_at),
@@ -74,6 +79,8 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
                     'email' => $user->email,
                     'language' => $user->language,
                     'root_admin' => (bool) $user->isRootAdmin(),
+                    'suspended' => false,
+                    'suspended_at' => null,
                     '2fa_enabled' => filled($user->mfa_app_secret),
                     '2fa' => filled($user->mfa_app_secret),
                     'created_at' => $this->formatTimestamp($user->created_at),
@@ -94,7 +101,7 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
         $response->assertJsonCount(2);
         $response->assertJsonStructure([
             'object',
-            'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', '2fa', 'created_at', 'updated_at'],
+            'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', 'suspended', 'suspended_at', '2fa', 'created_at', 'updated_at'],
         ]);
 
         $response->assertJson([
@@ -108,6 +115,8 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
                 'email' => $user->email,
                 'language' => $user->language,
                 'root_admin' => (bool) $user->root_admin,
+                'suspended' => false,
+                'suspended_at' => null,
                 '2fa' => filled($user->mfa_app_secret),
                 'created_at' => $this->formatTimestamp($user->created_at),
                 'updated_at' => $this->formatTimestamp($user->updated_at),
@@ -129,7 +138,7 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
         $response->assertJsonStructure([
             'object',
             'attributes' => [
-                'id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', '2fa', 'created_at', 'updated_at',
+                'id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', 'suspended', 'suspended_at', '2fa', 'created_at', 'updated_at',
                 'relationships' => ['servers' => ['object', 'data' => [['object', 'attributes' => []]]]],
             ],
         ]);
@@ -216,7 +225,7 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
         $response->assertJsonCount(3);
         $response->assertJsonStructure([
             'object',
-            'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', '2fa', 'created_at', 'updated_at'],
+            'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', 'suspended', 'suspended_at', '2fa', 'created_at', 'updated_at'],
             'meta' => ['resource'],
         ]);
 
@@ -247,7 +256,7 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
         $response->assertJsonCount(2);
         $response->assertJsonStructure([
             'object',
-            'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', '2fa', 'created_at', 'updated_at'],
+            'attributes' => ['id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email', 'language', 'root_admin', 'suspended', 'suspended_at', '2fa', 'created_at', 'updated_at'],
         ]);
 
         $this->assertDatabaseHas('users', ['username' => 'new.test.name', 'email' => 'new@emailtest.com']);
@@ -257,6 +266,29 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
             'object' => 'user',
             'attributes' => $this->getTransformer(UserTransformer::class)->transform($user),
         ]);
+    }
+
+    public function test_suspend_and_unsuspend_user(): void
+    {
+        Bus::fake([ProcessUserSuspensionServersJob::class, RevokeSftpAccessJob::class]);
+        $user = User::factory()->create();
+
+        $this->postJson('/api/application/users/' . $user->id . '/suspend', [
+            'reason' => 'Terms of service violation',
+            'suspend_servers' => false,
+        ])->assertOk()
+            ->assertJsonPath('attributes.suspended', true)
+            ->assertJsonPath('attributes.suspended_at', fn ($value) => is_string($value));
+
+        $this->assertTrue($user->refresh()->isSuspended());
+
+        $this->postJson('/api/application/users/' . $user->id . '/unsuspend', [
+            'unsuspend_servers' => false,
+        ])->assertOk()
+            ->assertJsonPath('attributes.suspended', false)
+            ->assertJsonPath('attributes.suspended_at', null);
+
+        $this->assertFalse($user->refresh()->isSuspended());
     }
 
     /**
@@ -301,6 +333,8 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
             ['postJson', '/api/application/users'],
             ['patchJson', '/api/application/users/{id}'],
             ['delete', '/api/application/users/{id}'],
+            ['postJson', '/api/application/users/{id}/suspend'],
+            ['postJson', '/api/application/users/{id}/unsuspend'],
         ];
     }
 }

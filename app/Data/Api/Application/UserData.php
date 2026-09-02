@@ -26,6 +26,8 @@ final class UserData extends ApiResource
         public string $email,
         public ?string $language,
         public bool $root_admin,
+        public bool $suspended,
+        public ?string $suspended_at,
         #[MapOutputName('2fa_enabled')]
         public bool $twoFactorEnabled,
         #[MapOutputName('2fa')]
@@ -50,6 +52,8 @@ final class UserData extends ApiResource
             email: $model->email,
             language: $model->language,
             root_admin: $model->isRootAdmin(),
+            suspended: $model->isSuspended(),
+            suspended_at: $model->suspended_at ? self::formatTimestamp($model->suspended_at) : null,
             twoFactorEnabled: filled($model->mfa_app_secret),
             twoFactorLegacy: filled($model->mfa_app_secret), // deprecated, use "2fa_enabled"
             created_at: self::formatTimestamp($model->created_at),

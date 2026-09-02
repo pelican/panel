@@ -54,6 +54,9 @@ class Role extends BaseRole
             'import',
             'export',
         ],
+        'user' => [
+            'suspend',
+        ],
     ];
 
     public const SPECIAL_PERMISSIONS = [

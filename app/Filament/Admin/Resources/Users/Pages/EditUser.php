@@ -3,6 +3,7 @@
 namespace App\Filament\Admin\Resources\Users\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Resources\Users\Actions\UserSuspensionActions;
 use App\Filament\Admin\Resources\Users\UserResource;
 use App\Models\User;
 use App\Services\Users\UserUpdateService;
@@ -32,6 +33,8 @@ class EditUser extends EditRecord
     protected function getDefaultHeaderActions(): array
     {
         return [
+            UserSuspensionActions::suspend(),
+            UserSuspensionActions::unsuspend(),
             DeleteAction::make()
                 ->tooltip(fn (User $user) => user()?->id === $user->id ? trans('admin/user.self_delete') : ($user->servers()->count() > 0 ? trans('admin/user.has_servers') : trans('filament-actions::delete.single.modal.actions.delete.label')))
                 ->disabled(fn (User $user) => user()?->id === $user->id || $user->servers()->count() > 0),

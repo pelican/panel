@@ -113,6 +113,10 @@ class OAuthController extends Controller
 
     private function loginUser(User $user): RedirectResponse
     {
+        if ($user->isSuspended()) {
+            return $this->errorRedirect(User::suspensionMessage());
+        }
+
         auth()->guard()->login($user, true);
 
         return redirect('/');

@@ -57,6 +57,9 @@ class ServerCreationService
             $data['oom_killer'] = !$data['oom_disabled'];
         }
 
+        $owner = User::query()->findOrFail($data['owner_id']);
+        throw_if($owner->isSuspended(), new DisplayException('Servers cannot be assigned to a suspended account.'));
+
         /** @var Egg $egg */
         $egg = Egg::query()->findOrFail($data['egg_id']);
 

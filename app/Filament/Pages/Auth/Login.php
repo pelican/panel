@@ -5,6 +5,7 @@ namespace App\Filament\Pages\Auth;
 use App\Enums\TablerIcon;
 use App\Extensions\Captcha\CaptchaService;
 use App\Extensions\OAuth\OAuthService;
+use App\Models\User;
 use BladeUI\Icons\Exceptions\SvgNotFound;
 use BladeUI\Icons\Factory as IconFactory;
 use Filament\Actions\Action;
@@ -17,6 +18,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Alignment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class Login extends BaseLogin
@@ -91,6 +93,19 @@ class Login extends BaseLogin
     protected function throwFailureValidationException(): never
     {
         $this->dispatch('reset-captcha');
+
+        $login = $this->data['login'] ?? null;
+        $password = $this->data['password'] ?? null;
+        if (is_string($login) && is_string($password)) {
+            $field = filter_var($login, FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
+            $user = User::query()->where($field, mb_strtolower($login))->first();
+
+            if ($user?->isSuspended() && Hash::check($password, $user->password)) {
+                throw ValidationException::withMessages([
+                    'data.login' => User::suspensionMessage(),
+                ]);
+            }
+        }
 
         throw ValidationException::withMessages([
             'data.login' => trans('filament-panels::auth/pages/login.messages.failed')]);

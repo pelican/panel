@@ -6,6 +6,7 @@ use App\Enums\CustomizationKey;
 use App\Enums\TablerIcon;
 use App\Extensions\OAuth\OAuthService;
 use App\Facades\Activity;
+use App\Filament\Admin\Resources\Users\Actions\UserSuspensionActions;
 use App\Filament\Admin\Resources\Users\Pages\CreateUser;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Filament\Admin\Resources\Users\Pages\ListUsers;
@@ -53,6 +54,7 @@ use Filament\Support\Colors\Color;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Auth\Events\PasswordResetLinkSent;
 use Illuminate\Database\Eloquent\Builder;
@@ -124,6 +126,11 @@ class UserResource extends Resource
                     ->label(trans('admin/user.email'))
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('account_status')
+                    ->label('Status')
+                    ->state(fn (User $user) => $user->isSuspended() ? 'Suspended' : 'Active')
+                    ->badge()
+                    ->color(fn (string $state) => $state === 'Suspended' ? 'danger' : 'success'),
                 IconColumn::make('mfa_email_enabled')
                     ->label(trans('profile.tabs.2fa'))
                     ->visibleFrom('lg')
@@ -142,9 +149,22 @@ class UserResource extends Resource
                     ->counts('subusers'),
             ])
             ->recordActions([
+                UserSuspensionActions::suspend(),
+                UserSuspensionActions::unsuspend(),
                 ViewAction::make()
                     ->hidden(fn ($record) => static::getEditAuthorizationResponse($record)->allowed()),
                 EditAction::make(),
+            ])
+            ->filters([
+                TernaryFilter::make('suspended')
+                    ->label('Account status')
+                    ->placeholder('All accounts')
+                    ->trueLabel('Suspended accounts')
+                    ->falseLabel('Active accounts')
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereNotNull('suspended_at'),
+                        false: fn (Builder $query) => $query->whereNull('suspended_at'),
+                    ),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
@@ -181,6 +201,27 @@ class UserResource extends Resource
                     'lg' => 3,
                 ])
                 ->schema([
+                    Section::make('Account suspension')
+                        ->description('This reason is visible to administrators only.')
+                        ->icon(TablerIcon::UserOff)
+                        ->columnSpanFull()
+                        ->columns(3)
+                        ->visible(fn (?User $record) => $record?->isSuspended() ?? false)
+                        ->schema([
+                            TextEntry::make('suspended_at')
+                                ->label('Suspended at')
+                                ->dateTime(),
+                            TextEntry::make('suspension_actor')
+                                ->label('Suspended by')
+                                ->state(fn (User $record) => $record->activeSuspension?->actor()->value('username') ?? 'System'),
+                            TextEntry::make('suspension_mode')
+                                ->label('Server action')
+                                ->state(fn (User $record) => $record->activeSuspension?->suspend_servers ? 'Suspend owned servers' : 'Keep owned servers running'),
+                            TextEntry::make('suspension_reason')
+                                ->label('Internal reason')
+                                ->state(fn (User $record) => $record->activeSuspension?->reason)
+                                ->columnSpanFull(),
+                        ]),
                     TextInput::make('username')
                         ->label(trans('admin/user.username'))
                         ->columnSpan([

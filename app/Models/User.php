@@ -32,6 +32,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Foundation\Auth\Access\Authorizable;
 use Illuminate\Notifications\DatabaseNotification;
@@ -70,6 +71,8 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string[]|null $mfa_app_recovery_codes
  * @property bool $mfa_email_enabled
  * @property bool $is_managed_externally
+ * @property Carbon|null $suspended_at
+ * @property int $auth_session_version
  * @property-read \Illuminate\Database\Eloquent\Collection<int, ActivityLog> $activity
  * @property-read int|null $activity_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, ApiKey> $apiKeys
@@ -162,7 +165,7 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
     /**
      * The attributes excluded from the model's JSON form.
      */
-    protected $hidden = ['password', 'remember_token', 'mfa_app_secret', 'mfa_app_recovery_codes', 'oauth'];
+    protected $hidden = ['password', 'remember_token', 'mfa_app_secret', 'mfa_app_recovery_codes', 'oauth', 'auth_session_version'];
 
     /**
      * Default values for specific fields in the database.
@@ -177,6 +180,8 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         'mfa_email_enabled' => false,
         'oauth' => '[]',
         'customization' => null,
+        'suspended_at' => null,
+        'auth_session_version' => 0,
     ];
 
     /** @var array<array-key, string[]> */
@@ -213,6 +218,8 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
             'mfa_email_enabled' => 'boolean',
             'oauth' => 'array',
             'customization' => 'array',
+            'suspended_at' => 'datetime',
+            'auth_session_version' => 'integer',
         ];
     }
 
@@ -275,6 +282,34 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
     public function servers(): HasMany
     {
         return $this->hasMany(Server::class, 'owner_id');
+    }
+
+    /** @return HasMany<UserSuspension, $this> */
+    public function suspensions(): HasMany
+    {
+        return $this->hasMany(UserSuspension::class);
+    }
+
+    /** @return HasOne<UserSuspension, $this> */
+    public function activeSuspension(): HasOne
+    {
+        return $this->hasOne(UserSuspension::class)->whereNull('lifted_at')->latestOfMany();
+    }
+
+    public function isSuspended(): bool
+    {
+        return !is_null($this->suspended_at);
+    }
+
+    public static function suspensionMessage(): string
+    {
+        $email = config('mail.from.address');
+
+        if (is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return "Your account has been suspended. Please contact {$email} for assistance.";
+        }
+
+        return 'Your account has been suspended. Please contact an administrator for assistance.';
     }
 
     public function apiKeys(): HasMany
@@ -472,6 +507,10 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
 
     public function canAccessPanel(Panel $panel): bool
     {
+        if ($this->isSuspended()) {
+            return false;
+        }
+
         if ($this->isRootAdmin()) {
             return true;
         }

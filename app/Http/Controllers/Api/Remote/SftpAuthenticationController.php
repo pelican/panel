@@ -69,6 +69,11 @@ class SftpAuthenticationController extends Controller
             }
         }
 
+        if ($user->isSuspended()) {
+            Activity::event('auth:sftp.suspended')->subject($user)->log();
+            throw new HttpForbiddenException(User::suspensionMessage());
+        }
+
         $this->validateSftpAccess($user, $server);
 
         return new JsonResponse([

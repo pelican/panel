@@ -23,4 +23,11 @@ class UserPolicy
     {
         return $user->canTarget($model) && $this->defaultDelete($user, $model);
     }
+
+    public function suspend(User $user, User $model): bool
+    {
+        return !$user->is($model)
+            && $user->canTarget($model)
+            && $user->getAllPermissions()->contains('name', 'suspend user');
+    }
 }

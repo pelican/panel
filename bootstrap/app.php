@@ -8,6 +8,7 @@ use App\Http\Middleware\Api\AuthenticateIPAccess;
 use App\Http\Middleware\Api\Client\RequireClientApiKey;
 use App\Http\Middleware\Api\Daemon\DaemonAuthenticate;
 use App\Http\Middleware\Api\IsValidJson;
+use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\EnsureStatefulRequests;
 use App\Http\Middleware\LanguageMiddleware;
 use App\Http\Middleware\MaintenanceMiddleware;
@@ -32,11 +33,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web([
             LanguageMiddleware::class,
             SetSecurityHeaders::class,
+            EnsureAccountIsActive::class,
         ]);
 
         $middleware->api([
             EnsureStatefulRequests::class,
             'auth:sanctum',
+            EnsureAccountIsActive::class,
             IsValidJson::class,
             TrackAPIKey::class,
             AuthenticateIPAccess::class,
