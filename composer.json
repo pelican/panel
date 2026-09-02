@@ -16,7 +16,7 @@
         "filament/filament": "^5.7",
         "gboquizosanchez/filament-log-viewer": "^2.3",
         "guzzlehttp/guzzle": "^7.15",
-        "laravel/framework": "^13.27",
+        "laravel/framework": "^13.30",
         "laravel/helpers": "^1.8",
         "laravel/passkeys": "^0.2",
         "laravel/sanctum": "^4.3",
