@@ -85,6 +85,10 @@
         "post-install-cmd": [
             "php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "php artisan p:plugin:composer"
+        ],
+        "dev": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan dev"
         ]
     },
     "config": {
