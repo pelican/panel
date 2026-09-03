@@ -2,6 +2,7 @@
 
 use App\Enums\SubuserPermission;
 use App\Events\ActivityLogged;
+use App\Http\Middleware\EnsureAccountIsActive;
 use App\Livewire\FileUploadManager;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
@@ -115,7 +116,11 @@ it('mounts the upload manager and the drop zone on the files page', function () 
 
     Http::fake(['*' => Http::response(['/' => []], 200)]);
 
-    $this->actingAs($user);
+    // actingAs() does not dispatch the Login event that initializes the session marker.
+    $this->actingAs($user)
+        ->withSession([
+            EnsureAccountIsActive::SESSION_KEY => hash('sha256', (string) $user->getRememberToken()),
+        ]);
 
     // The manager is registered as a server panel render hook, so it is on every server page.
     $this->get("/server/{$server->uuid_short}/files")
