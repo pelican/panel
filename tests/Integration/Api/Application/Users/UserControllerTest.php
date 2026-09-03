@@ -2,12 +2,12 @@
 
 namespace App\Tests\Integration\Api\Application\Users;
 
+use App\Data\Api\Application\ServerData;
+use App\Data\Api\Application\UserData;
 use App\Models\Server;
 use App\Models\User;
 use App\Services\Acl\Api\AdminAcl;
 use App\Tests\Integration\Api\Application\ApplicationApiIntegrationTestCase;
-use App\Transformers\Api\Application\ServerTransformer;
-use App\Transformers\Api\Application\UserTransformer;
 use Illuminate\Http\Response;
 use PHPUnit\Framework\Attributes\DataProvider;
 
@@ -139,7 +139,7 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
             'data' => [
                 [
                     'object' => 'server',
-                    'attributes' => $this->getTransformer(ServerTransformer::class)->transform($server),
+                    'attributes' => $this->getExpectedData(ServerData::class, $server),
                 ],
             ],
         ]);
@@ -225,7 +225,7 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
         $user = User::where('username', 'testuser')->first();
         $response->assertJson([
             'object' => 'user',
-            'attributes' => $this->getTransformer(UserTransformer::class)->transform($user),
+            'attributes' => $this->getExpectedData(UserData::class, $user),
             'meta' => [
                 'resource' => route('api.application.users.view', $user->id),
             ],
@@ -255,7 +255,7 @@ class UserControllerTest extends ApplicationApiIntegrationTestCase
 
         $response->assertJson([
             'object' => 'user',
-            'attributes' => $this->getTransformer(UserTransformer::class)->transform($user),
+            'attributes' => $this->getExpectedData(UserData::class, $user),
         ]);
     }
 

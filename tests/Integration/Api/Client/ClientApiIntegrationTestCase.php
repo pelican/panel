@@ -2,13 +2,14 @@
 
 namespace App\Tests\Integration\Api\Client;
 
+use App\Data\Api\ApiResource;
 use App\Models\Allocation;
 use App\Models\Backup;
 use App\Models\Schedule;
 use App\Models\Server;
 use App\Models\Task;
 use App\Tests\Integration\IntegrationTestCase;
-use App\Transformers\Api\Client\BaseClientTransformer;
+use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
@@ -52,19 +53,18 @@ abstract class ClientApiIntegrationTestCase extends IntegrationTestCase
     }
 
     /**
-     * Asserts that the data passed through matches the output of the data from the transformer. This
-     * will remove the "relationships" key when performing the comparison.
+     * Asserts that the data passed through matches the attributes the matching client
+     * Data class produces for the model, ignoring the "relationships" key.
      */
     protected function assertJsonTransformedWith(array $data, Model $model): void
     {
-        $reflect = new \ReflectionClass($model);
-        $transformer = sprintf('\\App\\Transformers\\Api\\Client\\%sTransformer', $reflect->getShortName());
+        $dataClass = sprintf('\\App\\Data\\Api\\Client\\%sData', class_basename($model));
+        $this->assertTrue(is_a($dataClass, ApiResource::class, true));
 
-        $transformer = new $transformer();
-        $this->assertInstanceOf(BaseClientTransformer::class, $transformer);
+        $expected = Container::getInstance()->call([$dataClass, 'fromModel'], ['model' => $model])->toArray();
 
         $this->assertSame(
-            $transformer->transform($model),
+            $expected,
             Collection::make($data)->except(['relationships'])->toArray()
         );
     }

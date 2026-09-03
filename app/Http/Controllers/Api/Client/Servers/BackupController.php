@@ -21,8 +21,6 @@ use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Spatie\Fractalistic\Exceptions\InvalidTransformation;
-use Spatie\Fractalistic\Exceptions\NoTransformerSpecified;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Throwable;
 
@@ -69,8 +67,6 @@ class BackupController extends ClientApiController
      *
      * @return array<array-key, mixed>
      *
-     * @throws InvalidTransformation
-     * @throws NoTransformerSpecified
      * @throws Throwable
      */
     public function store(StoreBackupRequest $request, Server $server): array

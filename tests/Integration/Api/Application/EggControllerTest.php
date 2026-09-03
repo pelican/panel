@@ -2,9 +2,9 @@
 
 namespace App\Tests\Integration\Api\Application;
 
+use App\Data\Api\Application\EggData;
 use App\Models\Egg;
 use App\Services\Acl\Api\AdminAcl;
-use App\Transformers\Api\Application\EggTransformer;
 use Illuminate\Http\Response;
 use Illuminate\Support\Arr;
 
@@ -44,7 +44,7 @@ class EggControllerTest extends ApplicationApiIntegrationTestCase
             $egg = $eggs->where('id', '=', $datum['attributes']['id'])->first();
 
             $expected = json_encode(Arr::sortRecursive($datum['attributes']));
-            $actual = json_encode(Arr::sortRecursive($this->getTransformer(EggTransformer::class)->transform($egg)));
+            $actual = json_encode(Arr::sortRecursive($this->getExpectedData(EggData::class, $egg)));
 
             $this->assertSame(
                 $expected,
@@ -72,7 +72,7 @@ class EggControllerTest extends ApplicationApiIntegrationTestCase
 
         $response->assertJson([
             'object' => 'egg',
-            'attributes' => $this->getTransformer(EggTransformer::class)->transform($egg),
+            'attributes' => $this->getExpectedData(EggData::class, $egg),
         ], true);
     }
 

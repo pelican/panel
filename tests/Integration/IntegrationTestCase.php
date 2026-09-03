@@ -2,11 +2,11 @@
 
 namespace App\Tests\Integration;
 
+use App\Data\Api\ApiResource;
 use App\Events\ActivityLogged;
 use App\Tests\Assertions\AssertsActivityLogged;
 use App\Tests\TestCase;
 use App\Tests\Traits\Integration\CreatesTestModels;
-use App\Transformers\Api\Application\BaseTransformer;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
@@ -38,7 +38,7 @@ abstract class IntegrationTestCase extends TestCase
     protected function formatTimestamp(string $timestamp): string
     {
         return CarbonImmutable::createFromFormat(CarbonInterface::DEFAULT_TO_STRING_FORMAT, $timestamp)
-            ->setTimezone(BaseTransformer::RESPONSE_TIMEZONE)
+            ->setTimezone(ApiResource::RESPONSE_TIMEZONE)
             ->toAtomString();
     }
 
