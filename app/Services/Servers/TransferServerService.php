@@ -3,6 +3,7 @@
 namespace App\Services\Servers;
 
 use App\Enums\NodeJwtScope;
+use App\Exceptions\Http\Server\NodeNotViableException;
 use App\Extensions\BackupAdapter\BackupAdapterService;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
 use App\Models\Allocation;
@@ -57,9 +58,10 @@ class TransferServerService
      * @param  int[]  $additional_allocations
      * @param  string[]  $backup_uuids
      *
+     * @throws NodeNotViableException
      * @throws Throwable
      */
-    public function handle(Server $server, int $node_id, ?int $allocation_id = null, ?array $additional_allocations = [], array $backup_uuids = []): bool
+    public function handle(Server $server, int $node_id, ?int $allocation_id = null, ?array $additional_allocations = [], array $backup_uuids = []): void
     {
         $additional_allocations = array_map(intval(...), $additional_allocations);
 
@@ -74,7 +76,7 @@ class TransferServerService
             ->first();
 
         if (!$node->isViable($server->memory, $server->disk, $server->cpu)) {
-            return false;
+            throw new NodeNotViableException($node);
         }
 
         $server->validateTransferState();
@@ -112,8 +114,6 @@ class TransferServerService
 
         // Notify the source node of the pending outgoing transfer.
         $this->notify($transfer, $token, $backup_uuids);
-
-        return true;
     }
 
     /**
