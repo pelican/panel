@@ -10,7 +10,7 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 class EnsureAccountIsActive
 {
-    public const SESSION_KEY = 'auth_session_version';
+    public const SESSION_KEY = 'auth_remember_token_hash';
 
     public function handle(Request $request, Closure $next): mixed
     {
@@ -29,11 +29,13 @@ class EnsureAccountIsActive
         }
 
         if ($request->hasSession()) {
-            $sessionVersion = $request->session()->get(self::SESSION_KEY);
-            if (is_null($sessionVersion)) {
-                $request->session()->put(self::SESSION_KEY, $user->auth_session_version);
-            } elseif ((int) $sessionVersion !== $user->auth_session_version) {
-                return $this->logout($request, 'Your session has expired. Please sign in again.');
+            $sessionTokenHash = $request->session()->get(self::SESSION_KEY);
+            $currentTokenHash = hash('sha256', (string) $user->getRememberToken());
+
+            if (is_null($sessionTokenHash)) {
+                $request->session()->put(self::SESSION_KEY, $currentTokenHash);
+            } elseif (!is_string($sessionTokenHash) || !hash_equals($sessionTokenHash, $currentTokenHash)) {
+                return $this->logout($request, trans('auth.session_expired'));
             }
         }
 

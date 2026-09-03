@@ -21,4 +21,37 @@ return [
     'password_reset' => 'Reset Password',
     'password_reset_sent' => 'Password Reset E-Mail Sent',
     'password_reset_failed' => 'Failed to Send Password Reset E-Mail',
+    'suspension' => [
+        'status' => 'Account Status',
+        'active' => 'Active',
+        'suspended' => 'Suspended',
+        'suspended_at' => 'Suspended At',
+        'filters' => [
+            'all' => 'All Accounts',
+            'active' => 'Active Accounts',
+            'suspended' => 'Suspended Accounts',
+        ],
+        'section' => [
+            'title' => 'Account Suspension',
+            'description' => 'This user cannot sign in while the account is suspended.',
+        ],
+        'actions' => [
+            'suspend' => 'Suspend Account',
+            'unsuspend' => 'Lift Suspension',
+            'suspend_heading' => 'Suspend :username',
+            'unsuspend_heading' => 'Lift suspension for :username',
+            'suspend_description' => 'The user will be signed out and will not be able to sign in until the suspension is lifted.',
+            'unsuspend_description' => 'The user will be able to sign in again.',
+        ],
+        'notifications' => [
+            'suspended' => 'Account suspended',
+            'unsuspended' => 'Account suspension lifted',
+        ],
+        'errors' => [
+            'cannot_suspend_self' => 'You cannot suspend your own account.',
+            'already_suspended' => 'This account is already suspended.',
+            'not_suspended' => 'This account is not suspended.',
+            'last_root_admin' => 'The last active root administrator cannot be suspended.',
+        ],
+    ],
 ];

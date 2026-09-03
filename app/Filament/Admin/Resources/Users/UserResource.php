@@ -127,10 +127,12 @@ class UserResource extends Resource
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('account_status')
-                    ->label('Status')
-                    ->state(fn (User $user) => $user->isSuspended() ? 'Suspended' : 'Active')
+                    ->label(trans('admin/user.suspension.status'))
+                    ->state(fn (User $user) => $user->isSuspended()
+                        ? trans('admin/user.suspension.suspended')
+                        : trans('admin/user.suspension.active'))
                     ->badge()
-                    ->color(fn (string $state) => $state === 'Suspended' ? 'danger' : 'success'),
+                    ->color(fn (User $record) => $record->isSuspended() ? 'danger' : 'success'),
                 IconColumn::make('mfa_email_enabled')
                     ->label(trans('profile.tabs.2fa'))
                     ->visibleFrom('lg')
@@ -157,10 +159,10 @@ class UserResource extends Resource
             ])
             ->filters([
                 TernaryFilter::make('suspended')
-                    ->label('Account status')
-                    ->placeholder('All accounts')
-                    ->trueLabel('Suspended accounts')
-                    ->falseLabel('Active accounts')
+                    ->label(trans('admin/user.suspension.status'))
+                    ->placeholder(trans('admin/user.suspension.filters.all'))
+                    ->trueLabel(trans('admin/user.suspension.filters.suspended'))
+                    ->falseLabel(trans('admin/user.suspension.filters.active'))
                     ->queries(
                         true: fn (Builder $query) => $query->whereNotNull('suspended_at'),
                         false: fn (Builder $query) => $query->whereNull('suspended_at'),
@@ -201,26 +203,15 @@ class UserResource extends Resource
                     'lg' => 3,
                 ])
                 ->schema([
-                    Section::make('Account suspension')
-                        ->description('This reason is visible to administrators only.')
+                    Section::make(trans('admin/user.suspension.section.title'))
+                        ->description(trans('admin/user.suspension.section.description'))
                         ->icon(TablerIcon::UserOff)
                         ->columnSpanFull()
-                        ->columns(3)
                         ->visible(fn (?User $record) => $record?->isSuspended() ?? false)
                         ->schema([
                             TextEntry::make('suspended_at')
-                                ->label('Suspended at')
+                                ->label(trans('admin/user.suspension.suspended_at'))
                                 ->dateTime(),
-                            TextEntry::make('suspension_actor')
-                                ->label('Suspended by')
-                                ->state(fn (User $record) => $record->activeSuspension?->actor()->value('username') ?? 'System'),
-                            TextEntry::make('suspension_mode')
-                                ->label('Server action')
-                                ->state(fn (User $record) => $record->activeSuspension?->suspend_servers ? 'Suspend owned servers' : 'Keep owned servers running'),
-                            TextEntry::make('suspension_reason')
-                                ->label('Internal reason')
-                                ->state(fn (User $record) => $record->activeSuspension?->reason)
-                                ->columnSpanFull(),
                         ]),
                     TextInput::make('username')
                         ->label(trans('admin/user.username'))

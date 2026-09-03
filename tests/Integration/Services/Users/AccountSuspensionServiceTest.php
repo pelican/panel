@@ -2,17 +2,15 @@
 
 namespace App\Tests\Integration\Services\Users;
 
-use App\Enums\ServerState;
 use App\Exceptions\DisplayException;
-use App\Jobs\ProcessUserSuspensionServersJob;
 use App\Jobs\RevokeSftpAccessJob;
 use App\Models\Role;
 use App\Models\User;
-use App\Models\UserSuspensionServer;
 use App\Services\Users\AccountSuspensionService;
 use App\Tests\Integration\IntegrationTestCase;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 
 class AccountSuspensionServiceTest extends IntegrationTestCase
@@ -21,7 +19,7 @@ class AccountSuspensionServiceTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        Bus::fake([ProcessUserSuspensionServersJob::class, RevokeSftpAccessJob::class]);
+        Bus::fake([RevokeSftpAccessJob::class]);
     }
 
     public function test_account_can_be_suspended_without_affecting_owned_servers(): void
@@ -29,63 +27,45 @@ class AccountSuspensionServiceTest extends IntegrationTestCase
         $actor = $this->rootAdmin();
         $user = User::factory()->create();
         $server = $this->createServerModel(['owner_id' => $user->id]);
-        $version = $user->auth_session_version;
         $rememberToken = $user->remember_token;
 
-        $suspension = $this->service()->suspend($actor, $user, 'Chargeback investigation', false);
+        $suspendedUser = $this->service()->suspend($actor, $user);
 
-        $user->refresh();
-        $this->assertTrue($user->isSuspended());
-        $this->assertSame($version + 1, $user->auth_session_version);
-        $this->assertNotSame($rememberToken, $user->remember_token);
+        $this->assertTrue($suspendedUser->isSuspended());
+        $this->assertNotSame($rememberToken, $suspendedUser->remember_token);
         $this->assertFalse($server->refresh()->isSuspended());
-        $this->assertFalse($suspension->suspend_servers);
-        $this->assertSame('Chargeback investigation', $suspension->reason);
-        $this->assertDatabaseCount('user_suspension_servers', 0);
-        Bus::assertNotDispatched(ProcessUserSuspensionServersJob::class);
+        Bus::assertDispatched(RevokeSftpAccessJob::class);
     }
 
-    public function test_owned_servers_are_tracked_without_claiming_existing_suspensions(): void
+    public function test_account_can_be_unsuspended(): void
     {
         $actor = $this->rootAdmin();
         $user = User::factory()->create();
-        $eligible = $this->createServerModel(['owner_id' => $user->id]);
-        $alreadySuspended = $this->createServerModel([
-            'owner_id' => $user->id,
-            'status' => ServerState::Suspended,
-        ]);
+        $this->service()->suspend($actor, $user);
 
-        $suspension = $this->service()->suspend($actor, $user, 'Policy violation', true);
+        $unsuspendedUser = $this->service()->unsuspend($actor, $user);
 
-        $this->assertDatabaseHas('user_suspension_servers', [
-            'user_suspension_id' => $suspension->id,
-            'server_id' => $eligible->id,
-            'status' => UserSuspensionServer::STATUS_PENDING,
-        ]);
-        $this->assertDatabaseHas('user_suspension_servers', [
-            'user_suspension_id' => $suspension->id,
-            'server_id' => $alreadySuspended->id,
-            'status' => UserSuspensionServer::STATUS_SKIPPED,
-        ]);
-        Bus::assertDispatched(ProcessUserSuspensionServersJob::class, fn ($job) => $job->suspensionId === $suspension->id && !$job->unsuspend);
+        $this->assertFalse($unsuspendedUser->isSuspended());
+        $this->assertNull($unsuspendedUser->suspended_at);
     }
 
-    public function test_lifting_suspension_can_queue_only_servers_changed_by_that_suspension(): void
+    public function test_database_sessions_are_deleted_when_an_account_is_suspended(): void
     {
+        config()->set('session.driver', 'database');
         $actor = $this->rootAdmin();
         $user = User::factory()->create();
-        $server = $this->createServerModel(['owner_id' => $user->id]);
-        $suspension = $this->service()->suspend($actor, $user, 'Temporary review', true);
-        $suspension->servers()->where('server_id', $server->id)->update([
-            'status' => UserSuspensionServer::STATUS_SUSPENDED,
-            'suspended_at' => now(),
+        DB::table('sessions')->insert([
+            'id' => 'suspended-user-session',
+            'user_id' => $user->id,
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'Test',
+            'payload' => '',
+            'last_activity' => now()->timestamp,
         ]);
 
-        $this->service()->unsuspend($actor, $user, true);
+        $this->service()->suspend($actor, $user);
 
-        $this->assertFalse($user->refresh()->isSuspended());
-        $this->assertNotNull($suspension->refresh()->lifted_at);
-        Bus::assertDispatched(ProcessUserSuspensionServersJob::class, fn ($job) => $job->suspensionId === $suspension->id && $job->unsuspend);
+        $this->assertDatabaseMissing('sessions', ['id' => 'suspended-user-session']);
     }
 
     public function test_users_cannot_suspend_themselves(): void
@@ -93,20 +73,9 @@ class AccountSuspensionServiceTest extends IntegrationTestCase
         $actor = $this->rootAdmin();
 
         $this->expectException(DisplayException::class);
-        $this->expectExceptionMessage('You cannot suspend your own account.');
+        $this->expectExceptionMessage(trans('admin/user.suspension.errors.cannot_suspend_self'));
 
-        $this->service()->suspend($actor, $actor, 'Invalid action', false);
-    }
-
-    public function test_suspension_reason_cannot_be_blank(): void
-    {
-        $actor = $this->rootAdmin();
-        $target = User::factory()->create();
-
-        $this->expectException(DisplayException::class);
-        $this->expectExceptionMessage('A suspension reason is required.');
-
-        $this->service()->suspend($actor, $target, '   ', false);
+        $this->service()->suspend($actor, $actor);
     }
 
     public function test_last_active_root_administrator_cannot_be_suspended(): void
@@ -116,30 +85,30 @@ class AccountSuspensionServiceTest extends IntegrationTestCase
         $actor->forceFill(['suspended_at' => now()])->save();
 
         $this->expectException(DisplayException::class);
-        $this->expectExceptionMessage('The last active root administrator cannot be suspended.');
+        $this->expectExceptionMessage(trans('admin/user.suspension.errors.last_root_admin'));
 
-        $this->service()->suspend($actor, $target, 'Invalid action', false);
+        $this->service()->suspend($actor, $target);
     }
 
-    public function test_specific_permission_is_required_for_non_root_administrators(): void
+    public function test_update_permission_is_required_for_non_root_administrators(): void
     {
         $actor = User::factory()->create();
         $target = User::factory()->create();
 
         $this->expectException(AuthorizationException::class);
 
-        $this->service()->suspend($actor, $target, 'Invalid action', false);
+        $this->service()->suspend($actor, $target);
     }
 
-    public function test_suspend_permission_allows_account_only_mode(): void
+    public function test_update_permission_allows_account_suspension(): void
     {
         $actor = User::factory()->create();
         $role = Role::factory()->create(['guard_name' => 'web']);
-        $role->givePermissionTo(Permission::findOrCreate('suspend user', 'web'));
+        $role->givePermissionTo(Permission::findOrCreate('update user', 'web'));
         $actor->syncRoles($role);
         $target = User::factory()->create();
 
-        $this->service()->suspend($actor, $target, 'Manual review', false);
+        $this->service()->suspend($actor, $target);
 
         $this->assertTrue($target->refresh()->isSuspended());
     }

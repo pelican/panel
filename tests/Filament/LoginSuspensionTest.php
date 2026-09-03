@@ -26,7 +26,7 @@ it('shows the suspension message only after valid password credentials', functio
         ])
         ->call('authenticate')
         ->assertHasErrors([
-            'data.login' => 'Your account has been suspended. Please contact support@example.com for assistance.',
+            'data.login' => trans('auth.account_suspended_contact', ['email' => 'support@example.com']),
         ]);
 
     livewire(Login::class)

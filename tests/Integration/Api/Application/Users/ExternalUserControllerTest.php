@@ -24,7 +24,7 @@ class ExternalUserControllerTest extends ApplicationApiIntegrationTestCase
             'object',
             'attributes' => [
                 'id', 'external_id', 'is_managed_externally', 'uuid', 'username', 'email',
-                'language', 'root_admin', 'suspended', 'suspended_at', '2fa', 'created_at', 'updated_at',
+                'language', 'root_admin', '2fa', 'created_at', 'updated_at',
             ],
         ]);
 
@@ -39,8 +39,6 @@ class ExternalUserControllerTest extends ApplicationApiIntegrationTestCase
                 'email' => $user->email,
                 'language' => $user->language,
                 'root_admin' => (bool) $user->isRootAdmin(),
-                'suspended' => false,
-                'suspended_at' => null,
                 '2fa' => filled($user->mfa_app_secret),
                 'created_at' => $this->formatTimestamp($user->created_at),
                 'updated_at' => $this->formatTimestamp($user->updated_at),

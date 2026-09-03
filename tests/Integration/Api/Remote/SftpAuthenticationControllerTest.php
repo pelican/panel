@@ -104,7 +104,7 @@ class SftpAuthenticationControllerTest extends IntegrationTestCase
             'password' => 'foobar',
         ])
             ->assertForbidden()
-            ->assertJsonPath('errors.0.detail', 'Your account has been suspended. Please contact support@example.com for assistance.');
+            ->assertJsonPath('errors.0.detail', trans('auth.account_suspended_contact', ['email' => 'support@example.com']));
     }
 
     /**

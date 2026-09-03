@@ -18,8 +18,6 @@ Route::prefix('/users')->group(function () {
 
     Route::post('/', [Application\Users\UserController::class, 'store']);
     Route::patch('/{user:id}', [Application\Users\UserController::class, 'update']);
-    Route::post('/{user:id}/suspend', [Application\Users\UserSuspensionController::class, 'suspend']);
-    Route::post('/{user:id}/unsuspend', [Application\Users\UserSuspensionController::class, 'unsuspend']);
 
     Route::patch('/{user:id}/roles/assign', [Application\Users\UserController::class, 'assignRoles']);
     Route::patch('/{user:id}/roles/remove', [Application\Users\UserController::class, 'removeRoles']);

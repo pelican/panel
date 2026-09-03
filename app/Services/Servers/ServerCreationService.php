@@ -57,9 +57,6 @@ class ServerCreationService
             $data['oom_killer'] = !$data['oom_disabled'];
         }
 
-        $owner = User::query()->findOrFail($data['owner_id']);
-        throw_if($owner->isSuspended(), new DisplayException('Servers cannot be assigned to a suspended account.'));
-
         /** @var Egg $egg */
         $egg = Egg::query()->findOrFail($data['egg_id']);
 
@@ -109,9 +106,6 @@ class ServerCreationService
         // deleting the server itself from the system.
         /** @var Server $server */
         $server = $this->connection->transaction(function () use ($data, $eggVariableData) {
-            $owner = User::query()->lockForUpdate()->findOrFail($data['owner_id']);
-            throw_if($owner->isSuspended(), new DisplayException('Servers cannot be assigned to a suspended account.'));
-
             // Create the server and assign any additional allocations to it.
             $server = $this->createModel($data);
 

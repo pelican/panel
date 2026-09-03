@@ -21,7 +21,10 @@ class AuthenticationListener
     public function handle(Failed|Login $event): void
     {
         if ($event instanceof Login && $event->user instanceof User && request()->hasSession()) {
-            request()->session()->put(EnsureAccountIsActive::SESSION_KEY, $event->user->auth_session_version);
+            request()->session()->put(
+                EnsureAccountIsActive::SESSION_KEY,
+                hash('sha256', (string) $event->user->getRememberToken())
+            );
         }
 
         $activity = Activity::withRequestMetadata();
