@@ -23,6 +23,17 @@ class AddPasskeyErrorMessage
         if ($response instanceof JsonResponse && ($response->isClientError() || $response->isServerError())) {
             $data = $response->getData(true);
 
+            if ($message = $request->session()->pull('passkeys.suspension_message')) {
+                $data['message'] = $message;
+                if (isset($data['errors'][0]) && is_array($data['errors'][0])) {
+                    $data['errors'][0]['detail'] = $message;
+                }
+
+                $response->setData($data);
+
+                return $response;
+            }
+
             if (is_array($data) && !isset($data['message']) && isset($data['errors'][0]['detail'])) {
                 $data['message'] = $data['errors'][0]['detail'];
 

@@ -3,6 +3,8 @@
 namespace App\Listeners\Auth;
 
 use App\Facades\Activity;
+use App\Http\Middleware\EnsureAccountIsActive;
+use App\Models\User;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 
@@ -18,6 +20,13 @@ class AuthenticationListener
      */
     public function handle(Failed|Login $event): void
     {
+        if ($event instanceof Login && $event->user instanceof User && request()->hasSession()) {
+            request()->session()->put(
+                EnsureAccountIsActive::SESSION_KEY,
+                hash('sha256', (string) $event->user->getRememberToken())
+            );
+        }
+
         $activity = Activity::withRequestMetadata();
 
         if ($event->user) {

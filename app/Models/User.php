@@ -70,6 +70,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string[]|null $mfa_app_recovery_codes
  * @property bool $mfa_email_enabled
  * @property bool $is_managed_externally
+ * @property Carbon|null $suspended_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, ActivityLog> $activity
  * @property-read int|null $activity_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, ApiKey> $apiKeys
@@ -162,7 +163,7 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
     /**
      * The attributes excluded from the model's JSON form.
      */
-    protected $hidden = ['password', 'remember_token', 'mfa_app_secret', 'mfa_app_recovery_codes', 'oauth'];
+    protected $hidden = ['password', 'remember_token', 'mfa_app_secret', 'mfa_app_recovery_codes', 'oauth', 'suspended_at'];
 
     /**
      * Default values for specific fields in the database.
@@ -177,6 +178,7 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         'mfa_email_enabled' => false,
         'oauth' => '[]',
         'customization' => null,
+        'suspended_at' => null,
     ];
 
     /** @var array<array-key, string[]> */
@@ -213,6 +215,7 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
             'mfa_email_enabled' => 'boolean',
             'oauth' => 'array',
             'customization' => 'array',
+            'suspended_at' => 'datetime',
         ];
     }
 
@@ -275,6 +278,22 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
     public function servers(): HasMany
     {
         return $this->hasMany(Server::class, 'owner_id');
+    }
+
+    public function isSuspended(): bool
+    {
+        return !is_null($this->suspended_at);
+    }
+
+    public static function suspensionMessage(): string
+    {
+        $email = config('mail.from.address');
+
+        if (is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return trans('auth.account_suspended_contact', ['email' => $email]);
+        }
+
+        return trans('auth.account_suspended');
     }
 
     public function apiKeys(): HasMany
@@ -472,6 +491,10 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
 
     public function canAccessPanel(Panel $panel): bool
     {
+        if ($this->isSuspended()) {
+            return false;
+        }
+
         if ($this->isRootAdmin()) {
             return true;
         }

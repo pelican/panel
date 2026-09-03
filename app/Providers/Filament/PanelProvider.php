@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Enums\CustomizationKey;
 use App\Filament\Pages\Auth\EditProfile;
 use App\Filament\Pages\Auth\Login;
+use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\LanguageMiddleware;
 use App\Http\Middleware\PreventRequestForgery;
 use App\Http\Middleware\RedirectIfNotInstalled;
@@ -77,6 +78,7 @@ abstract class PanelProvider extends BasePanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                EnsureAccountIsActive::class,
                 RequireTwoFactorAuthentication::class,
             ]);
     }

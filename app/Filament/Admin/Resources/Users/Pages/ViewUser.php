@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\Users\Pages;
 
+use App\Filament\Admin\Resources\Users\Actions\UserSuspensionActions;
 use App\Filament\Admin\Resources\Users\UserResource;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
@@ -21,6 +22,8 @@ class ViewUser extends ViewRecord
     protected function getDefaultHeaderActions(): array
     {
         return [
+            UserSuspensionActions::suspend(),
+            UserSuspensionActions::unsuspend(),
             EditAction::make(),
         ];
     }

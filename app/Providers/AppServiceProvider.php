@@ -36,11 +36,14 @@ use Illuminate\Config\Repository;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Console\AboutCommand;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Laravel\Passkeys\Contracts\PasskeyUser;
+use Laravel\Passkeys\Passkey;
 use Laravel\Passkeys\Passkeys;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Health\Checks\Checks\QueueCheck;
@@ -95,6 +98,19 @@ class AppServiceProvider extends ServiceProvider
         );
 
         Passkeys::useUserModel(User::class);
+        Passkeys::authorizeLoginUsing(function (Request $request, PasskeyUser $passkeyUser, Passkey $passkey): bool {
+            if (!$passkeyUser instanceof User) {
+                return true;
+            }
+
+            if (!$passkeyUser->isSuspended()) {
+                return true;
+            }
+
+            $request->session()->flash('passkeys.suspension_message', User::suspensionMessage());
+
+            return false;
+        });
 
         Sanctum::usePersonalAccessTokenModel(ApiKey::class);
 

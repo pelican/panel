@@ -6,6 +6,7 @@ use App\Enums\CustomizationKey;
 use App\Enums\TablerIcon;
 use App\Extensions\OAuth\OAuthService;
 use App\Facades\Activity;
+use App\Filament\Admin\Resources\Users\Actions\UserSuspensionActions;
 use App\Filament\Admin\Resources\Users\Pages\CreateUser;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Filament\Admin\Resources\Users\Pages\ListUsers;
@@ -53,6 +54,7 @@ use Filament\Support\Colors\Color;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Auth\Events\PasswordResetLinkSent;
 use Illuminate\Database\Eloquent\Builder;
@@ -124,6 +126,13 @@ class UserResource extends Resource
                     ->label(trans('admin/user.email'))
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('account_status')
+                    ->label(trans('admin/user.suspension.status'))
+                    ->state(fn (User $user) => $user->isSuspended()
+                        ? trans('admin/user.suspension.suspended')
+                        : trans('admin/user.suspension.active'))
+                    ->badge()
+                    ->color(fn (User $record) => $record->isSuspended() ? 'danger' : 'success'),
                 IconColumn::make('mfa_email_enabled')
                     ->label(trans('profile.tabs.2fa'))
                     ->visibleFrom('lg')
@@ -142,9 +151,22 @@ class UserResource extends Resource
                     ->counts('subusers'),
             ])
             ->recordActions([
+                UserSuspensionActions::suspend(),
+                UserSuspensionActions::unsuspend(),
                 ViewAction::make()
                     ->hidden(fn ($record) => static::getEditAuthorizationResponse($record)->allowed()),
                 EditAction::make(),
+            ])
+            ->filters([
+                TernaryFilter::make('suspended')
+                    ->label(trans('admin/user.suspension.status'))
+                    ->placeholder(trans('admin/user.suspension.filters.all'))
+                    ->trueLabel(trans('admin/user.suspension.filters.suspended'))
+                    ->falseLabel(trans('admin/user.suspension.filters.active'))
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereNotNull('suspended_at'),
+                        false: fn (Builder $query) => $query->whereNull('suspended_at'),
+                    ),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
@@ -181,6 +203,16 @@ class UserResource extends Resource
                     'lg' => 3,
                 ])
                 ->schema([
+                    Section::make(trans('admin/user.suspension.section.title'))
+                        ->description(trans('admin/user.suspension.section.description'))
+                        ->icon(TablerIcon::UserOff)
+                        ->columnSpanFull()
+                        ->visible(fn (?User $record) => $record?->isSuspended() ?? false)
+                        ->schema([
+                            TextEntry::make('suspended_at')
+                                ->label(trans('admin/user.suspension.suspended_at'))
+                                ->dateTime(),
+                        ]),
                     TextInput::make('username')
                         ->label(trans('admin/user.username'))
                         ->columnSpan([
