@@ -32,9 +32,7 @@ class EnsureAccountIsActive
             $sessionTokenHash = $request->session()->get(self::SESSION_KEY);
             $currentTokenHash = hash('sha256', (string) $user->getRememberToken());
 
-            if (is_null($sessionTokenHash)) {
-                $request->session()->put(self::SESSION_KEY, $currentTokenHash);
-            } elseif (!is_string($sessionTokenHash) || !hash_equals($sessionTokenHash, $currentTokenHash)) {
+            if (!is_string($sessionTokenHash) || !hash_equals($sessionTokenHash, $currentTokenHash)) {
                 return $this->logout($request, trans('auth.session_expired'));
             }
         }

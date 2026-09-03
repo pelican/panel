@@ -50,4 +50,18 @@ class EnsureAccountIsActiveTest extends IntegrationTestCase
 
         $this->assertGuest();
     }
+
+    public function test_legacy_browser_sessions_are_invalidated_with_a_non_database_session_driver(): void
+    {
+        config()->set('session.driver', 'array');
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->withSession(['auth_session_version' => 1]);
+
+        $this->get('/')
+            ->assertRedirect(route('filament.app.auth.login'));
+
+        $this->assertGuest();
+    }
 }
