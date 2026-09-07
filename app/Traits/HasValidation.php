@@ -97,7 +97,7 @@ trait HasValidation
             // properly be validated.
             $this->addCastAttributesToArray(
                 $this->getAttributes(),
-                $this->getMutatedAttributes()
+                $this->getMutatedAttributes() // @phpstan-ignore argument.type (docblock wants array<string, mixed> but the method only in_array()s the values)
             )
         );
 
