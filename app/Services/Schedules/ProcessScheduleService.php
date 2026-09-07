@@ -11,6 +11,7 @@ use App\Repositories\Daemon\DaemonServerRepository;
 use Exception;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Facades\Log;
 
 class ProcessScheduleService
 {
@@ -39,15 +40,17 @@ class ProcessScheduleService
             // Check that the server is currently in a starting or running state before executing
             // this schedule if this option has been set.
             try {
-                $state = ContainerStatus::tryFrom(fluent($this->serverRepository->setServer($schedule->server)->getDetails())->get('state')) ?? ContainerStatus::Offline;
+                $state = ContainerStatus::tryFrom(fluent($this->serverRepository->setServer($schedule->server)->getDetails(timeout: 5))->get('state')) ?? ContainerStatus::Offline;
 
                 // If the server is stopping or offline just do nothing with this task.
                 if ($state->isOffline()) {
+                    Log::warning("Skipping schedule '{$schedule->name}' ({$schedule->id}) for server {$schedule->server->uuid}: server state is {$state->value}");
                     $job->failed();
 
                     return;
                 }
-            } catch (Exception) {
+            } catch (Exception $exception) {
+                Log::warning("Skipping schedule '{$schedule->name}' ({$schedule->id}) for server {$schedule->server->uuid}: {$exception->getMessage()}");
                 $job->failed();
 
                 return;

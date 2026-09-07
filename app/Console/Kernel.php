@@ -39,7 +39,7 @@ class Kernel extends ConsoleKernel
         }
 
         // Execute scheduled commands for servers every minute, as if there was a normal cron running.
-        $schedule->command(ProcessRunnableCommand::class)->everyMinute()->withoutOverlapping();
+        $schedule->command(ProcessRunnableCommand::class)->everyMinute()->withoutOverlapping(10);
 
         $schedule->command(CleanServiceBackupFilesCommand::class)->daily();
         $schedule->command(PruneImagesCommand::class)->daily();

@@ -17,10 +17,10 @@ class DaemonServerRepository extends DaemonRepository
      *
      * @return array<string, mixed>
      */
-    public function getDetails(): array
+    public function getDetails(int $timeout = 1): array
     {
         try {
-            return $this->getHttpClient()->connectTimeout(1)->timeout(1)->get("/api/servers/{$this->server->uuid}")->throw()->json();
+            return $this->getHttpClient()->connectTimeout($timeout)->timeout($timeout)->get("/api/servers/{$this->server->uuid}")->throw()->json();
         } catch (RequestException $exception) {
             $cfId = $exception->response->header('Cf-Ray');
             $cfCache = $exception->response->header('Cf-Cache-Status');
