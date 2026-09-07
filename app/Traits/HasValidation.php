@@ -90,6 +90,8 @@ trait HasValidation
             return;
         }
 
+        $mutatedAttributes = $this->getMutatedAttributes();
+
         $validator = $this->getValidator();
         $validator->setData(
             // Trying to do self::toArray() here will leave out keys based on the whitelist/blacklist
@@ -97,7 +99,7 @@ trait HasValidation
             // properly be validated.
             $this->addCastAttributesToArray(
                 $this->getAttributes(),
-                $this->getMutatedAttributes() // @phpstan-ignore argument.type (docblock wants array<string, mixed> but the method only in_array()s the values)
+                array_combine($mutatedAttributes, $mutatedAttributes)
             )
         );
 
