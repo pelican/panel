@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application\Webhooks;
 
+use App\Data\Api\Application\WebhookConfigurationData;
 use App\Extensions\Webhooks\Schemas\WebhookSchemaInterface;
 use App\Facades\WebhookTypes;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
@@ -11,7 +12,6 @@ use App\Http\Requests\Api\Application\Webhooks\StoreWebhookRequest;
 use App\Http\Requests\Api\Application\Webhooks\TestWebhookRequest;
 use App\Http\Requests\Api\Application\Webhooks\UpdateWebhookRequest;
 use App\Models\WebhookConfiguration;
-use App\Transformers\Api\Application\WebhookConfigurationTransformer;
 use Illuminate\Http\JsonResponse;
 use Spatie\QueryBuilder\QueryBuilder;
 use Throwable;
@@ -32,8 +32,8 @@ class WebhookController extends ApplicationApiController
             ->allowedSorts(['id', 'name', 'type', 'created_at'])
             ->paginate($request->perPage());
 
-        return $this->fractal->collection($webhooks)
-            ->transformWith($this->getTransformer(WebhookConfigurationTransformer::class))
+        return $this->response->collection($webhooks)
+            ->transformWith(WebhookConfigurationData::class)
             ->toArray();
     }
 
@@ -46,8 +46,8 @@ class WebhookController extends ApplicationApiController
      */
     public function view(GetWebhookRequest $request, WebhookConfiguration $webhook): array
     {
-        return $this->fractal->item($webhook)
-            ->transformWith($this->getTransformer(WebhookConfigurationTransformer::class))
+        return $this->response->item($webhook)
+            ->transformWith(WebhookConfigurationData::class)
             ->toArray();
     }
 
@@ -64,8 +64,8 @@ class WebhookController extends ApplicationApiController
         $webhook = new WebhookConfiguration();
         $webhook->fill($request->resolvedAttributes())->saveOrFail();
 
-        return $this->fractal->item($webhook->fresh())
-            ->transformWith($this->getTransformer(WebhookConfigurationTransformer::class))
+        return $this->response->item($webhook->fresh())
+            ->transformWith(WebhookConfigurationData::class)
             ->addMeta([
                 'resource' => route('api.application.webhooks.view', [
                     'webhook' => $webhook->id,
@@ -87,8 +87,8 @@ class WebhookController extends ApplicationApiController
     {
         $webhook->fill($request->resolvedAttributes())->saveOrFail();
 
-        return $this->fractal->item($webhook->fresh())
-            ->transformWith($this->getTransformer(WebhookConfigurationTransformer::class))
+        return $this->response->item($webhook->fresh())
+            ->transformWith(WebhookConfigurationData::class)
             ->toArray();
     }
 
