@@ -6,6 +6,8 @@
         $userRows = (int) user()?->getCustomization(\App\Enums\CustomizationKey::ConsoleRows);
 
         $terminalPrelude = str(config('app.name'))->slug()->lower()->toString();
+
+        $componentName = fn (string $class) => app('livewire.finder')->normalizeName($class);
     @endphp
     @if($userFont !== "monospace")
         <link rel="preload" href="{{ asset("storage/fonts/{$userFont}.ttf") }}" as="font" crossorigin>
@@ -134,7 +136,59 @@
 
         const socket = new WebSocket("{{ $this->getSocket() }}");
 
+        window.ServerStats.configure({
+            binaryPrefix: @js((bool) config('panel.use_binary_prefix')),
+            period: @js((int) user()?->getCustomization(\App\Enums\CustomizationKey::ConsoleGraphPeriod)),
+            locale: @js(str_replace('_', '-', user()->language ?? 'en')),
+            offlineLabel: @js(\App\Enums\ContainerStatus::Offline->getLabel()),
+            statusLabels: @js(collect(\App\Enums\ContainerStatus::cases())->mapWithKeys(fn ($case) => [$case->value => $case->getLabel()])),
+        });
+
+        let statusIsLive = @js($this->server->status === null);
+
+        const setStatText = (id, value) => {
+            const element = document.getElementById(id);
+
+            if (element) {
+                element.textContent = value;
+            }
+        };
+
+        const pushToWidgets = () => {
+            Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerCpuChart::class)), 'updateChartData', { data: window.ServerStats.cpuData() });
+            Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerMemoryChart::class)), 'updateChartData', { data: window.ServerStats.memoryData() });
+            Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerNetworkChart::class)), 'updateChartData', { data: window.ServerStats.networkData() });
+
+            const latest = window.ServerStats.latest();
+            const state = window.ServerStats.state();
+
+            if (latest) {
+                setStatText('server-network-heading', `- ↓${window.ServerStats.bytesToReadable(latest.rx)} - ↑${window.ServerStats.bytesToReadable(latest.tx)}`);
+                setStatText('server-stat-disk', latest.disk === 0 ? window.ServerStats.unknownLabel() : window.ServerStats.bytesToReadable(latest.disk));
+            }
+
+            const statValue = (format) => {
+                if (state === 'offline') {
+                    return window.ServerStats.offlineLabel();
+                }
+
+                return state === null || !latest ? window.ServerStats.unknownLabel() : format(latest);
+            };
+
+            setStatText('server-stat-cpu', statValue((sample) => `${window.ServerStats.formatNumber(sample.cpu, 2, 0)} %`));
+            setStatText('server-stat-memory', statValue((sample) => window.ServerStats.bytesToReadable(sample.memory)));
+
+            if (statusIsLive) {
+                setStatText('server-stat-status', window.ServerStats.statusText());
+            }
+        };
+
         socket.onerror = (event) => {
+            $wire.dispatchSelf('websocket-error');
+        };
+
+        // A dropped socket would otherwise leave the page frozen at its last values.
+        socket.onclose = (event) => {
             $wire.dispatchSelf('websocket-error');
         };
 
@@ -147,6 +201,7 @@
                     handleConsoleOutput(args[0]);
                     break;
                 case 'install completed':
+                    statusIsLive = true;
                     $wire.dispatch('refresh-sidebar');
                     $wire.dispatch('refresh-topbar');
                     $wire.dispatch('removeAlertBanner', { id: 'server_conflict' });
@@ -156,6 +211,8 @@
                     break;
                 case 'status':
                     handlePowerChangeEvent(args[0]);
+                    window.ServerStats.setState(args[0]);
+                    pushToWidgets();
                     $wire.dispatch('console-status', { state: args[0] });
                     break;
                 case 'transfer status':
@@ -165,7 +222,8 @@
                     handleDaemonErrorOutput(args[0]);
                     break;
                 case 'stats':
-                    $wire.dispatchSelf('store-stats', { data: args[0] });
+                    window.ServerStats.push(JSON.parse(args[0]));
+                    pushToWidgets();
                     break;
                 case 'auth success':
                     socket.send(JSON.stringify({

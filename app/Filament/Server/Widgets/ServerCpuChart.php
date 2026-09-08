@@ -2,16 +2,14 @@
 
 namespace App\Filament\Server\Widgets;
 
-use App\Enums\CustomizationKey;
 use App\Models\Server;
 use Filament\Facades\Filament;
 use Filament\Support\RawJs;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Carbon;
 
 class ServerCpuChart extends ChartWidget
 {
-    protected ?string $pollingInterval = '1s';
+    protected ?string $pollingInterval = null;
 
     protected ?string $maxHeight = '200px';
 
@@ -27,19 +25,10 @@ class ServerCpuChart extends ChartWidget
 
     protected function getData(): array
     {
-        $period = (int) user()?->getCustomization(CustomizationKey::ConsoleGraphPeriod);
-        $cpu = collect(cache()->get("servers.{$this->server->id}.cpu_absolute"))
-            ->slice(-$period)
-            ->map(fn ($value, $key) => [
-                'cpu' => round($value, 2),
-                'timestamp' => Carbon::createFromTimestamp($key, user()->timezone ?? 'UTC')->format('H:i:s'),
-            ])
-            ->all();
-
         return [
             'datasets' => [
                 [
-                    'data' => array_column($cpu, 'cpu'),
+                    'data' => [],
                     'backgroundColor' => [
                         'rgba(96, 165, 250, 0.3)',
                     ],
@@ -47,7 +36,7 @@ class ServerCpuChart extends ChartWidget
                     'fill' => true,
                 ],
             ],
-            'labels' => array_column($cpu, 'timestamp'),
+            'labels' => [],
             'locale' => user()->language ?? 'en',
         ];
     }
