@@ -1,0 +1,26 @@
+name: Stamp version
+description: Replace the canary version in config/app.php with the release version and fail if the replacement did not happen
+
+inputs:
+  version:
+    description: The version to stamp, with or without the leading v
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Stamp version in config/app.php
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        VERSION="${VERSION#v}"
+        if [ -z "$VERSION" ] || [[ "$VERSION" == refs/* ]] || [[ "$VERSION" == main ]]; then
+          echo "Invalid version '$VERSION', refusing to update config"
+          exit 1
+        fi
+        sed -i "s|'version' => 'canary',|'version' => '$VERSION',|" config/app.php
+        if ! grep -qF "'version' => '$VERSION'," config/app.php; then
+          echo "Version stamp failed, config/app.php still does not contain '$VERSION'"
+          exit 1
+        fi
