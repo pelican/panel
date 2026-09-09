@@ -4,6 +4,7 @@ namespace App\Console\Commands\Plugin;
 
 use App\Enums\PluginCategory;
 use App\Enums\PluginStatus;
+use App\Models\Plugin;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -111,6 +112,7 @@ class MakePluginCommand extends Command
             'class' => $class,
             'panels' => $panels,
             'panel_version' => $panelVersion,
+            'api_version' => Plugin::SUPPORTED_API_VERSION,
             'composer_packages' => $composerPackages,
             'meta' => [
                 'status' => PluginStatus::Enabled,
