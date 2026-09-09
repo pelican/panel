@@ -87,7 +87,7 @@ class DispatchWebhooks
         $webhookData = ['event' => $eventName, 'timestamp' => now()->toIso8601String()];
         if (is_object($obj)) {
             // Custom event classes rarely implement toArray, so fall back to their public properties
-            $webhookData['data'] = method_exists($obj, 'toArray') ? $obj->toArray() : get_object_vars($obj);
+            $webhookData['data'] = is_callable([$obj, 'toArray']) ? $obj->toArray() : get_object_vars($obj);
         } elseif (is_array($obj)) {
             $webhookData['data'] = $obj;
         }
