@@ -17,7 +17,7 @@ trait EnvironmentWriterTrait
      */
     public function writeToEnvironment(array $values = []): void
     {
-        Env::writeVariables($values, base_path('.env'), true);
+        Env::writeVariables($values, app()->environmentFilePath(), true);
         Artisan::call('config:clear');
     }
 }
