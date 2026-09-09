@@ -44,7 +44,7 @@ class PluginService
             try {
                 // Filter out plugins that are not compatible with the current panel version
                 if (!$plugin->isCompatible()) {
-                    $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin is only compatible with Panel version ' . $plugin->panel_version . (!$plugin->isPanelVersionStrict() ? ' or newer' : '') . ' but you are using version ' . config('app.version') . '!');
+                    $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin is only compatible with Panel version ' . $plugin->panel_version . (!$plugin->isPanelVersionStrict() ? ' or newer' : '') . ' but you are using version ' . $this->app->make(SoftwareVersionService::class)->currentPanelVersion() . '!');
 
                     continue;
                 } else {

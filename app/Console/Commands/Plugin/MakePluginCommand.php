@@ -4,6 +4,7 @@ namespace App\Console\Commands\Plugin;
 
 use App\Enums\PluginCategory;
 use App\Enums\PluginStatus;
+use App\Services\Helpers\SoftwareVersionService;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -27,7 +28,7 @@ class MakePluginCommand extends Command
         parent::__construct();
     }
 
-    public function handle(): void
+    public function handle(SoftwareVersionService $versionService): void
     {
         $name = $this->option('name') ?? $this->ask('Name');
         $name = preg_replace('/[^A-Za-z0-9 ]/', '', Str::ascii($name));
@@ -84,7 +85,7 @@ class MakePluginCommand extends Command
 
         $panelVersion = $this->option('panelVersion');
         if (!$panelVersion) {
-            $panelVersion = $this->ask('Required panel version (leave empty for no constraint)', config('app.version') === 'canary' ? null : config('app.version'));
+            $panelVersion = $this->ask('Required panel version (leave empty for no constraint)', $versionService->currentComparableVersion());
 
             if ($panelVersion && $this->confirm("Should the version constraint be minimal instead of strict? ($panelVersion or higher instead of only $panelVersion)")) {
                 $panelVersion = "^$panelVersion";

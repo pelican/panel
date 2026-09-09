@@ -21,8 +21,15 @@ class PanelVersionCheck extends Check
                 'isLatest' => $isLatest,
                 'currentVersion' => $currentVersion,
                 'latestVersion' => $latestVersion,
-            ])
-            ->shortSummary($isLatest ? trans('admin/health.results.panelversion.up_to_date') : trans('admin/health.results.panelversion.outdated'));
+            ]);
+
+        if (is_null($latestVersion)) {
+            return $result
+                ->shortSummary(trans('admin/health.results.panelversion.unknown'))
+                ->warning(trans('admin/health.results.panelversion.unavailable'));
+        }
+
+        $result->shortSummary($isLatest ? trans('admin/health.results.panelversion.up_to_date') : trans('admin/health.results.panelversion.outdated'));
 
         return $isLatest
             ? $result->ok(trans('admin/health.results.panelversion.ok'))

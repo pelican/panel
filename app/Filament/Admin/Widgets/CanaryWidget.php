@@ -3,11 +3,13 @@
 namespace App\Filament\Admin\Widgets;
 
 use App\Enums\TablerIcon;
+use App\Services\Helpers\SoftwareVersionService;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\App;
 
 class CanaryWidget extends FormWidget
 {
@@ -15,7 +17,7 @@ class CanaryWidget extends FormWidget
 
     public static function canView(): bool
     {
-        return config('app.version') === 'canary';
+        return App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion()) === null;
     }
 
     /**

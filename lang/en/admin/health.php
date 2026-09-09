@@ -42,6 +42,8 @@ return [
             'failed' => 'Installed version is :currentVersion but latest is :latestVersion',
             'up_to_date' => 'Up to date',
             'outdated' => 'Outdated',
+            'unknown' => 'Unknown',
+            'unavailable' => 'The latest version could not be fetched from GitHub',
         ],
         'schedule' => [
             'label' => 'Schedule',

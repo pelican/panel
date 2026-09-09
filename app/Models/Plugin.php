@@ -7,10 +7,12 @@ use App\Enums\PluginCategory;
 use App\Enums\PluginStatus;
 use App\Exceptions\PluginIdMismatchException;
 use App\Facades\Plugins;
+use App\Services\Helpers\SoftwareVersionService;
 use Exception;
 use Filament\Schemas\Components\Component;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -230,9 +232,9 @@ class Plugin extends Model implements HasPluginSettings
 
     public function isCompatible(): bool
     {
-        $currentPanelVersion = config('app.version', 'canary');
+        $currentPanelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
 
-        return !$this->panel_version || $currentPanelVersion === 'canary' || version_compare($currentPanelVersion, str($this->panel_version)->trim('^'), $this->isPanelVersionStrict() ? '=' : '>=');
+        return !$this->panel_version || $currentPanelVersion === null || version_compare($currentPanelVersion, str($this->panel_version)->trim('^'), $this->isPanelVersionStrict() ? '=' : '>=');
     }
 
     public function isPanelVersionStrict(): bool
@@ -281,9 +283,9 @@ class Plugin extends Model implements HasPluginSettings
 
     public function isUpdateAvailable(): bool
     {
-        $panelVersion = config('app.version', 'canary');
+        $panelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
 
-        if ($panelVersion === 'canary') {
+        if ($panelVersion === null) {
             return false;
         }
 
@@ -303,9 +305,9 @@ class Plugin extends Model implements HasPluginSettings
 
     public function getDownloadUrlForUpdate(): ?string
     {
-        $panelVersion = config('app.version', 'canary');
+        $panelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
 
-        if ($panelVersion === 'canary') {
+        if ($panelVersion === null) {
             return null;
         }
 

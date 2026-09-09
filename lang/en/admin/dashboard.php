@@ -17,7 +17,12 @@ return [
         'intro-update-available' => [
             'heading' => 'Update available',
             'content' => ':latestVersion is now available! Read our documentation to update your Panel.',
+            'content_container' => ':latestVersion is now available! Pull the new image and recreate the container to update your Panel.',
             'button_changelog' => 'What\'s New?',
+        ],
+        'intro-version-unavailable' => [
+            'heading' => 'Version check unavailable',
+            'content' => 'You are currently using :version. The latest version could not be fetched from GitHub, so it is unknown whether an update is available.',
         ],
         'intro-no-update' => [
             'heading' => 'Your Panel is up to date',
