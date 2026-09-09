@@ -63,9 +63,7 @@ jobs:
           tar -czf panel.tar.gz * .env.example
 
       - name: Create checksum
-        run: |
-          SUM=`sha256sum panel.tar.gz`
-          echo $SUM > checksum.txt
+        run: sha256sum panel.tar.gz > checksum.txt
 
       - name: Create release
         id: create_release
