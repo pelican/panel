@@ -232,7 +232,24 @@ class Plugin extends Model implements HasPluginSettings
     {
         $currentPanelVersion = config('app.version', 'canary');
 
-        return !$this->panel_version || $currentPanelVersion === 'canary' || version_compare($currentPanelVersion, str($this->panel_version)->trim('^'), $this->isPanelVersionStrict() ? '=' : '>=');
+        if (!$this->panel_version || $currentPanelVersion === 'canary') {
+            return true;
+        }
+
+        if ($this->isPanelVersionStrict()) {
+            return version_compare($currentPanelVersion, $this->panel_version, '=');
+        }
+
+        // ^X.Y.Z means >=X.Y.Z and below the next major (or the next minor for 0.x), like composer's caret
+        $parts = explode('.', ltrim($this->panel_version, '^'));
+        $minimum = implode('.', array_pad($parts, 3, '0'));
+        $upper = $parts[0] === '0' && isset($parts[1])
+            ? '0.' . ((int) $parts[1] + 1) . '.0'
+            : ((int) $parts[0] + 1) . '.0.0';
+
+        // ponytail: prereleases of the upper bound (2.0.0-rc1 vs ^1.0) pass version_compare's '<'
+        // where composer would exclude them; swap to composer/semver if that ever bites
+        return version_compare($currentPanelVersion, $minimum, '>=') && version_compare($currentPanelVersion, $upper, '<');
     }
 
     public function isPanelVersionStrict(): bool
