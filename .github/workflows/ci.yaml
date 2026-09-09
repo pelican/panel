@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        php: [8.3, 8.4, 8.5]
+        php: [8.4, 8.5]
     env:
       DB_CONNECTION: sqlite
       DB_DATABASE: testing.sqlite
@@ -84,13 +84,18 @@ jobs:
         env:
           CREATE_SNAPSHOTS: "false"
 
+      - name: Feature tests
+        run: vendor/bin/pest tests/Feature --parallel --do-not-fail-on-phpunit-warning
+        env:
+          CREATE_SNAPSHOTS: "false"
+
   mysql:
     name: MySQL
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
       matrix:
-        php: [8.5]
+        php: [8.4, 8.5]
         database: ["mysql:8.4", "mysql:9.6"]
     services:
       database:
@@ -153,7 +158,7 @@ jobs:
       fail-fast: true
       matrix:
         php: [8.5]
-        database: ["mariadb:10.11", "mariadb:11.4"]
+        database: ["mariadb:11.4"]
     services:
       database:
         image: ${{ matrix.database }}

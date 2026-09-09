@@ -14,6 +14,9 @@
         <testsuite name="Filament">
             <directory>./tests/Filament</directory>
         </testsuite>
+        <testsuite name="Feature">
+            <directory>./tests/Feature</directory>
+        </testsuite>
     </testsuites>
     <php>
         <env name="APP_ENV" value="testing"/>
