@@ -38,9 +38,10 @@ class AllocationControllerTest extends ApplicationApiIntegrationTestCase
             'ports' => ['25565', '25570-25572'],
         ])->assertStatus(Response::HTTP_NO_CONTENT);
 
-        $this->assertEquals(4, Allocation::query()->where('node_id', $this->node->id)->count());
-        $this->assertDatabaseHas('allocations', ['node_id' => $this->node->id, 'ip' => '10.0.0.1', 'port' => 25565]);
-        $this->assertDatabaseHas('allocations', ['node_id' => $this->node->id, 'ip' => '10.0.0.1', 'port' => 25572]);
+        $this->assertEqualsCanonicalizing(
+            [25565, 25570, 25571, 25572],
+            Allocation::query()->where('node_id', $this->node->id)->where('ip', '10.0.0.1')->pluck('port')->all(),
+        );
     }
 
     public function test_create_allocations_requires_ports(): void

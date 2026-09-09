@@ -95,7 +95,7 @@ class ServerControllerTest extends ApplicationApiIntegrationTestCase
         // The failed creation triggers a force delete, which talks to the daemon again.
         $this->daemonServerRepository->shouldReceive('setServer')->andReturnSelf();
         $this->daemonServerRepository->expects('create')->andThrow(new ConnectionException());
-        $this->daemonServerRepository->shouldReceive('delete');
+        $this->daemonServerRepository->expects('delete')->andReturnUndefined();
 
         $this->postJson('/api/application/servers', $this->storePayload())
             ->assertServerError();
