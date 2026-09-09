@@ -15,7 +15,7 @@ runs:
         VERSION: ${{ inputs.version }}
       run: |
         VERSION="${VERSION#v}"
-        if [ -z "$VERSION" ] || [[ "$VERSION" == refs/* ]] || [[ "$VERSION" == main ]]; then
+        if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
           echo "Invalid version '$VERSION', refusing to update config"
           exit 1
         fi
