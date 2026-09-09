@@ -154,8 +154,6 @@ class BuildModificationServiceTest extends IntegrationTestCase
      */
     public function test_connection_exception_is_ignored_when_updating_server_settings(): void
     {
-        $this->markTestSkipped();
-
         $server = $this->createServerModel();
 
         $this->daemonServerRepository->expects('setServer->sync')->andThrows(new ConnectionException());

@@ -9,6 +9,9 @@ use App\Models\Database;
 use App\Models\DatabaseHost;
 use App\Services\Databases\DatabaseManagementService;
 use App\Tests\Integration\IntegrationTestCase;
+use Illuminate\Database\Connection;
+use Illuminate\Support\Facades\DB;
+use Mockery\MockInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 class DatabaseManagementServiceTest extends IntegrationTestCase
@@ -110,18 +113,14 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
      */
     public function test_server_database_can_be_created(): void
     {
-        $this->markTestSkipped();
-        /* TODO: The exception is because the transaction is closed
-            because the database create closes it early */
-
         $server = $this->createServerModel();
         $name = DatabaseManagementService::generateUniqueDatabaseName('something', $server->id);
 
         $host = DatabaseHost::factory()->recycle($server->node)->create();
 
-        $username = null;
-        $secondUsername = null;
-        $password = null;
+        // CREATE DATABASE, CREATE USER, GRANT, FLUSH PRIVILEGES
+        $this->fakeRemoteDatabaseConnection()
+            ->shouldReceive('statement')->times(4)->andReturnTrue();
 
         $response = $this->getService()->create($server, [
             'remote' => '%',
@@ -131,44 +130,54 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
 
         $this->assertInstanceOf(Database::class, $response);
         $this->assertSame($response->server_id, $server->id);
-        $this->assertMatchesRegularExpression('/^(u\d+_)(\w){10}$/', $username);
-        $this->assertSame($username, $secondUsername);
-        $this->assertSame(24, strlen($password));
+        $this->assertMatchesRegularExpression('/^(u\d+_)(\w){10}$/', $response->username);
+        $this->assertSame(24, strlen($response->password));
 
         $this->assertDatabaseHas('databases', ['server_id' => $server->id, 'id' => $response->id]);
     }
 
     /**
-     * Test that an exception encountered while creating the database leads to the cleanup code
-     * being called and any exceptions encountered while cleaning up go unreported.
+     * Test that an exception encountered while creating the database on the remote host
+     * rolls the panel-side record back.
      */
-    public function test_exception_encountered_while_creating_database_attempts_to_cleanup(): void
+    public function test_exception_encountered_while_creating_database_rolls_back(): void
     {
-        $this->markTestSkipped();
-
-        /* TODO: I think this is useful logic to be tested,
-            but this is a very hacky way of going about it.
-            The exception is because the transaction is closed
-            because the database create closes it early */
-
         $server = $this->createServerModel();
         $name = DatabaseManagementService::generateUniqueDatabaseName('something', $server->id);
 
         $host = DatabaseHost::factory()->recycle($server->node)->create();
 
-        $this->repository->expects('createDatabase')->with($name)->andThrows(new \BadMethodCallException());
-        $this->repository->expects('dropDatabase')->with($name);
-        $this->repository->expects('dropUser')->withAnyArgs()->andThrows(new \InvalidArgumentException());
+        $this->fakeRemoteDatabaseConnection()
+            ->shouldReceive('statement')->andThrow(new \BadMethodCallException());
 
-        $this->expectException(\BadMethodCallException::class);
-
-        $this->getService()->create($server, [
-            'remote' => '%',
-            'database' => $name,
-            'database_host_id' => $host->id,
-        ]);
+        try {
+            $this->getService()->create($server, [
+                'remote' => '%',
+                'database' => $name,
+                'database_host_id' => $host->id,
+            ]);
+            $this->fail('Expected the remote statement exception to bubble up.');
+        } catch (\BadMethodCallException) {
+            // Expected.
+        }
 
         $this->assertDatabaseMissing('databases', ['server_id' => $server->id]);
+    }
+
+    /**
+     * The database services confirm access via DatabaseHost->buildConnection(), so fake the
+     * remote connection while leaving the panel's own connection real.
+     */
+    private function fakeRemoteDatabaseConnection(): MockInterface
+    {
+        $connection = \Mockery::mock(Connection::class);
+
+        $manager = \Mockery::mock(app('db'));
+        $manager->shouldReceive('build')->andReturn($connection);
+        DB::swap($manager);
+        $this->app->instance('db', $manager);
+
+        return $connection;
     }
 
     public static function invalidDataDataProvider(): array
