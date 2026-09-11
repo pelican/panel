@@ -43,9 +43,7 @@ final class ServerVariableData extends ApiResource
                     return $context->null();
                 }
 
-                $variable->loadMissing('variable');
-
-                return $context->item($variable->getRelation('variable'), EggVariableData::class, 'variable');
+                return $context->item($variable, EggVariableData::class, 'variable');
             },
         ];
     }
