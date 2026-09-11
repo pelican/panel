@@ -121,8 +121,10 @@ class AppServiceProvider extends ServiceProvider
 
         AboutCommand::add('Pelican', [
             'Panel Version' => $versionService->currentPanelVersion(),
-            'Latest Version' => $versionService->latestPanelVersion(),
-            'Up-to-Date' => $versionService->isLatestPanel() ? '<fg=green;options=bold>Yes</>' : '<fg=red;options=bold>No</>',
+            'Latest Version' => $versionService->latestPanelVersion() ?? 'Unknown',
+            'Up-to-Date' => is_null($versionService->latestPanelVersion())
+                ? '<fg=yellow;options=bold>Unknown</>'
+                : ($versionService->isLatestPanel() ? '<fg=green;options=bold>Yes</>' : '<fg=red;options=bold>No</>'),
         ]);
 
         AboutCommand::add('Environment', 'Installation Directory', base_path());
