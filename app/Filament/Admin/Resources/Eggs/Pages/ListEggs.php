@@ -6,6 +6,7 @@ use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Eggs\EggResource;
 use App\Filament\Components\Actions\ExportEggAction;
 use App\Filament\Components\Actions\ImportEggAction;
+use App\Filament\Components\Actions\LoggedDeleteBulkAction;
 use App\Filament\Components\Actions\UpdateEggAction;
 use App\Filament\Components\Actions\UpdateEggBulkAction;
 use App\Filament\Components\Tables\Filters\TagsFilter;
@@ -15,7 +16,6 @@ use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Exception;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ReplicateAction;
 use Filament\Actions\ViewAction;
@@ -88,7 +88,7 @@ class ListEggs extends ListRecords
                     ->multiple(),
                 CreateAction::make(),
                 BulkActionGroup::make([
-                    DeleteBulkAction::make('exclude_bulk_delete')
+                    LoggedDeleteBulkAction::make('exclude_bulk_delete')
                         ->before(function (Collection &$records) {
                             $eggsWithServers = $records->filter(fn (Egg $egg) => $egg->servers_count > 0);
 

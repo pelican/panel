@@ -15,16 +15,20 @@ use App\Http\Responses\LoginResponse;
 use App\Models\Allocation;
 use App\Models\ApiKey;
 use App\Models\Backup;
+use App\Models\BackupHost;
 use App\Models\Database;
+use App\Models\DatabaseHost;
 use App\Models\Egg;
 use App\Models\EggVariable;
 use App\Models\Mount;
 use App\Models\Node;
+use App\Models\Role;
 use App\Models\Schedule;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\UserSSHKey;
+use App\Models\WebhookConfiguration;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\SoftwareVersionService;
 use Dedoc\Scramble\Scramble;
@@ -78,8 +82,12 @@ class AppServiceProvider extends ServiceProvider
             'ssh_key' => UserSSHKey::class,
             'task' => Task::class,
             'user' => User::class,
+            'backup_host' => BackupHost::class,
+            'database_host' => DatabaseHost::class,
             'mount' => Mount::class,
             'node' => Node::class,
+            'role' => Role::class,
+            'webhook' => WebhookConfiguration::class,
         ]);
 
         Http::macro(

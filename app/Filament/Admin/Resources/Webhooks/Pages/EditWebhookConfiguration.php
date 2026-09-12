@@ -3,17 +3,17 @@
 namespace App\Filament\Admin\Resources\Webhooks\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Pages\BaseAdminEditRecord;
 use App\Filament\Admin\Resources\Webhooks\WebhookResource;
+use App\Filament\Components\Actions\LoggedDeleteAction;
 use App\Models\WebhookConfiguration;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use App\Traits\Filament\MutatesWebhookFormData;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Resources\Pages\EditRecord;
 
-class EditWebhookConfiguration extends EditRecord
+class EditWebhookConfiguration extends BaseAdminEditRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;
@@ -25,7 +25,7 @@ class EditWebhookConfiguration extends EditRecord
     protected function getDefaultHeaderActions(): array
     {
         return [
-            DeleteAction::make(),
+            LoggedDeleteAction::make(),
             Action::make('test_now')
                 ->tooltip(trans('admin/webhook.test_now'))
                 ->color('primary')
@@ -58,6 +58,8 @@ class EditWebhookConfiguration extends EditRecord
 
     protected function afterSave(): void
     {
+        parent::afterSave();
+
         $this->dispatch('refresh-widget');
     }
 

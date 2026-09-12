@@ -8,6 +8,7 @@ use App\Filament\Admin\Resources\DatabaseHosts\Pages\EditDatabaseHost;
 use App\Filament\Admin\Resources\DatabaseHosts\Pages\ListDatabaseHosts;
 use App\Filament\Admin\Resources\DatabaseHosts\Pages\ViewDatabaseHost;
 use App\Filament\Admin\Resources\DatabaseHosts\RelationManagers\DatabasesRelationManager;
+use App\Filament\Components\Actions\LoggedDeleteBulkAction;
 use App\Models\DatabaseHost;
 use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanCustomizeRelations;
@@ -17,7 +18,6 @@ use BackedEnum;
 use Exception;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Select;
@@ -102,7 +102,7 @@ class DatabaseHostResource extends Resource
             ->toolbarActions([
                 CreateAction::make(),
                 BulkActionGroup::make([
-                    DeleteBulkAction::make('exclude_bulk_delete'),
+                    LoggedDeleteBulkAction::make('exclude_bulk_delete'),
                 ]),
             ])
             ->emptyStateIcon(TablerIcon::Database)

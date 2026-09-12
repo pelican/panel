@@ -8,6 +8,7 @@ use App\Filament\Admin\Resources\Roles\Pages\CreateRole;
 use App\Filament\Admin\Resources\Roles\Pages\EditRole;
 use App\Filament\Admin\Resources\Roles\Pages\ListRoles;
 use App\Filament\Admin\Resources\Roles\Pages\ViewRole;
+use App\Filament\Components\Actions\LoggedDeleteBulkAction;
 use App\Models\Role;
 use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanCustomizeRelations;
@@ -18,7 +19,6 @@ use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\CheckboxList;
@@ -106,7 +106,7 @@ class RoleResource extends Resource
             ->toolbarActions([
                 CreateAction::make(),
                 BulkActionGroup::make([
-                    DeleteBulkAction::make('exclude_bulk_delete'),
+                    LoggedDeleteBulkAction::make('exclude_bulk_delete'),
                 ]),
             ])
             ->checkIfRecordIsSelectableUsing(fn (Role $role) => !$role->isRootAdmin() && $role->users_count <= 0);

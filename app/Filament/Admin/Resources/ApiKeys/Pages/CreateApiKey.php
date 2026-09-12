@@ -3,17 +3,17 @@
 namespace App\Filament\Admin\Resources\ApiKeys\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Pages\BaseAdminCreateRecord;
 use App\Filament\Admin\Resources\ApiKeys\ApiKeyResource;
 use App\Models\ApiKey;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
-class CreateApiKey extends CreateRecord
+class CreateApiKey extends BaseAdminCreateRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;

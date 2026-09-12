@@ -3,14 +3,14 @@
 namespace App\Filament\Admin\Resources\Roles\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Pages\BaseAdminEditRecord;
 use App\Filament\Admin\Resources\Roles\RoleResource;
+use App\Filament\Components\Actions\LoggedDeleteAction;
 use App\Models\Role;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Spatie\Permission\Models\Permission;
@@ -18,7 +18,7 @@ use Spatie\Permission\Models\Permission;
 /**
  * @property Role $record
  */
-class EditRole extends EditRecord
+class EditRole extends BaseAdminEditRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;
@@ -42,6 +42,8 @@ class EditRole extends EditRecord
 
     protected function afterSave(): void
     {
+        $oldPermissions = $this->record->permissions()->pluck('name')->sort()->values();
+
         $permissionModels = collect();
         $this->permissions->each(function ($permission) use ($permissionModels) {
             $permissionModels->push(Permission::firstOrCreate([
@@ -51,13 +53,27 @@ class EditRole extends EditRecord
         });
 
         $this->record->syncPermissions($permissionModels);
+
+        $newPermissions = $this->record->permissions()->pluck('name')->sort()->values();
+
+        // One combined update event covering attribute and permission changes,
+        // so parent::afterSave() is deliberately not called here.
+        $changes = static::buildDiff($this->attributesBeforeSave, $this->record->getChanges());
+
+        if ($oldPermissions->all() !== $newPermissions->all()) {
+            $changes['permissions'] = ['old' => $oldPermissions->all(), 'new' => $newPermissions->all()];
+        }
+
+        if ($changes !== []) {
+            static::logAdminActivity('update', $this->record, ['changes' => $changes]);
+        }
     }
 
     /** @return array<Action|ActionGroup> */
     protected function getDefaultHeaderActions(): array
     {
         return [
-            DeleteAction::make()
+            LoggedDeleteAction::make()
                 ->tooltip(fn (Role $role) => $role->isRootAdmin() ? trans('admin/role.root_admin_delete') : ($role->users_count >= 1 ? trans('admin/role.in_use') : trans('filament-actions::delete.single.label')))
                 ->disabled(fn (Role $role) => $role->isRootAdmin() || $role->users_count >= 1),
             Action::make('save')

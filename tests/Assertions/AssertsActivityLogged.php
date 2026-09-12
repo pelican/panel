@@ -40,20 +40,22 @@ trait AssertsActivityLogged
             $subjects = array_slice(func_get_args(), 1);
         }
 
+        // Filter rather than assert inside the closure, so a test that logged
+        // several events matches the one carrying all the expected subjects.
         Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) use ($event, $subjects) {
-            Assert::assertEquals($event, $e->model->event);
-            Assert::assertNotEmpty($e->model->subjects);
+            if (!$e->is($event) || $e->model->subjects->isEmpty()) {
+                return false;
+            }
 
             foreach ($subjects as $subject) {
                 $match = $e->model->subjects->first(function (ActivityLogSubject $model) use ($subject) {
                     return $model->subject_type === $subject->getMorphClass()
-                        && $model->subject_id = $subject->getKey();
+                        && $model->subject_id === $subject->getKey();
                 });
 
-                Assert::assertNotNull(
-                    $match,
-                    sprintf('Failed asserting that event "%s" includes a %s[%d] subject', $event, get_class($subject), $subject->getKey())
-                );
+                if (is_null($match)) {
+                    return false;
+                }
             }
 
             return true;
@@ -67,16 +69,15 @@ trait AssertsActivityLogged
     public function assertActivityActor(string $event, ?Model $actor = null): void
     {
         Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) use ($event, $actor) {
-            Assert::assertEquals($event, $e->model->event);
-
-            if (is_null($actor)) {
-                Assert::assertNull($e->actor());
-            } else {
-                Assert::assertNotNull($e->actor());
-                Assert::assertTrue($e->actor()->is($actor));
+            if (!$e->is($event)) {
+                return false;
             }
 
-            return true;
+            if (is_null($actor)) {
+                return is_null($e->actor());
+            }
+
+            return !is_null($e->actor()) && $e->actor()->is($actor);
         });
     }
 }

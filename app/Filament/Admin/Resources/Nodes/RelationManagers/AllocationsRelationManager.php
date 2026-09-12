@@ -5,6 +5,8 @@ namespace App\Filament\Admin\Resources\Nodes\RelationManagers;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
+use App\Filament\Components\Actions\LoggedDeleteAction;
+use App\Filament\Components\Actions\LoggedDeleteBulkAction;
 use App\Filament\Components\Actions\UpdateNodeAllocations;
 use App\Models\Allocation;
 use App\Models\Node;
@@ -13,8 +15,6 @@ use BackedEnum;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
@@ -96,7 +96,7 @@ class AllocationsRelationManager extends RelationManager
             ])
             ->emptyStateHeading(trans('admin/node.no_allocations'))
             ->recordActions([
-                DeleteAction::make()
+                LoggedDeleteAction::make()
                     ->visible(fn (Allocation $allocation) => $allocation->server_id === null),
             ])
             ->toolbarActions([
@@ -158,7 +158,7 @@ class AllocationsRelationManager extends RelationManager
                     ->nodeRecord($this->getOwnerRecord())
                     ->authorize(fn () => user()?->can('update', $this->getOwnerRecord()))
                     ->hidden(fn () => $this->isReadOnly()),
-                DeleteBulkAction::make()
+                LoggedDeleteBulkAction::make()
                     ->hidden(fn () => $this->isReadOnly()),
             ]);
     }

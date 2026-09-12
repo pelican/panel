@@ -43,7 +43,7 @@ trait LogsAdminActivity
      *
      * @var string[]
      */
-    protected static array $identifyingAttributes = ['id', 'uuid', 'name', 'username', 'email'];
+    protected static array $identifyingAttributes = ['id', 'uuid', 'name', 'username', 'email', 'identifier', 'endpoint', 'database', 'ip', 'port'];
 
     public static function activityKey(Model $record): string
     {
