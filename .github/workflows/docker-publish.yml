@@ -158,13 +158,10 @@ jobs:
           
       - name: Update version in config/app.php (tag)
         if: "(github.event_name == 'release' && github.event.action == 'published') || github.event_name == 'schedule'"
-        run: |
-          VERSION="${{ github.event_name == 'schedule' && steps.release_info.outputs.version_tag || steps.build_info.outputs.version_tag }}"
-          if [ -z "$VERSION" ] || [ "$VERSION" = "refs/heads/main" ]; then
-            echo "Invalid version tag, refusing to update config"
-            exit 1
-          fi
-          sed -i "s|'version' => 'canary',|'version' => '$VERSION',|" config/app.php
+        # Referenced from main instead of the working tree because scheduled runs check out a release tag that may not contain the action
+        uses: pelican/panel/.github/actions/stamp-version@main
+        with:
+          version: ${{ github.event_name == 'schedule' && steps.release_info.outputs.version_tag || steps.build_info.outputs.version_tag }}
               
       - name: Build and Push (tag)
         uses: docker/build-push-action@v7

@@ -39,6 +39,11 @@ jobs:
       - name: Build
         run: yarn build
 
+      - name: Stamp version
+        uses: ./.github/actions/stamp-version
+        with:
+          version: ${{ github.ref_name }}
+
       - name: Create release branch and bump version
         env:
           REF: ${{ github.ref }}
@@ -48,7 +53,6 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git checkout -b $BRANCH
           git push -u origin $BRANCH
-          sed -i "s/    'version' => 'canary',/    'version' => '${REF:11}',/" config/app.php
           git add config/app.php
           git commit -m "ci(release): bump version"
           git push
@@ -59,9 +63,7 @@ jobs:
           tar -czf panel.tar.gz * .env.example
 
       - name: Create checksum
-        run: |
-          SUM=`sha256sum panel.tar.gz`
-          echo $SUM > checksum.txt
+        run: sha256sum panel.tar.gz > checksum.txt
 
       - name: Create release
         id: create_release
