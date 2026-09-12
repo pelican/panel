@@ -28,3 +28,12 @@ it('does not listen for stats over livewire', function () {
 
     expect($listeners)->not->toContain('store-stats');
 });
+
+// The console pushes chart data by dispatching 'updateChartData' straight to
+// Filament's client-side listener; if a Filament upgrade renames it, the charts
+// would freeze silently. This fails CI instead.
+it('still finds filament listening for updateChartData in the browser', function () {
+    $chartJs = file_get_contents(dirname(__DIR__, 3) . '/vendor/filament/widgets/dist/components/chart.js');
+
+    expect($chartJs)->toMatch('/\$on\((["\'])updateChartData\1/');
+});
