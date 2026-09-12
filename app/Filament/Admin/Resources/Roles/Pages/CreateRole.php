@@ -3,13 +3,13 @@
 namespace App\Filament\Admin\Resources\Roles\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Pages\BaseAdminCreateRecord;
 use App\Filament\Admin\Resources\Roles\RoleResource;
 use App\Models\Role;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Spatie\Permission\Models\Permission;
@@ -17,7 +17,7 @@ use Spatie\Permission\Models\Permission;
 /**
  * @property Role $record
  */
-class CreateRole extends CreateRecord
+class CreateRole extends BaseAdminCreateRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;
@@ -70,5 +70,7 @@ class CreateRole extends CreateRecord
         });
 
         $this->record->syncPermissions($permissionModels);
+
+        parent::afterCreate();
     }
 }

@@ -3,16 +3,16 @@
 namespace App\Filament\Admin\Resources\BackupHosts\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Pages\BaseAdminEditRecord;
 use App\Filament\Admin\Resources\BackupHosts\BackupHostResource;
+use App\Filament\Components\Actions\LoggedDeleteAction;
 use App\Models\BackupHost;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Resources\Pages\EditRecord;
 
-class EditBackupHost extends EditRecord
+class EditBackupHost extends BaseAdminEditRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;
@@ -23,7 +23,7 @@ class EditBackupHost extends EditRecord
     protected function getDefaultHeaderActions(): array
     {
         return [
-            DeleteAction::make()
+            LoggedDeleteAction::make()
                 ->label(fn (BackupHost $backupHost) => $backupHost->backups()->count() > 0 ? trans('admin/backuphost.delete_help') : trans('filament-actions::delete.single.modal.actions.delete.label'))
                 ->disabled(fn (BackupHost $backupHost) => $backupHost->backups()->count() > 0)
                 ->hidden(fn () => BackupHost::count() === 1),

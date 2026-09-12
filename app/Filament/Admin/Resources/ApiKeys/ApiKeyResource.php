@@ -6,6 +6,7 @@ use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\ApiKeys\Pages\CreateApiKey;
 use App\Filament\Admin\Resources\ApiKeys\Pages\ListApiKeys;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
+use App\Filament\Components\Actions\LoggedDeleteAction;
 use App\Filament\Components\Tables\Columns\DateTimeColumn;
 use App\Models\ApiKey;
 use App\Traits\Filament\CanCustomizePages;
@@ -15,7 +16,6 @@ use App\Traits\Filament\CanModifyTable;
 use BackedEnum;
 use Exception;
 use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\ToggleButtons;
@@ -99,7 +99,7 @@ class ApiKeyResource extends Resource
                     ->url(fn (ApiKey $apiKey) => user()?->can('update', $apiKey->user) ? EditUser::getUrl(['record' => $apiKey->user]) : null),
             ])
             ->recordActions([
-                DeleteAction::make(),
+                LoggedDeleteAction::make(),
             ])
             ->toolbarActions([
                 CreateAction::make(),

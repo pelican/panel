@@ -41,6 +41,26 @@ return [
         'update' => 'Updated user <b>:username</b>',
         'delete' => 'Deleted user <b>:username</b>',
     ],
+    'allocation' => [
+        'delete' => 'Deleted allocation <b>:ip::port</b>',
+    ],
+    'apiKey' => [
+        'create' => 'Created API key <b>:identifier</b>',
+        'delete' => 'Deleted API key <b>:identifier</b>',
+    ],
+    'backupHost' => [
+        'create' => 'Created backup host <b>:name</b>',
+        'update' => 'Updated backup host <b>:name</b>',
+        'delete' => 'Deleted backup host <b>:name</b>',
+    ],
+    'database' => [
+        'delete' => 'Deleted database <b>:database</b>',
+    ],
+    'databaseHost' => [
+        'create' => 'Created database host <b>:name</b>',
+        'update' => 'Updated database host <b>:name</b>',
+        'delete' => 'Deleted database host <b>:name</b>',
+    ],
     'egg' => [
         'create' => 'Created egg <b>:name</b>',
         'update' => 'Updated egg <b>:name</b>',
@@ -55,6 +75,16 @@ return [
         'create' => 'Created node <b>:name</b>',
         'update' => 'Updated node <b>:name</b>',
         'delete' => 'Deleted node <b>:name</b>',
+    ],
+    'role' => [
+        'create' => 'Created role <b>:name</b>',
+        'update' => 'Updated role <b>:name</b>',
+        'delete' => 'Deleted role <b>:name</b>',
+    ],
+    'webhook' => [
+        'create' => 'Created webhook <b>:endpoint</b>',
+        'update' => 'Updated webhook <b>:endpoint</b>',
+        'delete' => 'Deleted webhook <b>:endpoint</b>',
     ],
     'server' => [
         'console' => [

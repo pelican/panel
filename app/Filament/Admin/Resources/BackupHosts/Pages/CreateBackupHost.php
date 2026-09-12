@@ -3,14 +3,14 @@
 namespace App\Filament\Admin\Resources\BackupHosts\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Pages\BaseAdminCreateRecord;
 use App\Filament\Admin\Resources\BackupHosts\BackupHostResource;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Resources\Pages\CreateRecord;
 
-class CreateBackupHost extends CreateRecord
+class CreateBackupHost extends BaseAdminCreateRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;

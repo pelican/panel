@@ -3,6 +3,7 @@
 namespace App\Filament\Admin\Resources\DatabaseHosts\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Pages\BaseAdminCreateRecord;
 use App\Filament\Admin\Resources\DatabaseHosts\DatabaseHostResource;
 use App\Services\Databases\Hosts\HostCreationService;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -15,7 +16,6 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
-use Filament\Resources\Pages\CreateRecord;
 use Filament\Resources\Pages\CreateRecord\Concerns\HasWizard;
 use Filament\Schemas\Components\Fieldset;
 use Filament\Schemas\Components\Utilities\Get;
@@ -29,7 +29,7 @@ use Illuminate\Support\Str;
 use PDOException;
 use Throwable;
 
-class CreateDatabaseHost extends CreateRecord
+class CreateDatabaseHost extends BaseAdminCreateRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;

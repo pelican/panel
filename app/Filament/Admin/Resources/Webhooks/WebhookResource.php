@@ -10,6 +10,7 @@ use App\Filament\Admin\Resources\Webhooks\Pages\CreateWebhookConfiguration;
 use App\Filament\Admin\Resources\Webhooks\Pages\EditWebhookConfiguration;
 use App\Filament\Admin\Resources\Webhooks\Pages\ListWebhookConfigurations;
 use App\Filament\Admin\Resources\Webhooks\Pages\ViewWebhookConfiguration;
+use App\Filament\Components\Actions\LoggedDeleteBulkAction;
 use App\Livewire\AlertBanner;
 use App\Models\Server;
 use App\Models\WebhookConfiguration;
@@ -20,7 +21,6 @@ use App\Traits\Filament\CanModifyTable;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ReplicateAction;
 use Filament\Actions\ViewAction;
@@ -124,7 +124,7 @@ class WebhookResource extends Resource
             ->toolbarActions([
                 CreateAction::make(),
                 BulkActionGroup::make([
-                    DeleteBulkAction::make('exclude_bulk_delete'),
+                    LoggedDeleteBulkAction::make('exclude_bulk_delete'),
                 ]),
             ])
             ->emptyStateIcon(TablerIcon::Webhook)

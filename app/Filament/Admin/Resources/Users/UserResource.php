@@ -11,6 +11,7 @@ use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Filament\Admin\Resources\Users\Pages\ListUsers;
 use App\Filament\Admin\Resources\Users\Pages\ViewUser;
 use App\Filament\Admin\Resources\Users\RelationManagers\ServersRelationManager;
+use App\Filament\Components\Actions\LoggedDeleteBulkAction;
 use App\Models\ActivityLog;
 use App\Models\ApiKey;
 use App\Models\Role;
@@ -28,7 +29,6 @@ use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Auth\Notifications\ResetPassword;
@@ -148,7 +148,7 @@ class UserResource extends Resource
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make('exclude_bulk_delete'),
+                    LoggedDeleteBulkAction::make('exclude_bulk_delete'),
                 ]),
                 CreateAction::make()
                     ->hiddenLabel()

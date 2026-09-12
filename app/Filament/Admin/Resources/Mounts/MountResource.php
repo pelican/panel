@@ -7,6 +7,7 @@ use App\Filament\Admin\Resources\Mounts\Pages\CreateMount;
 use App\Filament\Admin\Resources\Mounts\Pages\EditMount;
 use App\Filament\Admin\Resources\Mounts\Pages\ListMounts;
 use App\Filament\Admin\Resources\Mounts\Pages\ViewMount;
+use App\Filament\Components\Actions\LoggedDeleteBulkAction;
 use App\Models\Mount;
 use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanCustomizeRelations;
@@ -16,7 +17,6 @@ use BackedEnum;
 use Exception;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Select;
@@ -110,7 +110,7 @@ class MountResource extends Resource
             ->toolbarActions([
                 CreateAction::make(),
                 BulkActionGroup::make([
-                    DeleteBulkAction::make('exclude_bulk_delete'),
+                    LoggedDeleteBulkAction::make('exclude_bulk_delete'),
                 ]),
             ])
             ->emptyStateIcon(TablerIcon::LayersLinked)
