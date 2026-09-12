@@ -220,10 +220,22 @@ it('logs webhook create, update, and delete', function () {
     });
 
     livewire(EditWebhookConfiguration::class, ['record' => $webhook->getKey()])
-        ->fillForm(['name' => 'Renamed Hook'])
+        ->fillForm(['name' => 'Renamed Hook', 'endpoint' => 'https://user:pass@example.org/hook2?token=newsecret'])
         ->call('save')
         ->assertHasNoFormErrors();
     $this->assertActivityFor('webhook:update', $this->admin, $webhook);
+    // buildDiff() must sanitize both sides of an endpoint change.
+    Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
+        if (!$e->is('webhook:update')) {
+            return false;
+        }
+        $properties = json_encode($e->model->properties);
+
+        return $e->model->properties['changes']['endpoint'] === ['old' => 'https://example.com/hook', 'new' => 'https://example.org/hook2']
+            && !str_contains($properties, 'newsecret')
+            && !str_contains($properties, 'abc123')
+            && !str_contains($properties, 'user:pass');
+    });
 
     livewire(EditWebhookConfiguration::class, ['record' => $webhook->getKey()])
         ->callAction(DeleteAction::class);
