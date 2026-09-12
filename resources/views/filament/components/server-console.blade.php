@@ -134,7 +134,8 @@
         const handlePowerChangeEvent = (state) =>
             terminal.writeln(TERMINAL_PRELUDE + 'Server marked as ' + state + '...\u001b[0m');
 
-        const socket = new WebSocket("{{ $this->getSocket() }}");
+        let socket;
+        let reconnectAttempts = 0;
 
         window.ServerStats.configure({
             uuid: @js($this->server->uuid),
@@ -184,64 +185,75 @@
             }
         };
 
-        socket.onerror = (event) => {
-            $wire.dispatchSelf('websocket-error');
+        const connect = () => {
+            socket = new WebSocket("{{ $this->getSocket() }}");
+
+            // A dropped socket would otherwise leave the page frozen at its last
+            // values, so reconnect quietly and only raise the banner once that fails.
+            socket.onclose = (event) => {
+                if (reconnectAttempts >= 5) {
+                    $wire.dispatchSelf('websocket-error');
+
+                    return;
+                }
+
+                reconnectAttempts++;
+                setTimeout(connect, 2000);
+            };
+
+            socket.onmessage = function(websocketMessageEvent) {
+                let { event, args } = JSON.parse(websocketMessageEvent.data);
+
+                switch (event) {
+                    case 'console output':
+                    case 'install output':
+                        handleConsoleOutput(args[0]);
+                        break;
+                    case 'install completed':
+                        statusIsLive = true;
+                        $wire.dispatch('refresh-sidebar');
+                        $wire.dispatch('refresh-topbar');
+                        $wire.dispatch('removeAlertBanner', { id: 'server_conflict' });
+                        break;
+                    case 'feature match':
+                        Livewire.dispatch('mount-feature', { data: args[0] });
+                        break;
+                    case 'status':
+                        handlePowerChangeEvent(args[0]);
+                        window.ServerStats.setState(args[0]);
+                        pushToWidgets();
+                        $wire.dispatch('console-status', { state: args[0] });
+                        break;
+                    case 'transfer status':
+                        handleTransferStatus(args[0]);
+                        break;
+                    case 'daemon error':
+                        handleDaemonErrorOutput(args[0]);
+                        break;
+                    case 'stats':
+                        window.ServerStats.push(JSON.parse(args[0]));
+                        pushToWidgets();
+                        break;
+                    case 'auth success':
+                        reconnectAttempts = 0;
+                        socket.send(JSON.stringify({
+                            'event': 'send logs',
+                            'args': [null]
+                        }));
+                        break;
+                    case 'token expiring':
+                    case 'token expired':
+                        $wire.dispatchSelf('token-request');
+                        break;
+                }
+            };
+
+            socket.onopen = (event) => {
+                $wire.dispatchSelf('token-request');
+            };
         };
 
-        // A dropped socket would otherwise leave the page frozen at its last values.
-        socket.onclose = (event) => {
-            $wire.dispatchSelf('websocket-error');
-        };
-
-        socket.onmessage = function(websocketMessageEvent) {
-            let { event, args } = JSON.parse(websocketMessageEvent.data);
-
-            switch (event) {
-                case 'console output':
-                case 'install output':
-                    handleConsoleOutput(args[0]);
-                    break;
-                case 'install completed':
-                    statusIsLive = true;
-                    $wire.dispatch('refresh-sidebar');
-                    $wire.dispatch('refresh-topbar');
-                    $wire.dispatch('removeAlertBanner', { id: 'server_conflict' });
-                    break;
-                case 'feature match':
-                    Livewire.dispatch('mount-feature', { data: args[0] });
-                    break;
-                case 'status':
-                    handlePowerChangeEvent(args[0]);
-                    window.ServerStats.setState(args[0]);
-                    pushToWidgets();
-                    $wire.dispatch('console-status', { state: args[0] });
-                    break;
-                case 'transfer status':
-                    handleTransferStatus(args[0]);
-                    break;
-                case 'daemon error':
-                    handleDaemonErrorOutput(args[0]);
-                    break;
-                case 'stats':
-                    window.ServerStats.push(JSON.parse(args[0]));
-                    pushToWidgets();
-                    break;
-                case 'auth success':
-                    socket.send(JSON.stringify({
-                        'event': 'send logs',
-                        'args': [null]
-                    }));
-                    break;
-                case 'token expiring':
-                case 'token expired':
-                    $wire.dispatchSelf('token-request');
-                    break;
-            }
-        };
-
-        socket.onopen = (event) => {
-            $wire.dispatchSelf('token-request');
-        };
+        connect();
 
         Livewire.on('setServerState', ({ state, uuid }) => {
             const serverUuid = "{{ $this->server->uuid }}";
