@@ -38,6 +38,9 @@ return [
             'delete' => 'Disabled two-factor auth',
         ],
     ],
+    'settings' => [
+        'update' => 'Updated <b>:count</b> panel setting|Updated <b>:count</b> panel settings',
+    ],
     'server' => [
         'console' => [
             'command' => 'Executed "<b>:command</b>" on the server',

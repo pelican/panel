@@ -6,6 +6,7 @@ use App\Enums\TablerIcon;
 use App\Extensions\Avatar\AvatarService;
 use App\Extensions\Captcha\CaptchaService;
 use App\Extensions\OAuth\OAuthService;
+use App\Facades\Activity;
 use App\Notifications\MailTested;
 use App\Traits\EnvironmentWriterTrait;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -979,7 +980,15 @@ class Settings extends Page implements HasSchemas
                 return $value;
             }, $data);
 
+            $changes = $this->buildSettingsDiff($data);
+
             $this->writeToEnvironment($data);
+
+            if ($changes !== []) {
+                Activity::event('settings:update')
+                    ->property('changes', $changes)
+                    ->log();
+            }
 
             Artisan::call('queue:restart');
 
@@ -996,6 +1005,47 @@ class Settings extends Page implements HasSchemas
                 ->danger()
                 ->send();
         }
+    }
+
+    /**
+     * Old-to-new pairs for every env key actually changing, secrets masked.
+     * Snapshotted through env() before the write, since the loaded environment
+     * still holds the previous values at that point.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, array{old: string|null, new: string|null}>
+     */
+    private function buildSettingsDiff(array $data): array
+    {
+        $changes = [];
+
+        foreach ($data as $key => $value) {
+            $old = env($key);
+
+            if (is_bool($old)) {
+                $old = $old ? 'true' : 'false';
+            }
+
+            $old = is_null($old) ? null : (string) $old;
+            $new = match (true) {
+                is_null($value) => null,
+                is_array($value) => implode(',', $value),
+                default => (string) $value,
+            };
+
+            if ($old === $new) {
+                continue;
+            }
+
+            if (Str::is(['*SECRET*', '*PASSWORD*', '*TOKEN*', '*_KEY'], $key)) {
+                $old = is_null($old) || $old === '' ? $old : '********';
+                $new = is_null($new) || $new === '' ? $new : '********';
+            }
+
+            $changes[$key] = ['old' => $old, 'new' => $new];
+        }
+
+        return $changes;
     }
 
     /** @return array<Action|ActionGroup> */
