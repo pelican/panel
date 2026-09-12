@@ -4,6 +4,7 @@ use App\Facades\Activity;
 use App\Filament\Admin\Resources\Activities\Pages\ListActivities;
 use App\Models\ActivityLog;
 use App\Models\Role;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Spatie\Permission\Models\Permission;
 
@@ -63,4 +64,18 @@ it('user with view activityLog can see the viewer', function () {
     livewire(ListActivities::class)
         ->assertSuccessful()
         ->assertCountTableRecords(ActivityLog::count());
+});
+
+it('user with view activityLog can open the properties modal', function () {
+    $role = Role::factory()->create(['name' => 'Modal Auditor', 'guard_name' => 'web']);
+    $role->givePermissionTo(Permission::findOrCreate('view activityLog', 'web'));
+    [$user] = generateTestAccount([]);
+    $user = $user->syncRoles($role);
+
+    $log = Activity::event('auth:success')->log();
+
+    $this->actingAs($user);
+    livewire(ListActivities::class)
+        ->callAction(TestAction::make('view')->table($log))
+        ->assertHasNoActionErrors();
 });

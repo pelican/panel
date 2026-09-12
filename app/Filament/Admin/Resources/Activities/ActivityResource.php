@@ -25,7 +25,9 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\HtmlString;
 
@@ -128,7 +130,8 @@ class ActivityResource extends Resource
     {
         // Deliberately unscoped (and ignoring activity.hide_admin_activity):
         // this is the panel-wide audit view for admins holding "view activityLog".
-        return ActivityLog::whereNotIn('event', ActivityLog::DISABLED_EVENTS);
+        return ActivityLog::with(['actor', 'apiKey'])
+            ->whereNotIn('event', ActivityLog::DISABLED_EVENTS);
     }
 
     public static function canViewAny(): bool
@@ -139,6 +142,15 @@ class ActivityResource extends Resource
     public static function canAccess(): bool
     {
         return static::canViewAny();
+    }
+
+    /**
+     * ActivityLogPolicy::view() checks the server-panel subuser permission,
+     * which never applies here; the admin viewer is gated by "view activityLog".
+     */
+    public static function getViewAuthorizationResponse(Model $record): Response
+    {
+        return static::canViewAny() ? Response::allow() : Response::deny();
     }
 
     /** @return array<string, PageRegistration> */
