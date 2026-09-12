@@ -87,4 +87,9 @@ return [
         'dev_mode' => env('PANEL_PLUGIN_DEV_MODE', false),
         'max_import_size' => env('PANEL_PLUGIN_MAX_IMPORT_SIZE', 1024 * 1024 * 100),
     ],
+
+    'updates' => [
+        // Snapshots contain .env and possibly SQLite data, so retain only a small recovery window.
+        'retained_snapshots' => env('PANEL_UPDATE_RETAINED_SNAPSHOTS', 3),
+    ],
 ];
