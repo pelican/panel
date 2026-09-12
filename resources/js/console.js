@@ -17,6 +17,7 @@ window.Xterm = {
 const MAX_SAMPLES = 120;
 
 const config = {
+    uuid: null,
     binaryPrefix: false,
     period: 30,
     locale: 'en',
@@ -27,6 +28,33 @@ const config = {
 
 const samples = [];
 let currentState = null;
+
+// Keeps the charts from starting empty on every visit; sessionStorage can be
+// unavailable (private mode) or hold junk, and either way we just start empty.
+const storageKey = () => `pelican:console-stats:${config.uuid}`;
+
+const restoreSamples = () => {
+    if (!config.uuid || samples.length) {
+        return;
+    }
+
+    try {
+        const horizon = Date.now() - MAX_SAMPLES * 1000;
+        const stored = JSON.parse(sessionStorage.getItem(storageKey()) ?? '[]');
+
+        samples.push(...stored.filter((sample) => Number.isFinite(sample?.t) && sample.t >= horizon));
+    } catch {}
+};
+
+const persistSamples = () => {
+    if (!config.uuid) {
+        return;
+    }
+
+    try {
+        sessionStorage.setItem(storageKey(), JSON.stringify(samples));
+    } catch {}
+};
 
 // Mirrors Carbon's diffForHumans(syntax: DIFF_ABSOLUTE, short: true, parts: 2),
 // localized through Intl the same way Carbon translates its unit suffixes.
@@ -129,6 +157,8 @@ const areaDataset = (data, backgroundColor = 'rgba(96, 165, 250, 0.3)', label = 
 window.ServerStats = {
     configure(options) {
         Object.assign(config, options);
+
+        restoreSamples();
     },
 
     push(stats) {
@@ -145,6 +175,8 @@ window.ServerStats = {
         if (samples.length > MAX_SAMPLES) {
             samples.splice(0, samples.length - MAX_SAMPLES);
         }
+
+        persistSamples();
 
         if (typeof stats.state === 'string') {
             currentState = stats.state;

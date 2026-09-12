@@ -137,6 +137,7 @@
         const socket = new WebSocket("{{ $this->getSocket() }}");
 
         window.ServerStats.configure({
+            uuid: @js($this->server->uuid),
             binaryPrefix: @js((bool) config('panel.use_binary_prefix')),
             period: @js((int) user()?->getCustomization(\App\Enums\CustomizationKey::ConsoleGraphPeriod)),
             locale: @js(str_replace('_', '-', user()->language ?? 'en')),
