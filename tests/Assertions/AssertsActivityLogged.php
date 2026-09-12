@@ -15,9 +15,13 @@ trait AssertsActivityLogged
      */
     public function assertActivityFor(string $event, ?Model $actor, ...$subjects): void
     {
-        $this->assertActivityLogged($event);
-        $this->assertActivityActor($event, $actor);
-        $this->assertActivitySubjects($event, ...$subjects);
+        // One predicate, so the actor and subjects must match on the SAME event
+        // rather than being satisfied by two different events of the same name.
+        Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) use ($event, $actor, $subjects) {
+            return $e->is($event)
+                && $this->activityActorMatches($e, $actor)
+                && $this->activitySubjectsMatch($e, $subjects);
+        });
     }
 
     /**
@@ -42,24 +46,40 @@ trait AssertsActivityLogged
 
         // Filter rather than assert inside the closure, so a test that logged
         // several events matches the one carrying all the expected subjects.
-        Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) use ($event, $subjects) {
-            if (!$e->is($event) || $e->model->subjects->isEmpty()) {
+        Event::assertDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is($event) && $this->activitySubjectsMatch($e, $subjects));
+    }
+
+    private function activitySubjectsMatch(ActivityLogged $e, array $subjects): bool
+    {
+        if ($subjects === []) {
+            return true;
+        }
+
+        if ($e->model->subjects->isEmpty()) {
+            return false;
+        }
+
+        foreach ($subjects as $subject) {
+            $match = $e->model->subjects->first(function (ActivityLogSubject $model) use ($subject) {
+                return $model->subject_type === $subject->getMorphClass()
+                    && $model->subject_id === $subject->getKey();
+            });
+
+            if (is_null($match)) {
                 return false;
             }
+        }
 
-            foreach ($subjects as $subject) {
-                $match = $e->model->subjects->first(function (ActivityLogSubject $model) use ($subject) {
-                    return $model->subject_type === $subject->getMorphClass()
-                        && $model->subject_id === $subject->getKey();
-                });
+        return true;
+    }
 
-                if (is_null($match)) {
-                    return false;
-                }
-            }
+    private function activityActorMatches(ActivityLogged $e, ?Model $actor): bool
+    {
+        if (is_null($actor)) {
+            return is_null($e->actor());
+        }
 
-            return true;
-        });
+        return !is_null($e->actor()) && $e->actor()->is($actor);
     }
 
     /**
@@ -68,16 +88,6 @@ trait AssertsActivityLogged
      */
     public function assertActivityActor(string $event, ?Model $actor = null): void
     {
-        Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) use ($event, $actor) {
-            if (!$e->is($event)) {
-                return false;
-            }
-
-            if (is_null($actor)) {
-                return is_null($e->actor());
-            }
-
-            return !is_null($e->actor()) && $e->actor()->is($actor);
-        });
+        Event::assertDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is($event) && $this->activityActorMatches($e, $actor));
     }
 }

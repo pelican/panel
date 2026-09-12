@@ -97,6 +97,22 @@ it('logs a permissions-only role change', function () {
     });
 });
 
+it('logs one combined role update event for name and permission changes', function () {
+    $role = Role::factory()->create(['name' => 'Old Name', 'guard_name' => 'web']);
+
+    livewire(EditRole::class, ['record' => $role->getKey()])
+        ->fillForm(['name' => 'New Name', 'user_list' => [RolePermissionModels::User->viewAny()]])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $updates = Event::dispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('role:update'));
+    expect($updates)->toHaveCount(1);
+
+    $changes = $updates->first()[0]->model->properties['changes'];
+    expect($changes['name']['new'])->toBe('New Name')
+        ->and($changes['permissions']['new'])->toContain(RolePermissionModels::User->viewAny());
+});
+
 it('logs role delete', function () {
     $role = Role::factory()->create(['name' => 'Doomed Role', 'guard_name' => 'web']);
 
@@ -188,14 +204,20 @@ it('logs webhook create, update, and delete', function () {
         ->fillForm([
             'name' => 'Notifier',
             'description' => 'Notifies on new servers',
-            'endpoint' => 'https://example.com/hook',
+            'endpoint' => 'https://example.com/hook?token=abc123',
             'events' => ['eloquent.created: ' . Server::class],
         ])
         ->call('create')
         ->assertHasNoFormErrors();
 
-    $webhook = WebhookConfiguration::query()->where('endpoint', 'https://example.com/hook')->firstOrFail();
+    $webhook = WebhookConfiguration::query()->where('name', 'Notifier')->firstOrFail();
     $this->assertActivityFor('webhook:create', $this->admin, $webhook);
+    // The logged endpoint is stripped to scheme://host/path, so query-string secrets stay out.
+    Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
+        return $e->is('webhook:create')
+            && $e->model->properties['endpoint'] === 'https://example.com/hook'
+            && !str_contains(json_encode($e->model->properties), 'abc123');
+    });
 
     livewire(EditWebhookConfiguration::class, ['record' => $webhook->getKey()])
         ->fillForm(['name' => 'Renamed Hook'])
@@ -243,6 +265,8 @@ it('logs one event per record on bulk delete', function () {
         ->selectTableRecords($mounts->pluck('id')->all())
         ->callAction(TestAction::make('exclude_bulk_delete')->table()->bulk());
 
-    $this->assertDatabaseMissing('mounts', ['id' => $mounts[0]->id]);
-    $mounts->each(fn (Mount $mount) => $this->assertActivityFor('mount:delete', $this->admin, $mount));
+    $mounts->each(function (Mount $mount) {
+        $this->assertDatabaseMissing('mounts', ['id' => $mount->id]);
+        $this->assertActivityFor('mount:delete', $this->admin, $mount);
+    });
 });

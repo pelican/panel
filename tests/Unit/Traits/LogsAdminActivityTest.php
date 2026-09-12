@@ -54,6 +54,13 @@ class LogsAdminActivityTest extends TestCase
         $this->assertNull(self::redact('password', null));
     }
 
+    public function test_redact_strips_credentials_and_query_from_endpoints(): void
+    {
+        $this->assertSame('https://example.com/hook', self::redact('endpoint', 'https://user:pass@example.com/hook?token=abc123#frag'));
+        $this->assertSame('https://example.com:8443/hook', self::redact('endpoint', 'https://example.com:8443/hook'));
+        $this->assertSame('********', self::redact('endpoint', 'not a url'));
+    }
+
     public function test_identify_returns_identifying_attributes_only(): void
     {
         $node = new Node();
