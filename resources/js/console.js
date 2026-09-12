@@ -28,22 +28,33 @@ const config = {
 const samples = [];
 let currentState = null;
 
-// Mirrors Carbon's diffForHumans(syntax: DIFF_ABSOLUTE, short: true, parts: 2).
+// Mirrors Carbon's diffForHumans(syntax: DIFF_ABSOLUTE, short: true, parts: 2),
+// localized through Intl the same way Carbon translates its unit suffixes.
 const SHORT_UNITS = [
-    ['y', 31536000000],
-    ['mo', 2592000000],
-    ['w', 604800000],
-    ['d', 86400000],
-    ['h', 3600000],
-    ['m', 60000],
-    ['s', 1000],
+    ['year', 31536000000],
+    ['month', 2592000000],
+    ['week', 604800000],
+    ['day', 86400000],
+    ['hour', 3600000],
+    ['minute', 60000],
+    ['second', 1000],
 ];
+
+const formatUnit = (value, unit) => {
+    const options = { style: 'unit', unit, unitDisplay: 'narrow' };
+
+    try {
+        return new Intl.NumberFormat(config.locale.replace('_', '-'), options).format(value);
+    } catch {
+        return new Intl.NumberFormat('en', options).format(value);
+    }
+};
 
 const humanizeShort = (milliseconds, parts = 2) => {
     const found = [];
     let remaining = milliseconds;
 
-    for (const [suffix, size] of SHORT_UNITS) {
+    for (const [unit, size] of SHORT_UNITS) {
         if (found.length >= parts) {
             break;
         }
@@ -51,12 +62,12 @@ const humanizeShort = (milliseconds, parts = 2) => {
         const value = Math.floor(remaining / size);
 
         if (value > 0) {
-            found.push(`${value}${suffix}`);
+            found.push(formatUnit(value, unit));
             remaining -= value * size;
         }
     }
 
-    return found.length ? found.join(' ') : '0s';
+    return found.length ? found.join(' ') : formatUnit(0, 'second');
 };
 
 const number = (value) => {
