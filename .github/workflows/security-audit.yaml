@@ -1,0 +1,40 @@
+name: Security Audit
+
+on:
+  pull_request:
+    branches:
+      - "**"
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  composer-audit:
+    name: Composer Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          tools: composer:v2
+          coverage: none
+
+      - name: Composer Audit
+        run: composer audit --locked --no-interaction
+
+  yarn-audit:
+    name: Yarn Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v6
+
+      - name: Yarn Audit
+        # Yarn classic's exit code is a bitmask (8 = high, 16 = critical);
+        # --level only filters the output, so mask the code to match it.
+        run: |
+          yarn audit --level high || code=$?
+          exit $(( ${code:-0} & 24 ? 1 : 0 ))
