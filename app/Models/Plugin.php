@@ -32,6 +32,7 @@ use Sushi\Sushi;
  * @property string $class
  * @property string|null $panels
  * @property string|null $panel_version
+ * @property int|null $api_version
  * @property string|null $composer_packages
  * @property PluginStatus $status
  * @property string|null $status_message
@@ -63,6 +64,9 @@ class Plugin extends Model implements HasPluginSettings
 
     public const RESOURCE_NAME = 'plugin';
 
+    /** The highest plugin.json api_version this panel supports. */
+    public const SUPPORTED_API_VERSION = 1;
+
     protected $primaryKey = 'id';
 
     protected $keyType = 'string';
@@ -91,6 +95,7 @@ class Plugin extends Model implements HasPluginSettings
             'class' => 'string',
             'panels' => 'string',
             'panel_version' => 'string',
+            'api_version' => 'integer',
             'composer_packages' => 'string',
             'status' => 'string',
             'status_message' => 'string',
@@ -112,6 +117,7 @@ class Plugin extends Model implements HasPluginSettings
      *     class: string,
      *     panels: ?string,
      *     panel_version: ?string,
+     *     api_version: ?int,
      *     composer_packages: ?string,
      *     status: string,
      *     status_message: ?string,
@@ -162,6 +168,7 @@ class Plugin extends Model implements HasPluginSettings
                     'class' => $data['class'],
                     'panels' => $panels,
                     'panel_version' => Arr::get($data, 'panel_version', null),
+                    'api_version' => Arr::get($data, 'api_version', null),
                     'composer_packages' => $composerPackages,
 
                     'status' => Str::lower(Arr::get($data, 'meta.status', PluginStatus::NotInstalled->value)),
@@ -189,6 +196,7 @@ class Plugin extends Model implements HasPluginSettings
                         'class' => 'Error',
                         'panels' => null,
                         'panel_version' => null,
+                        'api_version' => null,
                         'composer_packages' => null,
 
                         'status' => PluginStatus::Errored->value,
@@ -255,6 +263,16 @@ class Plugin extends Model implements HasPluginSettings
         // ponytail: prereleases of the upper bound (2.0.0-rc1 vs ^1.0) pass version_compare's '<'
         // where composer would exclude them; swap to composer/semver if that ever bites
         return version_compare($currentPanelVersion, $minimum, '>=') && version_compare($currentPanelVersion, $upper, '<');
+    }
+
+    public function effectiveApiVersion(): int
+    {
+        return $this->api_version ?? 1;
+    }
+
+    public function isApiVersionSupported(): bool
+    {
+        return $this->effectiveApiVersion() <= self::SUPPORTED_API_VERSION;
     }
 
     public function isPanelVersionStrict(): bool
