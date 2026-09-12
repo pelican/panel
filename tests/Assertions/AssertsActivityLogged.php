@@ -5,6 +5,7 @@ namespace App\Tests\Assertions;
 use App\Events\ActivityLogged;
 use App\Models\ActivityLogSubject;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Assert;
 
@@ -51,6 +52,13 @@ trait AssertsActivityLogged
 
     private function activitySubjectsMatch(ActivityLogged $e, array $subjects): bool
     {
+        // Callers pass models variadically or as a single array; accept both.
+        $normalized = [];
+        foreach ($subjects as $subject) {
+            array_push($normalized, ...Arr::wrap($subject));
+        }
+        $subjects = $normalized;
+
         if ($subjects === []) {
             return true;
         }
