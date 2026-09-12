@@ -3,6 +3,7 @@
 namespace App\Filament\Admin\Resources\Nodes\Pages;
 
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Pages\BaseAdminCreateRecord;
 use App\Filament\Admin\Resources\Nodes\NodeResource;
 use App\Models\Node;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -13,7 +14,6 @@ use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
-use Filament\Resources\Pages\CreateRecord;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -24,7 +24,7 @@ use Filament\Support\Enums\IconSize;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
 
-class CreateNode extends CreateRecord
+class CreateNode extends BaseAdminCreateRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;

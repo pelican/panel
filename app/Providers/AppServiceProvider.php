@@ -18,6 +18,7 @@ use App\Models\Backup;
 use App\Models\Database;
 use App\Models\Egg;
 use App\Models\EggVariable;
+use App\Models\Mount;
 use App\Models\Node;
 use App\Models\Schedule;
 use App\Models\Server;
@@ -77,6 +78,7 @@ class AppServiceProvider extends ServiceProvider
             'ssh_key' => UserSSHKey::class,
             'task' => Task::class,
             'user' => User::class,
+            'mount' => Mount::class,
             'node' => Node::class,
         ]);
 

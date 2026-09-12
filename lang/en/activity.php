@@ -37,6 +37,24 @@ return [
             'create' => 'Enabled two-factor auth',
             'delete' => 'Disabled two-factor auth',
         ],
+        'create' => 'Created user <b>:username</b>',
+        'update' => 'Updated user <b>:username</b>',
+        'delete' => 'Deleted user <b>:username</b>',
+    ],
+    'egg' => [
+        'create' => 'Created egg <b>:name</b>',
+        'update' => 'Updated egg <b>:name</b>',
+        'delete' => 'Deleted egg <b>:name</b>',
+    ],
+    'mount' => [
+        'create' => 'Created mount <b>:name</b>',
+        'update' => 'Updated mount <b>:name</b>',
+        'delete' => 'Deleted mount <b>:name</b>',
+    ],
+    'node' => [
+        'create' => 'Created node <b>:name</b>',
+        'update' => 'Updated node <b>:name</b>',
+        'delete' => 'Deleted node <b>:name</b>',
     ],
     'server' => [
         'console' => [
@@ -124,5 +142,8 @@ return [
             'update' => 'Updated the mounts for the server',
         ],
         'crashed' => 'Server crashed',
+        'create' => 'Created server <b>:name</b>',
+        'update' => 'Updated server <b>:name</b>',
+        'delete' => 'Deleted server <b>:name</b>',
     ],
 ];
