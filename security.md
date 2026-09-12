@@ -16,3 +16,5 @@ Include steps to reproduce, affected versions, impact, and a proof of concept if
 
 You can expect a response within 72 hours.  
 Please do not disclose vulnerabilities publicly until we have released a fix. We will acknowledge receipt and can credit researchers upon request.
+
+All interactions around vulnerability reports are covered by our [code of conduct](./code_of_conduct.md).
