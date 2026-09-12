@@ -139,7 +139,7 @@ class NodeResource extends Resource
                         ->schema([
                             TextEntry::make('wings_version')
                                 ->label(trans('admin/node.wings_version'))
-                                ->state(fn (Node $node, SoftwareVersionService $versionService) => ($node->systemInformation()['version'] ?? trans('admin/node.unknown')) . ' ' . trans('admin/node.latest', ['version' => $versionService->latestWingsVersion()])),
+                                ->state(fn (Node $node, SoftwareVersionService $versionService) => ($node->systemInformation()['version'] ?? trans('admin/node.unknown')) . ' ' . trans('admin/node.latest', ['version' => $versionService->latestWingsVersion() ?? trans('admin/node.unknown')])),
                             TextEntry::make('cpu_threads')
                                 ->label(trans('admin/node.cpu_threads'))
                                 ->state(fn (Node $node) => $node->systemInformation()['cpu_count'] ?? 0),

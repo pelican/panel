@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use Illuminate\Support\Env;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Artisan;
 use RuntimeException;
 
@@ -17,7 +18,7 @@ trait EnvironmentWriterTrait
      */
     public function writeToEnvironment(array $values = []): void
     {
-        Env::writeVariables($values, base_path('.env'), true);
+        Env::writeVariables($values, App::environmentFilePath(), true);
         Artisan::call('config:clear');
     }
 }

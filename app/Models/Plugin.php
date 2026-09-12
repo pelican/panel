@@ -7,10 +7,12 @@ use App\Enums\PluginCategory;
 use App\Enums\PluginStatus;
 use App\Exceptions\PluginIdMismatchException;
 use App\Facades\Plugins;
+use App\Services\Helpers\SoftwareVersionService;
 use Exception;
 use Filament\Schemas\Components\Component;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -230,9 +232,29 @@ class Plugin extends Model implements HasPluginSettings
 
     public function isCompatible(): bool
     {
-        $currentPanelVersion = config('app.version', 'canary');
+        $currentPanelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
 
-        return !$this->panel_version || $currentPanelVersion === 'canary' || version_compare($currentPanelVersion, str($this->panel_version)->trim('^'), $this->isPanelVersionStrict() ? '=' : '>=');
+        if (!$this->panel_version || $currentPanelVersion === null) {
+            return true;
+        }
+
+        if ($this->isPanelVersionStrict()) {
+            return version_compare($currentPanelVersion, $this->panel_version, '=');
+        }
+
+        // ^X.Y.Z means >=X.Y.Z and below the next major, like composer's caret,
+        // capping at the next minor for 0.x and the next patch for 0.0.x
+        $parts = explode('.', ltrim($this->panel_version, '^'));
+        $minimum = implode('.', array_pad($parts, 3, '0'));
+        $upper = match (true) {
+            $parts[0] !== '0' || !isset($parts[1]) => ((int) $parts[0] + 1) . '.0.0',
+            $parts[1] !== '0' || !isset($parts[2]) => '0.' . ((int) $parts[1] + 1) . '.0',
+            default => '0.0.' . ((int) $parts[2] + 1),
+        };
+
+        // ponytail: prereleases of the upper bound (2.0.0-rc1 vs ^1.0) pass version_compare's '<'
+        // where composer would exclude them; swap to composer/semver if that ever bites
+        return version_compare($currentPanelVersion, $minimum, '>=') && version_compare($currentPanelVersion, $upper, '<');
     }
 
     public function isPanelVersionStrict(): bool
@@ -281,9 +303,9 @@ class Plugin extends Model implements HasPluginSettings
 
     public function isUpdateAvailable(): bool
     {
-        $panelVersion = config('app.version', 'canary');
+        $panelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
 
-        if ($panelVersion === 'canary') {
+        if ($panelVersion === null) {
             return false;
         }
 
@@ -303,9 +325,9 @@ class Plugin extends Model implements HasPluginSettings
 
     public function getDownloadUrlForUpdate(): ?string
     {
-        $panelVersion = config('app.version', 'canary');
+        $panelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
 
-        if ($panelVersion === 'canary') {
+        if ($panelVersion === null) {
             return null;
         }
 

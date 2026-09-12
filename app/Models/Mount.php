@@ -54,6 +54,17 @@ class Mount extends Model implements Validatable
     protected $guarded = ['id'];
 
     /**
+     * The database columns carry no defaults, so creating a mount without
+     * these booleans (the API marks them 'sometimes') would fail the insert.
+     *
+     * @var array<string, bool>
+     */
+    protected $attributes = [
+        'read_only' => false,
+        'user_mountable' => false,
+    ];
+
+    /**
      * Rules verifying that the data being stored matches the expectations of the database.
      *
      * @var array<array-key, string[]>

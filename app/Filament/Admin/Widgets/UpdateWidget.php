@@ -26,7 +26,24 @@ class UpdateWidget extends FormWidget
      */
     public function form(Schema $schema): Schema
     {
+        $latestVersion = $this->softwareVersionService->latestPanelVersion();
+
+        if ($latestVersion === null && $this->softwareVersionService->currentComparableVersion() !== null) {
+            return $schema
+                ->components([
+                    Section::make(trans('admin/dashboard.sections.intro-version-unavailable.heading'))
+                        ->icon(TablerIcon::CloudOff)
+                        ->iconColor('gray')
+                        ->schema([
+                            TextEntry::make('info')
+                                ->hiddenLabel()
+                                ->state(trans('admin/dashboard.sections.intro-version-unavailable.content', ['version' => $this->softwareVersionService->currentPanelVersion()])),
+                        ]),
+                ]);
+        }
+
         $isLatest = $this->softwareVersionService->isLatestPanel();
+        $isContainer = file_exists('/.dockerenv');
 
         return $schema
             ->components([
@@ -45,7 +62,7 @@ class UpdateWidget extends FormWidget
                     ->schema([
                         TextEntry::make('info')
                             ->hiddenLabel()
-                            ->state(trans('admin/dashboard.sections.intro-update-available.content', ['latestVersion' => $this->softwareVersionService->latestPanelVersion()])),
+                            ->state(trans('admin/dashboard.sections.intro-update-available.' . ($isContainer ? 'content_container' : 'content'), ['latestVersion' => $latestVersion])),
                         Section::make(trans('admin/dashboard.sections.intro-update-available.button_changelog'))
                             ->icon(TablerIcon::Script)
                             ->collapsible()

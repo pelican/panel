@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -39,6 +40,7 @@ use LogicException;
  *
  * @method static Builder<static>|ActivityLog forActor(\Illuminate\Database\Eloquent\Model $actor)
  * @method static Builder<static>|ActivityLog forEvent(string $action)
+ * @method static Builder<static>|ActivityLog hideAdminActivity(\App\Models\Server $server)
  * @method static Builder<static>|ActivityLog newModelQuery()
  * @method static Builder<static>|ActivityLog newQuery()
  * @method static Builder<static>|ActivityLog query()
@@ -119,6 +121,26 @@ class ActivityLog extends Model implements HasIcon, HasLabel
     public function scopeForActor(Builder $builder, Model $actor): Builder
     {
         return $builder->whereMorphedTo('actor', $actor);
+    }
+
+    /**
+     * Hides entries whose actor holds any role (an admin) but is not the owner
+     * or a subuser of the given server.
+     */
+    public function scopeHideAdminActivity(Builder $builder, Server $server): Builder
+    {
+        $members = $server->subusers()->pluck('user_id')->merge([$server->owner_id]);
+
+        return $builder->select('activity_logs.*')
+            ->leftJoin('users', function (JoinClause $join) {
+                $join->on('users.id', 'activity_logs.actor_id')
+                    ->where('activity_logs.actor_type', (new User())->getMorphClass());
+            })
+            ->where(function (Builder $builder) use ($members) {
+                $builder->whereNull('users.id')
+                    ->orWhereNotIn('users.id', User::whereHas('roles')->select('id'))
+                    ->orWhereIn('users.id', $members);
+            });
     }
 
     public function prunable(): Builder
