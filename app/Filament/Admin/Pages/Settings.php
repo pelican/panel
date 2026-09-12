@@ -15,6 +15,7 @@ use App\Traits\Filament\CanCustomizeTabs;
 use BackedEnum;
 use BladeUI\Icons\Exceptions\SvgNotFound;
 use BladeUI\Icons\Factory as IconFactory;
+use Dotenv\Dotenv;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -45,6 +46,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Enums\Width;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Notification as MailNotification;
 use Illuminate\Support\Str;
@@ -1009,22 +1011,21 @@ class Settings extends Page implements HasSchemas
 
     /**
      * Old-to-new pairs for every env key actually changing, secrets masked.
-     * Snapshotted through env() before the write, since the loaded environment
-     * still holds the previous values at that point.
+     * Snapshotted by parsing the environment file directly, because env()
+     * returns null for .env-only keys once the configuration is cached.
      *
      * @param  array<string, mixed>  $data
      * @return array<string, array{old: string|null, new: string|null}>
      */
     private function buildSettingsDiff(array $data): array
     {
+        $path = App::environmentFilePath();
+        $current = is_file($path) ? Dotenv::parse(file_get_contents($path)) : [];
+
         $changes = [];
 
         foreach ($data as $key => $value) {
-            $old = env($key);
-
-            if (is_bool($old)) {
-                $old = $old ? 'true' : 'false';
-            }
+            $old = $current[$key] ?? null;
 
             $old = is_null($old) ? null : (string) $old;
             $new = match (true) {
