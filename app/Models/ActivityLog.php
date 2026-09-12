@@ -158,6 +158,11 @@ class ActivityLog extends Model implements HasIcon, HasLabel
             $model->timestamp = Carbon::now();
         });
 
+        // Activity logs are append-only. Pruning still works because MassPrunable
+        // deletes through the query builder and never fires these model events;
+        // switching to the non-mass Prunable trait would break it.
+        static::updating(fn () => throw new LogicException('Activity logs are append-only and cannot be updated.'));
+        static::deleting(fn () => throw new LogicException('Activity logs are append-only and cannot be deleted.'));
     }
 
     public function getIcon(): BackedEnum
