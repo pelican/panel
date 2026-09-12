@@ -23,7 +23,7 @@ jobs:
           coverage: none
 
       - name: Composer Audit
-        run: composer audit --no-interaction
+        run: composer audit --locked --no-interaction
 
   yarn-audit:
     name: Yarn Audit
