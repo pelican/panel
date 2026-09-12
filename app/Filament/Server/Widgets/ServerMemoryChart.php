@@ -2,16 +2,14 @@
 
 namespace App\Filament\Server\Widgets;
 
-use App\Enums\CustomizationKey;
 use App\Models\Server;
 use Filament\Facades\Filament;
 use Filament\Support\RawJs;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Carbon;
 
 class ServerMemoryChart extends ChartWidget
 {
-    protected ?string $pollingInterval = '1s';
+    protected ?string $pollingInterval = null;
 
     protected ?string $maxHeight = '200px';
 
@@ -27,19 +25,10 @@ class ServerMemoryChart extends ChartWidget
 
     protected function getData(): array
     {
-        $period = (int) user()?->getCustomization(CustomizationKey::ConsoleGraphPeriod);
-        $memUsed = collect(cache()->get("servers.{$this->server->id}.memory_bytes"))
-            ->slice(-$period)
-            ->map(fn ($value, $key) => [
-                'memory' => round(config('panel.use_binary_prefix') ? $value / 1024 / 1024 / 1024 : $value / 1000 / 1000 / 1000, 2),
-                'timestamp' => Carbon::createFromTimestamp($key, user()->timezone ?? 'UTC')->format('H:i:s'),
-            ])
-            ->all();
-
         return [
             'datasets' => [
                 [
-                    'data' => array_column($memUsed, 'memory'),
+                    'data' => [],
                     'backgroundColor' => [
                         'rgba(96, 165, 250, 0.3)',
                     ],
@@ -47,7 +36,7 @@ class ServerMemoryChart extends ChartWidget
                     'fill' => true,
                 ],
             ],
-            'labels' => array_column($memUsed, 'timestamp'),
+            'labels' => [],
             'locale' => user()->language ?? 'en',
         ];
     }

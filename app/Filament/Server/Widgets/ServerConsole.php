@@ -113,23 +113,6 @@ class ServerConsole extends Widget
         $this->dispatch('sendAuthRequest', token: $this->getToken());
     }
 
-    #[On('store-stats')]
-    public function storeStats(string $data): void
-    {
-        $data = json_decode($data);
-
-        $timestamp = now()->getTimestamp();
-
-        foreach ($data as $key => $value) {
-            $cacheKey = "servers.{$this->server->id}.$key";
-            $cachedStats = cache()->get($cacheKey, []);
-
-            $cachedStats[$timestamp] = $value;
-
-            cache()->put($cacheKey, array_slice($cachedStats, -120), now()->addMinute());
-        }
-    }
-
     #[On('websocket-error')]
     public function websocketError(): void
     {

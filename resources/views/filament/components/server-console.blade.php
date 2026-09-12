@@ -6,6 +6,8 @@
         $userRows = (int) user()?->getCustomization(\App\Enums\CustomizationKey::ConsoleRows);
 
         $terminalPrelude = str(config('app.name'))->slug()->lower()->toString();
+
+        $componentName = fn (string $class) => app('livewire.finder')->normalizeName($class);
     @endphp
     @if($userFont !== "monospace")
         <link rel="preload" href="{{ asset("storage/fonts/{$userFont}.ttf") }}" as="font" crossorigin>
@@ -132,57 +134,127 @@
         const handlePowerChangeEvent = (state) =>
             terminal.writeln(TERMINAL_PRELUDE + 'Server marked as ' + state + '...\u001b[0m');
 
-        const socket = new WebSocket("{{ $this->getSocket() }}");
+        let socket;
+        let reconnectAttempts = 0;
 
-        socket.onerror = (event) => {
-            $wire.dispatchSelf('websocket-error');
-        };
+        window.ServerStats.configure({
+            uuid: @js($this->server->uuid),
+            binaryPrefix: @js((bool) config('panel.use_binary_prefix')),
+            period: @js((int) user()?->getCustomization(\App\Enums\CustomizationKey::ConsoleGraphPeriod)),
+            locale: @js(str_replace('_', '-', user()->language ?? 'en')),
+            timezone: @js(user()->timezone ?? 'UTC'),
+            offlineLabel: @js(\App\Enums\ContainerStatus::Offline->getLabel()),
+            statusLabels: @js(collect(\App\Enums\ContainerStatus::cases())->mapWithKeys(fn ($case) => [$case->value => $case->getLabel()])),
+        });
 
-        socket.onmessage = function(websocketMessageEvent) {
-            let { event, args } = JSON.parse(websocketMessageEvent.data);
+        let statusIsLive = @js($this->server->status === null);
 
-            switch (event) {
-                case 'console output':
-                case 'install output':
-                    handleConsoleOutput(args[0]);
-                    break;
-                case 'install completed':
-                    $wire.dispatch('refresh-sidebar');
-                    $wire.dispatch('refresh-topbar');
-                    $wire.dispatch('removeAlertBanner', { id: 'server_conflict' });
-                    break;
-                case 'feature match':
-                    Livewire.dispatch('mount-feature', { data: args[0] });
-                    break;
-                case 'status':
-                    handlePowerChangeEvent(args[0]);
-                    $wire.dispatch('console-status', { state: args[0] });
-                    break;
-                case 'transfer status':
-                    handleTransferStatus(args[0]);
-                    break;
-                case 'daemon error':
-                    handleDaemonErrorOutput(args[0]);
-                    break;
-                case 'stats':
-                    $wire.dispatchSelf('store-stats', { data: args[0] });
-                    break;
-                case 'auth success':
-                    socket.send(JSON.stringify({
-                        'event': 'send logs',
-                        'args': [null]
-                    }));
-                    break;
-                case 'token expiring':
-                case 'token expired':
-                    $wire.dispatchSelf('token-request');
-                    break;
+        const setStatText = (id, value) => {
+            const element = document.getElementById(id);
+
+            if (element) {
+                element.textContent = value;
             }
         };
 
-        socket.onopen = (event) => {
-            $wire.dispatchSelf('token-request');
+        const pushToWidgets = () => {
+            Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerCpuChart::class)), 'updateChartData', { data: window.ServerStats.cpuData() });
+            Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerMemoryChart::class)), 'updateChartData', { data: window.ServerStats.memoryData() });
+            Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerNetworkChart::class)), 'updateChartData', { data: window.ServerStats.networkData() });
+
+            const latest = window.ServerStats.latest();
+            const state = window.ServerStats.state();
+
+            if (latest) {
+                setStatText('server-network-heading', `- ↓${window.ServerStats.bytesToReadable(latest.rx)} - ↑${window.ServerStats.bytesToReadable(latest.tx)}`);
+                setStatText('server-stat-disk', latest.disk === 0 ? window.ServerStats.unknownLabel() : window.ServerStats.bytesToReadable(latest.disk));
+            }
+
+            const statValue = (format) => {
+                if (state === 'offline') {
+                    return window.ServerStats.offlineLabel();
+                }
+
+                return state === null || !latest ? window.ServerStats.unknownLabel() : format(latest);
+            };
+
+            setStatText('server-stat-cpu', statValue((sample) => `${window.ServerStats.formatNumber(sample.cpu, 2, 0)} %`));
+            setStatText('server-stat-memory', statValue((sample) => window.ServerStats.bytesToReadable(sample.memory)));
+
+            if (statusIsLive) {
+                setStatText('server-stat-status', window.ServerStats.statusText());
+            }
         };
+
+        const connect = () => {
+            socket = new WebSocket("{{ $this->getSocket() }}");
+
+            // A dropped socket would otherwise leave the page frozen at its last
+            // values, so reconnect quietly and only raise the banner once that fails.
+            socket.onclose = (event) => {
+                if (reconnectAttempts >= 5) {
+                    $wire.dispatchSelf('websocket-error');
+
+                    return;
+                }
+
+                reconnectAttempts++;
+                setTimeout(connect, 2000);
+            };
+
+            socket.onmessage = function(websocketMessageEvent) {
+                let { event, args } = JSON.parse(websocketMessageEvent.data);
+
+                switch (event) {
+                    case 'console output':
+                    case 'install output':
+                        handleConsoleOutput(args[0]);
+                        break;
+                    case 'install completed':
+                        statusIsLive = true;
+                        $wire.dispatch('refresh-sidebar');
+                        $wire.dispatch('refresh-topbar');
+                        $wire.dispatch('removeAlertBanner', { id: 'server_conflict' });
+                        break;
+                    case 'feature match':
+                        Livewire.dispatch('mount-feature', { data: args[0] });
+                        break;
+                    case 'status':
+                        handlePowerChangeEvent(args[0]);
+                        window.ServerStats.setState(args[0]);
+                        pushToWidgets();
+                        $wire.dispatch('console-status', { state: args[0] });
+                        break;
+                    case 'transfer status':
+                        handleTransferStatus(args[0]);
+                        break;
+                    case 'daemon error':
+                        handleDaemonErrorOutput(args[0]);
+                        break;
+                    case 'stats':
+                        window.ServerStats.push(JSON.parse(args[0]));
+                        pushToWidgets();
+                        break;
+                    case 'auth success':
+                        reconnectAttempts = 0;
+                        socket.send(JSON.stringify({
+                            'event': 'send logs',
+                            'args': [null]
+                        }));
+                        break;
+                    case 'token expiring':
+                    case 'token expired':
+                        $wire.dispatchSelf('token-request');
+                        break;
+                }
+            };
+
+            socket.onopen = (event) => {
+                $wire.dispatchSelf('token-request');
+            };
+        };
+
+        connect();
 
         Livewire.on('setServerState', ({ state, uuid }) => {
             const serverUuid = "{{ $this->server->uuid }}";
