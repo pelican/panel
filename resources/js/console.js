@@ -21,6 +21,7 @@ const config = {
     binaryPrefix: false,
     period: 30,
     locale: 'en',
+    timezone: null,
     offlineLabel: 'Offline',
     unknownLabel: '—',
     statusLabels: {},
@@ -143,8 +144,16 @@ const bytesToReadable = (bytes, decimals = 2) => {
 
 const windowed = () => samples.slice(-config.period);
 
-const labelsFor = (window) =>
-    window.map((sample) => new Date(sample.t).toLocaleTimeString('en-GB', { hour12: false }));
+// The panel timezone preference wins over the browser's, like the old PHP labels.
+const labelsFor = (window) => {
+    try {
+        return window.map((sample) =>
+            new Date(sample.t).toLocaleTimeString('en-GB', { hour12: false, timeZone: config.timezone ?? undefined }),
+        );
+    } catch {
+        return window.map((sample) => new Date(sample.t).toLocaleTimeString('en-GB', { hour12: false }));
+    }
+};
 
 const areaDataset = (data, backgroundColor = 'rgba(96, 165, 250, 0.3)', label = undefined) => ({
     ...(label === undefined ? {} : { label }),

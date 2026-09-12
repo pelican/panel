@@ -142,6 +142,7 @@
             binaryPrefix: @js((bool) config('panel.use_binary_prefix')),
             period: @js((int) user()?->getCustomization(\App\Enums\CustomizationKey::ConsoleGraphPeriod)),
             locale: @js(str_replace('_', '-', user()->language ?? 'en')),
+            timezone: @js(user()->timezone ?? 'UTC'),
             offlineLabel: @js(\App\Enums\ContainerStatus::Offline->getLabel()),
             statusLabels: @js(collect(\App\Enums\ContainerStatus::cases())->mapWithKeys(fn ($case) => [$case->value => $case->getLabel()])),
         });
