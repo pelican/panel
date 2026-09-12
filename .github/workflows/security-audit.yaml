@@ -1,0 +1,36 @@
+name: Security Audit
+
+on:
+  pull_request:
+    branches:
+      - "**"
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  composer-audit:
+    name: Composer Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          tools: composer:v2
+          coverage: none
+
+      - name: Composer Audit
+        run: composer audit --no-interaction
+
+  yarn-audit:
+    name: Yarn Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v6
+
+      - name: Yarn Audit
+        run: yarn audit --level high
