@@ -78,6 +78,15 @@ class ActivityResource extends Resource
             ->defaultSort('timestamp', 'desc')
             ->recordActions([
                 ViewAction::make()
+                    // Flatten before the form fills: KeyValue's state cast mistakes a nested
+                    // assoc (first value an array) for its own row format and blanks it.
+                    ->mutateRecordDataUsing(function (array $data) {
+                        $data['properties'] = collect(Arr::dot($data['properties'] ?? []))
+                            ->map(fn ($value) => is_bool($value) || is_null($value) ? var_export($value, true) : $value)
+                            ->all();
+
+                        return $data;
+                    })
                     ->schema([
                         TextEntry::make('event')
                             ->label(trans('admin/activity.event'))
@@ -93,8 +102,7 @@ class ActivityResource extends Resource
                         DateTimePicker::make('timestamp')
                             ->label(trans('admin/activity.timestamp')),
                         KeyValue::make('properties')
-                            ->label(trans('admin/activity.metadata'))
-                            ->formatStateUsing(fn ($state) => Arr::dot($state)),
+                            ->label(trans('admin/activity.metadata')),
                     ]),
             ])
             ->filters([

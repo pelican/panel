@@ -66,6 +66,19 @@ it('user with view activityLog can see the viewer', function () {
         ->assertCountTableRecords(ActivityLog::count());
 });
 
+it('flattens nested properties for the metadata modal', function () {
+    [$admin] = generateTestAccount([]);
+    $admin = $admin->syncRoles(Role::getRootAdmin());
+
+    // Nested-only properties trip KeyValue's state cast without the flatten.
+    $log = Activity::event('settings:update')->property('changes', ['APP_NAME' => ['old' => 'A', 'new' => null]])->log();
+
+    $this->actingAs($admin);
+    livewire(ListActivities::class)
+        ->mountAction(TestAction::make('view')->table($log))
+        ->assertActionDataSet(['properties' => ['changes.APP_NAME.old' => 'A', 'changes.APP_NAME.new' => 'NULL']]);
+});
+
 it('user with view activityLog can open the properties modal', function () {
     $role = Role::factory()->create(['name' => 'Modal Auditor', 'guard_name' => 'web']);
     $role->givePermissionTo(Permission::findOrCreate('view activityLog', 'web'));
