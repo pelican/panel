@@ -118,14 +118,7 @@ class DaemonServerRepository extends DaemonRepository
         // Destination node
         $this->setNode($transfer->newNode);
 
-        $this->getHttpClient()->delete('/api/transfer', [
-            'json' => [
-                'server_id' => $this->server->uuid,
-                'server' => [
-                    'uuid' => $this->server->uuid,
-                ],
-            ],
-        ]);
+        $this->getHttpClient()->delete("/api/transfers/{$this->server->uuid}");
     }
 
     /**
@@ -154,10 +147,8 @@ class DaemonServerRepository extends DaemonRepository
     public function deauthorize(string $user): void
     {
         $this->getHttpClient()->post('/api/deauthorize-user', [
-            'json' => [
-                'user' => $user,
-                'servers' => $this->server ? [$this->server->uuid] : [],
-            ],
+            'user' => $user,
+            'servers' => isset($this->server) ? [$this->server->uuid] : [],
         ]);
     }
 
