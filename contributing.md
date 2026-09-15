@@ -20,7 +20,7 @@ The quickest way to get PHP and a webserver running locally is [Laravel Herd](ht
 
 1. Fork the repository and clone your fork
 2. Install PHP dependencies: `composer install`
-3. Build the frontend assets: `npm install` and `npm run build` (use `npm run dev` while developing)
+3. Build the frontend assets: `yarn install` and `yarn build` (use `yarn dev` while developing)
 4. Configure your environment: `php artisan p:environment:setup`
 5. Set up your database: `php artisan p:environment:database`, then run `php artisan migrate --seed --force`
 6. Create your first admin user: `php artisan p:user:make`
