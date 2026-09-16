@@ -64,7 +64,7 @@ class ProcessWebhooksTest extends TestCase
         ProcessWebhook::dispatchSync(
             $webhook,
             'eloquent.created: '.Server::class,
-            $data,
+            [$data],
         );
 
         $this->assertCount(1, cache()->get("webhooks.$eventName"));
@@ -73,7 +73,7 @@ class ProcessWebhooksTest extends TestCase
         Http::assertSentCount(1);
         Http::assertSent(function (Request $request) use ($webhook, $data) {
             return $webhook->endpoint === $request->url()
-                && $request->data() === $data;
+                && $request->data() === array_merge($data, ['event' => 'created: Server']);
         });
     }
 
@@ -143,7 +143,8 @@ class ProcessWebhooksTest extends TestCase
         $this->assertDatabaseCount(Webhook::class, 1);
 
         $webhook = Webhook::query()->first();
-        $this->assertEquals($server->uuid, $webhook->payload[0]['uuid']);
+        $this->assertEquals('created: Server', $webhook->payload['event']);
+        $this->assertEquals($server->uuid, $webhook->payload['data']['uuid']);
 
         $this->assertDatabaseHas(Webhook::class, [
             'endpoint' => $webhookConfig->endpoint,
@@ -165,8 +166,8 @@ class ProcessWebhooksTest extends TestCase
         $server = $this->createServer();
 
         $this->assertDatabaseCount(Webhook::class, 1);
+        $this->assertEquals($server->uuid, Webhook::query()->first()->payload['data']['uuid']);
         $this->assertDatabaseHas(Webhook::class, [
-            'payload' => json_encode([$server->toArray()]),
             'endpoint' => $webhookConfig->endpoint,
             'successful_at' => null,
             'event' => 'eloquent.created: '.Server::class,
@@ -188,13 +189,12 @@ class ProcessWebhooksTest extends TestCase
         event(new Installed($server, true, true));
 
         $this->assertDatabaseCount(Webhook::class, 1);
+        $this->assertEquals($server->uuid, Webhook::query()->first()->payload['data']['server']['uuid']);
         $this->assertDatabaseHas(Webhook::class, [
-            // 'payload' => json_encode([['server' => $server->toArray()]]),
             'endpoint' => $webhookConfig->endpoint,
             'successful_at' => now()->startOfSecond(),
             'event' => Installed::class,
         ]);
-
     }
 
     public function createServer(): Server

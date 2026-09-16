@@ -36,6 +36,10 @@ abstract class TestCase extends BaseTestCase
         config()->set('app.debug', false);
         config()->set('panel.auth.2fa_required', 0);
 
+        // Tests assert on the side effects of dispatched jobs, so the queue must run
+        // inline even when the shell exports a real queue connection.
+        config()->set('queue.default', 'sync');
+
         // CI runs the test jobs without building the frontend, so rendered views
         // must not require a Vite manifest.
         $this->withoutVite();

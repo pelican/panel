@@ -68,7 +68,7 @@ class DispatchWebhooksTest extends TestCase
             'events' => ['eloquent.created: '.Server::class],
         ]);
 
-        $webhookConfig->update(['events' => 'eloquent.deleted: '.Server::class]);
+        $webhookConfig->update(['events' => ['eloquent.deleted: '.Server::class]]);
 
         $this->createServer();
 

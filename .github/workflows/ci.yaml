@@ -84,6 +84,12 @@ jobs:
         env:
           CREATE_SNAPSHOTS: "false"
 
+      # Webhook dispatch and delivery, also database agnostic.
+      - name: Feature tests
+        run: vendor/bin/pest tests/Feature --parallel --do-not-fail-on-phpunit-warning
+        env:
+          CREATE_SNAPSHOTS: "false"
+
   mysql:
     name: MySQL
     runs-on: ubuntu-latest
