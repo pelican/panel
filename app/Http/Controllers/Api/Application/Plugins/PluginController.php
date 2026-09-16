@@ -36,8 +36,8 @@ class PluginController extends ApplicationApiController
     public function index(ReadPluginRequest $request): array
     {
         $plugins = QueryBuilder::for(Plugin::class)
-            ->allowedFilters(['id', 'name', 'author', 'category'])
-            ->allowedSorts(['id', 'name', 'author', 'category'])
+            ->allowedFilters('id', 'name', 'author', 'category')
+            ->allowedSorts('id', 'name', 'author', 'category')
             ->paginate($request->query('per_page') ?? 10);
 
         return $this->response->collection($plugins)

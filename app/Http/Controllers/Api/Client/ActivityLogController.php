@@ -20,8 +20,8 @@ class ActivityLogController extends ClientApiController
     public function __invoke(ClientApiRequest $request): array
     {
         $activity = QueryBuilder::for($request->user()->activity())
-            ->allowedFilters([AllowedFilter::partial('event')])
-            ->allowedSorts(['timestamp'])
+            ->allowedFilters(AllowedFilter::partial('event'))
+            ->allowedSorts('timestamp')
             ->with('actor')
             ->whereNotIn('activity_logs.event', ActivityLog::DISABLED_EVENTS)
             ->paginate(min($request->query('per_page', '25'), 100))
