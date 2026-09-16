@@ -43,7 +43,8 @@ class PluginService
         foreach ($plugins as $plugin) {
             try {
                 // Filter out plugins that require a newer plugin api than this panel supports
-                if (!$plugin->isApiVersionSupported()) {
+                // (only in production, so plugin developers can work on fixing their plugin locally)
+                if ($this->app->isProduction() && !$plugin->isApiVersionSupported()) {
                     $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin requires plugin api version ' . $plugin->effectiveApiVersion() . ' but this Panel only supports up to version ' . Plugin::SUPPORTED_API_VERSION . '!');
 
                     continue;
