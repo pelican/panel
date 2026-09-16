@@ -44,8 +44,8 @@ class ServerController extends ApplicationApiController
     public function index(GetServersRequest $request): array
     {
         $servers = QueryBuilder::for(Server::class)
-            ->allowedFilters(['uuid', 'uuid_short', 'name', 'description', 'image', 'external_id'])
-            ->allowedSorts(['id', 'uuid'])
+            ->allowedFilters('uuid', 'uuid_short', 'name', 'description', 'image', 'external_id')
+            ->allowedSorts('id', 'uuid')
             ->paginate($request->query('per_page') ?? 50);
 
         return $this->response->collection($servers)

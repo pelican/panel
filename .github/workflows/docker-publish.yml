@@ -33,7 +33,7 @@ jobs:
             platform: linux/arm64
     steps:
       - name: Code checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v4
@@ -97,7 +97,7 @@ jobs:
           echo "schedule_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
 
       - name: Code checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.release_info.outputs.schedule_tag || github.ref }}
 

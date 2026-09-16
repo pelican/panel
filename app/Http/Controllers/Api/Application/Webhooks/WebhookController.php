@@ -28,8 +28,8 @@ class WebhookController extends ApplicationApiController
     public function index(GetWebhookRequest $request): array
     {
         $webhooks = QueryBuilder::for(WebhookConfiguration::class)
-            ->allowedFilters(['name', 'description', 'endpoint', 'type', 'scope', 'server_id'])
-            ->allowedSorts(['id', 'name', 'type', 'created_at'])
+            ->allowedFilters('name', 'description', 'endpoint', 'type', 'scope', 'server_id')
+            ->allowedSorts('id', 'name', 'type', 'created_at')
             ->paginate($request->perPage());
 
         return $this->response->collection($webhooks)
