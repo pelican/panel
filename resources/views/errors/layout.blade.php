@@ -10,7 +10,9 @@
                     {{$code}} | {{ $title }}
                 </h1>
 
-                {{ $subtitle instanceof \Closure ? $subtitle() : $subtitle }}
+                <p class="fi-simple-header-subheading">
+                    {{ $subtitle instanceof \Closure ? $subtitle() : $subtitle }}
+                </p>
             </header>
         </div>
     </div>
