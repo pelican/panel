@@ -42,6 +42,14 @@ class PluginService
         $plugins = Plugin::orderBy('load_order')->get();
         foreach ($plugins as $plugin) {
             try {
+                // Filter out plugins that require a newer plugin api than this panel supports
+                // (only in production, so plugin developers can work on fixing their plugin locally)
+                if ($this->app->isProduction() && !$plugin->isApiVersionSupported()) {
+                    $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin requires plugin api version ' . $plugin->effectiveApiVersion() . ' but this Panel only supports up to version ' . Plugin::SUPPORTED_API_VERSION . '!');
+
+                    continue;
+                }
+
                 // Filter out plugins that are not compatible with the current panel version
                 if (!$plugin->isCompatible()) {
                     $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin is only compatible with Panel version ' . $plugin->panel_version . (!$plugin->isPanelVersionStrict() ? ' or a compatible newer version' : '') . ' but you are using version ' . $this->app->make(SoftwareVersionService::class)->currentPanelVersion() . '!');

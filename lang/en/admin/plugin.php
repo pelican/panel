@@ -7,6 +7,7 @@ return [
 
     'name' => 'Name',
     'update_available' => 'An update for this plugin is available',
+    'api_version_missing' => '⚠ plugin.json does not declare an api_version, assuming 1',
     'author' => 'Author',
     'version' => 'Version',
     'category' => 'Category',

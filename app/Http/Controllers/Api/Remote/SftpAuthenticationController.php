@@ -13,8 +13,8 @@ use App\Services\Servers\GetUserPermissionsService;
 use Illuminate\Foundation\Auth\ThrottlesLogins;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use phpseclib3\Crypt\PublicKeyLoader;
-use phpseclib3\Exception\NoKeyLoadedException;
+use phpseclib4\Crypt\PublicKeyLoader;
+use phpseclib4\Exception\NoKeyLoadedException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
