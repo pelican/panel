@@ -35,7 +35,7 @@ jobs:
       DB_DATABASE: testing.sqlite
     steps:
       - name: Code Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get cache directory
         id: composer-cache
@@ -43,7 +43,7 @@ jobs:
           echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: ${{ runner.os }}-composer-${{ matrix.php }}-${{ hashFiles('**/composer.lock') }}
@@ -108,7 +108,7 @@ jobs:
       DB_USERNAME: root
     steps:
       - name: Code Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get cache directory
         id: composer-cache
@@ -116,7 +116,7 @@ jobs:
           echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: ${{ runner.os }}-composer-${{ matrix.php }}-${{ hashFiles('**/composer.lock') }}
@@ -170,7 +170,7 @@ jobs:
       DB_USERNAME: root
     steps:
       - name: Code Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get cache directory
         id: composer-cache
@@ -178,7 +178,7 @@ jobs:
           echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: ${{ runner.os }}-composer-${{ matrix.php }}-${{ hashFiles('**/composer.lock') }}
@@ -247,7 +247,7 @@ jobs:
       DB_PASSWORD: postgres
     steps:
       - name: Code Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get cache directory
         id: composer-cache
@@ -255,7 +255,7 @@ jobs:
           echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: ${{ runner.os }}-composer-${{ matrix.php }}-${{ hashFiles('**/composer.lock') }}
@@ -288,7 +288,7 @@ jobs:
       COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
     steps:
       - name: Code Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get cache directory
         id: composer-cache
@@ -296,7 +296,7 @@ jobs:
           echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: ${{ runner.os }}-composer-8.4-${{ hashFiles('**/composer.lock') }}
@@ -347,7 +347,7 @@ jobs:
         run: npx --yes @redocly/cli@2.47.0 lint application-openapi.json client-openapi.json
 
       - name: Upload specs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openapi-specs
           path: |
