@@ -27,7 +27,7 @@
         "league/flysystem-aws-s3-v3": "^3.35",
         "league/flysystem-memory": "^3.31",
         "phiki/phiki": "^2.2",
-        "phpseclib/phpseclib": "^3.0.56",
+        "phpseclib/phpseclib": "^4.0",
         "predis/predis": "^2.4",
         "s1lentium/iptools": "^1.2",
         "secondnetwork/blade-tabler-icons": "^3.46",
