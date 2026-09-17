@@ -1,0 +1,16 @@
+{
+    "object": "mount",
+    "attributes": {
+        "id": 101,
+        "uuid": "ffb5c3a6-ab17-43ab-97f0-8ff37ccd7f5f",
+        "name": "Fixture Stored Mount",
+        "description": null,
+        "source": "/srv/fixture-stored",
+        "target": "/mnt/fixture-stored",
+        "read_only": false,
+        "user_mountable": false
+    },
+    "meta": {
+        "resource": "http://localhost/api/application/mounts/101"
+    }
+}
