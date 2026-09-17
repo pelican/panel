@@ -3,7 +3,6 @@
 namespace App\Filament\Admin\Resources\Servers\Pages;
 
 use App\Enums\TablerIcon;
-use App\Filament\Admin\Pages\BaseAdminEditRecord;
 use App\Filament\Admin\Resources\Servers\ServerResource;
 use App\Filament\Server\Pages\Console;
 use App\Models\Server;
@@ -15,13 +14,14 @@ use App\Traits\Filament\CanCustomizeTabs;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Notifications\Notification;
+use Filament\Resources\Pages\EditRecord;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Illuminate\Http\Client\ConnectionException;
 use Random\RandomException;
 
-class EditServer extends BaseAdminEditRecord
+class EditServer extends EditRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;
@@ -83,8 +83,6 @@ class EditServer extends BaseAdminEditRecord
                     try {
                         $service->handle($server);
 
-                        static::logAdminActivity('delete', $server);
-
                         return redirect(ListServers::getUrl(panel: 'admin'));
                     } catch (ConnectionException) {
                         cache()->put("servers.$server->uuid.canForceDelete", true, now()->addMinutes(5));
@@ -110,8 +108,6 @@ class EditServer extends BaseAdminEditRecord
                 ->action(function (Server $server, ServerDeletionService $service) {
                     try {
                         $service->withForce()->handle($server);
-
-                        static::logAdminActivity('delete', $server);
 
                         return redirect(ListServers::getUrl(panel: 'admin'));
                     } catch (ConnectionException) {
@@ -153,8 +149,6 @@ class EditServer extends BaseAdminEditRecord
 
     protected function afterSave(): void
     {
-        parent::afterSave();
-
         /** @var Server $server */
         $server = $this->record;
 

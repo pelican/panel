@@ -25,6 +25,7 @@ use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\UserSSHKey;
+use App\Observers\AuditObserver;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\SoftwareVersionService;
 use Dedoc\Scramble\Scramble;
@@ -81,6 +82,10 @@ class AppServiceProvider extends ServiceProvider
             'mount' => Mount::class,
             'node' => Node::class,
         ]);
+
+        foreach ([Node::class, Egg::class, Mount::class, User::class, Server::class] as $model) {
+            $model::observe(AuditObserver::class);
+        }
 
         Http::macro(
             'daemon',

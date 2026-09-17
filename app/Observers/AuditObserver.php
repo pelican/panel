@@ -1,17 +1,20 @@
 <?php
 
-namespace App\Traits\Filament;
+namespace App\Observers;
 
-use App\Facades\Activity;
+use App\Services\Activity\ActivityLogService;
+use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 /**
- * Writes admin-panel audit events ({key}:create|update|delete) through the
- * activity log. The admin panel is not tenant-scoped, so the subject is always
- * attached explicitly; the actor auto-resolves to the logged-in admin.
+ * Writes {key}:create|update|delete audit events for the models it observes.
+ *
+ * Customer-facing surfaces (server panel, app panel, client API) already log
+ * their own richer events, so they are skipped. Everything else is logged:
+ * admin panel, application API, console and daemon writes.
  */
-trait LogsAdminActivity
+class AuditObserver
 {
     /**
      * Model basenames whose activity key differs from their camel-cased name.
@@ -45,20 +48,61 @@ trait LogsAdminActivity
      */
     protected static array $identifyingAttributes = ['id', 'uuid', 'name', 'username', 'email'];
 
+    /**
+     * Attribute changes that are never worth an audit row.
+     *
+     * @var string[]
+     */
+    protected static array $ignoredAttributes = ['updated_at', 'remember_token', 'last_used_at'];
+
+    // Injected rather than the Activity facade: the facade caches one service
+    // instance, so an observer firing inside an outer Activity::transaction()
+    // would clobber the pending entry.
+    public function __construct(protected ActivityLogService $activity) {}
+
+    public function created(Model $model): void
+    {
+        $this->log('create', $model);
+    }
+
+    public function updated(Model $model): void
+    {
+        // Fires before syncOriginal(), so raw original vs raw changes is apples to apples.
+        $changes = static::buildDiff($model->getRawOriginal(), $model->getChanges());
+
+        if ($changes === []) {
+            return;
+        }
+
+        $this->log('update', $model, ['changes' => $changes]);
+    }
+
+    public function deleted(Model $model): void
+    {
+        $this->log('delete', $model);
+    }
+
+    /** @param array<string, mixed> $properties */
+    protected function log(string $action, Model $model, array $properties = []): void
+    {
+        $panel = Filament::getCurrentPanel()?->getId();
+
+        if (($panel !== null && $panel !== 'admin') || request()->is('api/client/*')) {
+            return;
+        }
+
+        $this->activity
+            ->event(static::activityKey($model) . ':' . $action)
+            ->subject($model)
+            ->property(array_merge(static::identify($model), $properties))
+            ->log();
+    }
+
     public static function activityKey(Model $record): string
     {
         $basename = class_basename($record);
 
         return static::$activityKeyOverrides[$basename] ?? Str::camel($basename);
-    }
-
-    /** @param array<string, mixed> $properties */
-    public static function logAdminActivity(string $action, Model $record, array $properties = []): void
-    {
-        Activity::event(static::activityKey($record) . ':' . $action)
-            ->subject($record)
-            ->property(array_merge(static::identify($record), $properties))
-            ->log();
     }
 
     /**
@@ -83,7 +127,7 @@ trait LogsAdminActivity
         $diff = [];
 
         foreach ($new as $key => $value) {
-            if ($key === 'updated_at' || ($old[$key] ?? null) === $value) {
+            if (in_array($key, static::$ignoredAttributes, true) || ($old[$key] ?? null) === $value) {
                 continue;
             }
 

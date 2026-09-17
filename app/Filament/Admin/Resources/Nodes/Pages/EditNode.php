@@ -3,23 +3,23 @@
 namespace App\Filament\Admin\Resources\Nodes\Pages;
 
 use App\Enums\TablerIcon;
-use App\Filament\Admin\Pages\BaseAdminEditRecord;
 use App\Filament\Admin\Resources\Nodes\NodeResource;
-use App\Filament\Components\Actions\LoggedDeleteAction;
 use App\Models\Node;
 use App\Repositories\Daemon\DaemonSystemRepository;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use App\Traits\Filament\CanCustomizeTabs;
 use Filament\Actions\Action;
+use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
+use Filament\Resources\Pages\EditRecord;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Illuminate\Http\Client\ConnectionException;
 
-class EditNode extends BaseAdminEditRecord
+class EditNode extends EditRecord
 {
     use CanCustomizeHeaderActions;
     use CanCustomizeHeaderWidgets;
@@ -82,7 +82,7 @@ class EditNode extends BaseAdminEditRecord
     protected function getDefaultHeaderActions(): array
     {
         return [
-            LoggedDeleteAction::make()
+            DeleteAction::make()
                 ->disabled(fn (Node $node) => $node->servers()->count() > 0)
                 ->tooltip(fn (Node $node) => $node->servers()->count() > 0 ? trans('admin/node.node_has_servers') : trans('filament-actions::delete.single.label')),
             Action::make('save')
@@ -105,8 +105,6 @@ class EditNode extends BaseAdminEditRecord
 
     protected function afterSave(): void
     {
-        parent::afterSave();
-
         $this->fillForm();
 
         /** @var Node $node */

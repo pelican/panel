@@ -84,6 +84,33 @@ it('logs nothing for a no-op save', function () {
     Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('mount:update'));
 });
 
+it('logs an anonymous update outside any panel, such as the application API or console', function () {
+    Filament::setCurrentPanel(null);
+    auth()->logout();
+
+    $mount = makeMount();
+    $mount->update(['name' => 'Renamed Mount']);
+
+    $this->assertActivityFor('mount:update', null, $mount);
+});
+
+it('logs nothing from the customer-facing surfaces', function () {
+    Filament::setCurrentPanel(Filament::getPanel('app'));
+
+    $mount = makeMount();
+    $mount->update(['name' => 'Renamed Mount']);
+
+    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('mount:update'));
+});
+
+it('logs nothing for a remember token rotation', function () {
+    $user = User::factory()->create();
+    $user->setRememberToken(Str::random(60));
+    $user->save();
+
+    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('user:update'));
+});
+
 it('logs mount delete', function () {
     $mount = makeMount();
 
