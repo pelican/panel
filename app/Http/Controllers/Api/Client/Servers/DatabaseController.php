@@ -61,7 +61,9 @@ class DatabaseController extends ClientApiController
     public function store(StoreDatabaseRequest $request, Server $server): array
     {
         $database = DB::transaction(function () use ($request, $server) {
-            $server->databases()->lockForUpdate()->count();
+            // Serialize concurrent creates for this server so the limit check in the service holds.
+            // Locking the parent row works everywhere; a COUNT(*) FOR UPDATE is rejected by Postgres.
+            $server->newQuery()->whereKey($server->getKey())->lockForUpdate()->value('id');
 
             return $this->deployDatabaseService->handle($server, $request->validated());
         });
