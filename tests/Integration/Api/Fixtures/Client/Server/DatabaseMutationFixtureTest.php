@@ -46,12 +46,23 @@ class DatabaseMutationFixtureTest extends FixtureTestCase
 
     public function test_store(): void
     {
-        $this->markTestSkipped('POST /databases currently 500s: DatabaseManagementService::create logs its own activity inside the controller Activity transaction, resetting the pending log, so the wrapper then saves an event-less activity row and violates the NOT NULL constraint. Freeze the fixture once that double log is fixed.');
+        $response = $this->postJson(self::BASE . '/databases', [
+            'database' => 'fixture_stored',
+            'remote' => '%',
+        ]);
+
+        $this->assertFixtureSnapshot($response);
     }
 
     public function test_store_with_password_include(): void
     {
-        $this->markTestSkipped('Skipped for the same double activity log 500 as test_store; this variant would prove the request include merges with the include the endpoint always applies.');
+        // The endpoint always applies the password include, so the request include must merge with it rather than replace it.
+        $response = $this->postJson(self::BASE . '/databases?include=password', [
+            'database' => 'fixture_stored',
+            'remote' => '%',
+        ]);
+
+        $this->assertFixtureSnapshot($response);
     }
 
     public function test_rotate_password(): void
