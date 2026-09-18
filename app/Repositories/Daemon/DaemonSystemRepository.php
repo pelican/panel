@@ -19,6 +19,7 @@ class DaemonSystemRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->connectTimeout(3)
+            ->retry(2, 200)
             ->get('/api/system')
             ->throwIf(function ($result) {
                 $this->enforceValidNodeToken($result);
