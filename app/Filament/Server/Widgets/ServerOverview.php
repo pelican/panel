@@ -2,15 +2,16 @@
 
 namespace App\Filament\Server\Widgets;
 
-use App\Enums\ContainerStatus;
 use App\Filament\Server\Components\SmallStatBlock;
 use App\Models\Server;
-use Carbon\CarbonInterface;
 use Filament\Widgets\StatsOverviewWidget;
+use Illuminate\Support\HtmlString;
 
 class ServerOverview extends StatsOverviewWidget
 {
-    protected ?string $pollingInterval = '1s';
+    private const UNKNOWN = '—';
+
+    protected ?string $pollingInterval = null;
 
     public ?Server $server = null;
 
@@ -28,64 +29,36 @@ class ServerOverview extends StatsOverviewWidget
         ];
     }
 
-    private function status(): string
+    private function status(): HtmlString
     {
-        $status = $this->server->condition->getLabel();
-        $uptime = collect(cache()->get("servers.{$this->server->id}.uptime"))->last() ?? 0;
-
-        if ($uptime === 0) {
-            return $status;
-        }
-
-        $uptime = now()->subMillis($uptime)->diffForHumans(syntax: CarbonInterface::DIFF_ABSOLUTE, short: true, parts: 2);
-
-        return "$status ($uptime)";
+        return new HtmlString('<span id="server-stat-status">' . e($this->statusText()) . '</span>');
     }
 
-    public function cpuUsage(): string
+    private function statusText(): string
     {
-        $status = $this->server->retrieveStatus();
-
-        if ($status->isOffline()) {
-            return ContainerStatus::Offline->getLabel();
-        }
-
-        $data = collect(cache()->get("servers.{$this->server->id}.cpu_absolute"))->last(default: 0);
-        $cpu = format_number($data, maxPrecision: 2) . ' %';
-
-        return $cpu . ($this->server->cpu > 0 ? ' / ' . format_number($this->server->cpu) . ' %' : ' / ∞');
+        return $this->server->condition->getLabel();
     }
 
-    public function memoryUsage(): string
+    public function cpuUsage(): HtmlString
     {
-        $status = $this->server->retrieveStatus();
+        $limit = $this->server->cpu > 0 ? ' / ' . format_number($this->server->cpu) . ' %' : ' / ∞';
 
-        if ($status->isOffline()) {
-            return ContainerStatus::Offline->getLabel();
-        }
+        return new HtmlString('<span id="server-stat-cpu">' . self::UNKNOWN . '</span>' . e($limit));
+    }
 
-        $latestMemoryUsed = collect(cache()->get("servers.{$this->server->id}.memory_bytes"))->last(default: 0);
+    public function memoryUsage(): HtmlString
+    {
         $totalMemory = $this->server->memory * (config('panel.use_binary_prefix') ? 1024 * 1024 : 1000 * 1000);
+        $limit = $this->server->memory > 0 ? ' / ' . convert_bytes_to_readable($totalMemory) : ' / ∞';
 
-        $used = convert_bytes_to_readable($latestMemoryUsed);
-        $total = convert_bytes_to_readable($totalMemory);
-
-        return $used . ($this->server->memory > 0 ? ' / ' . $total : ' / ∞');
+        return new HtmlString('<span id="server-stat-memory">' . self::UNKNOWN . '</span>' . e($limit));
     }
 
-    public function diskUsage(): string
+    public function diskUsage(): HtmlString
     {
-        $disk = collect(cache()->get("servers.{$this->server->id}.disk_bytes"))->last(default: 0);
-
-        if ($disk === 0) {
-            return 'Unavailable';
-        }
-
         $totalBytes = $this->server->disk * (config('panel.use_binary_prefix') ? 1024 * 1024 : 1000 * 1000);
+        $limit = $this->server->disk > 0 ? ' / ' . convert_bytes_to_readable($totalBytes) : ' / ∞';
 
-        $used = convert_bytes_to_readable($disk);
-        $total = convert_bytes_to_readable($totalBytes);
-
-        return $used . ($this->server->disk > 0 ? ' / ' . $total : ' / ∞');
+        return new HtmlString('<span id="server-stat-disk">' . self::UNKNOWN . '</span>' . e($limit));
     }
 }
