@@ -3,8 +3,10 @@
 namespace App\Filament\Admin\Resources\Roles\Pages;
 
 use App\Enums\TablerIcon;
+use App\Facades\Activity;
 use App\Filament\Admin\Resources\Roles\RoleResource;
 use App\Models\Role;
+use App\Observers\AuditObserver;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\Action;
@@ -42,6 +44,8 @@ class EditRole extends EditRecord
 
     protected function afterSave(): void
     {
+        $oldPermissions = $this->record->permissions()->pluck('name')->sort()->values()->all();
+
         $permissionModels = collect();
         $this->permissions->each(function ($permission) use ($permissionModels) {
             $permissionModels->push(Permission::firstOrCreate([
@@ -51,6 +55,17 @@ class EditRole extends EditRecord
         });
 
         $this->record->syncPermissions($permissionModels);
+
+        $newPermissions = $this->record->permissions()->pluck('name')->sort()->values()->all();
+
+        // Permissions are a relation, so the AuditObserver never sees them change.
+        if ($oldPermissions !== $newPermissions) {
+            Activity::event('role:update')
+                ->subject($this->record)
+                ->property(AuditObserver::identify($this->record))
+                ->property('changes', ['permissions' => ['old' => $oldPermissions, 'new' => $newPermissions]])
+                ->log();
+        }
     }
 
     /** @return array<Action|ActionGroup> */

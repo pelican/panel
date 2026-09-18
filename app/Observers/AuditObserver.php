@@ -46,7 +46,7 @@ class AuditObserver
      *
      * @var string[]
      */
-    protected static array $identifyingAttributes = ['id', 'uuid', 'name', 'username', 'email'];
+    protected static array $identifyingAttributes = ['id', 'uuid', 'name', 'username', 'email', 'identifier', 'endpoint', 'database', 'ip', 'port'];
 
     /**
      * Attribute changes that are never worth an audit row.
@@ -112,7 +112,9 @@ class AuditObserver
      */
     public static function identify(Model $record): array
     {
-        return array_intersect_key($record->getAttributes(), array_flip(static::$identifyingAttributes));
+        $attributes = array_intersect_key($record->getAttributes(), array_flip(static::$identifyingAttributes));
+
+        return collect($attributes)->map(fn ($value, $key) => static::redact($key, $value))->all();
     }
 
     /**
@@ -142,7 +144,28 @@ class AuditObserver
 
     public static function redact(string $key, mixed $value): mixed
     {
-        if ($value !== null && $value !== '' && Str::is(static::$redactedAttributePatterns, strtolower($key))) {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+
+        // URLs can carry credentials in user-info or the query string.
+        if (strtolower($key) === 'endpoint' && is_string($value)) {
+            $parts = parse_url($value);
+
+            if (!is_array($parts) || !isset($parts['host'])) {
+                return '********';
+            }
+
+            return sprintf(
+                '%s%s%s%s',
+                isset($parts['scheme']) ? $parts['scheme'] . '://' : '',
+                $parts['host'],
+                isset($parts['port']) ? ':' . $parts['port'] : '',
+                $parts['path'] ?? '',
+            );
+        }
+
+        if (Str::is(static::$redactedAttributePatterns, strtolower($key))) {
             return '********';
         }
 
