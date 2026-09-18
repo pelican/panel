@@ -159,7 +159,7 @@ jobs:
       fail-fast: true
       matrix:
         php: [8.5]
-        database: ["mariadb:11.4"]
+        database: ["mariadb:10.11", "mariadb:11.4"]
     services:
       database:
         image: ${{ matrix.database }}
