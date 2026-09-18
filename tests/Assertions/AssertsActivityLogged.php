@@ -5,6 +5,7 @@ namespace App\Tests\Assertions;
 use App\Events\ActivityLogged;
 use App\Models\ActivityLogSubject;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Assert;
 
@@ -15,9 +16,13 @@ trait AssertsActivityLogged
      */
     public function assertActivityFor(string $event, ?Model $actor, ...$subjects): void
     {
-        $this->assertActivityLogged($event);
-        $this->assertActivityActor($event, $actor);
-        $this->assertActivitySubjects($event, ...$subjects);
+        // One predicate, so the actor and subjects must match on the SAME event
+        // rather than being satisfied by two different events of the same name.
+        Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) use ($event, $actor, $subjects) {
+            return $e->is($event)
+                && $this->activityActorMatches($e, $actor)
+                && $this->activitySubjectsMatch($e, $subjects);
+        });
     }
 
     /**
@@ -40,24 +45,49 @@ trait AssertsActivityLogged
             $subjects = array_slice(func_get_args(), 1);
         }
 
-        Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) use ($event, $subjects) {
-            Assert::assertEquals($event, $e->model->event);
-            Assert::assertNotEmpty($e->model->subjects);
+        // Filter rather than assert inside the closure, so a test that logged
+        // several events matches the one carrying all the expected subjects.
+        Event::assertDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is($event) && $this->activitySubjectsMatch($e, $subjects));
+    }
 
-            foreach ($subjects as $subject) {
-                $match = $e->model->subjects->first(function (ActivityLogSubject $model) use ($subject) {
-                    return $model->subject_type === $subject->getMorphClass()
-                        && $model->subject_id = $subject->getKey();
-                });
+    private function activitySubjectsMatch(ActivityLogged $e, array $subjects): bool
+    {
+        // Callers pass models variadically or as a single array; accept both.
+        $normalized = [];
+        foreach ($subjects as $subject) {
+            array_push($normalized, ...Arr::wrap($subject));
+        }
+        $subjects = $normalized;
 
-                Assert::assertNotNull(
-                    $match,
-                    sprintf('Failed asserting that event "%s" includes a %s[%d] subject', $event, get_class($subject), $subject->getKey())
-                );
-            }
-
+        if ($subjects === []) {
             return true;
-        });
+        }
+
+        if ($e->model->subjects->isEmpty()) {
+            return false;
+        }
+
+        foreach ($subjects as $subject) {
+            $match = $e->model->subjects->first(function (ActivityLogSubject $model) use ($subject) {
+                return $model->subject_type === $subject->getMorphClass()
+                    && $model->subject_id === $subject->getKey();
+            });
+
+            if (is_null($match)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function activityActorMatches(ActivityLogged $e, ?Model $actor): bool
+    {
+        if (is_null($actor)) {
+            return is_null($e->actor());
+        }
+
+        return !is_null($e->actor()) && $e->actor()->is($actor);
     }
 
     /**
@@ -66,17 +96,6 @@ trait AssertsActivityLogged
      */
     public function assertActivityActor(string $event, ?Model $actor = null): void
     {
-        Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) use ($event, $actor) {
-            Assert::assertEquals($event, $e->model->event);
-
-            if (is_null($actor)) {
-                Assert::assertNull($e->actor());
-            } else {
-                Assert::assertNotNull($e->actor());
-                Assert::assertTrue($e->actor()->is($actor));
-            }
-
-            return true;
-        });
+        Event::assertDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is($event) && $this->activityActorMatches($e, $actor));
     }
 }

@@ -32,14 +32,18 @@ use App\Models\Server;
 use App\Models\Subuser;
 use App\Models\User;
 use App\Tests\Integration\IntegrationTestCase;
+use Illuminate\Database\Eloquent\Model;
 use Ramsey\Uuid\Uuid;
 
 expect()->extend('toBeOne', function () {
     return $this->toBe(1);
 });
 
-expect()->extend('toLogActivities', function (int $times) {
-    expect(ActivityLog::count())->toBe($times);
+expect()->extend('toLogActivities', function (int $times, ?Model $actor = null) {
+    // Scoped to an actor so anonymous audit rows from fixture setup don't count.
+    $query = $actor ? ActivityLog::forActor($actor) : ActivityLog::query();
+
+    expect($query->count())->toBe($times);
 });
 
 uses(IntegrationTestCase::class)->in('Feature', 'Filament');

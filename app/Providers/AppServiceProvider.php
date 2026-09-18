@@ -18,12 +18,14 @@ use App\Models\Backup;
 use App\Models\Database;
 use App\Models\Egg;
 use App\Models\EggVariable;
+use App\Models\Mount;
 use App\Models\Node;
 use App\Models\Schedule;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\UserSSHKey;
+use App\Observers\AuditObserver;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\SoftwareVersionService;
 use Dedoc\Scramble\Scramble;
@@ -77,8 +79,13 @@ class AppServiceProvider extends ServiceProvider
             'ssh_key' => UserSSHKey::class,
             'task' => Task::class,
             'user' => User::class,
+            'mount' => Mount::class,
             'node' => Node::class,
         ]);
+
+        foreach ([Node::class, Egg::class, Mount::class, User::class, Server::class] as $model) {
+            $model::observe(AuditObserver::class);
+        }
 
         Http::macro(
             'daemon',

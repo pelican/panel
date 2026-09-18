@@ -29,6 +29,9 @@ class ActivityLogControllerTest extends ClientApiIntegrationTestCase
         $role->givePermissionTo(Permission::findOrCreate('view server', 'web'));
         $admin->syncRoles($role);
 
+        // Building the fixtures above is audited; only count what this test logs.
+        ActivityLog::query()->delete();
+
         $log = $this->createActivity($server, $admin);
 
         $response = $this->actingAs($user)->getJson($this->link($server, '/activity'));
@@ -52,6 +55,9 @@ class ActivityLogControllerTest extends ClientApiIntegrationTestCase
         $admin = User::factory()->create();
         $admin->syncRoles(Role::getRootAdmin());
 
+        // Building the fixtures above is audited; only count what this test logs.
+        ActivityLog::query()->delete();
+
         $this->createActivity($server, $admin);
 
         $this->actingAs($user)
@@ -73,6 +79,9 @@ class ActivityLogControllerTest extends ClientApiIntegrationTestCase
         $role = Role::factory()->create(['name' => 'Support', 'guard_name' => 'web']);
         $role->givePermissionTo(Permission::findOrCreate('view server', 'web'));
         $subuser->syncRoles($role);
+
+        // Building the fixtures above is audited; only count what this test logs.
+        ActivityLog::query()->delete();
 
         $this->createActivity($server, $server->user);
         $this->createActivity($server, $subuser);
@@ -96,6 +105,9 @@ class ActivityLogControllerTest extends ClientApiIntegrationTestCase
         /** @var User $admin */
         $admin = User::factory()->create();
         $admin->syncRoles(Role::getRootAdmin());
+
+        // Building the fixtures above is audited; only count what this test logs.
+        ActivityLog::query()->delete();
 
         $this->createActivity($server, $admin);
 
