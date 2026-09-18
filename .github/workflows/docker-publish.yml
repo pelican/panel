@@ -159,7 +159,7 @@ jobs:
         # Scheduled runs check out the latest release tag, which may predate the action, so fetch it from the ref this workflow runs from (inside .github so .dockerignore keeps it out of the build context)
       - name: Check out the stamp-version action
         if: "(github.event_name == 'release' && github.event.action == 'published') || github.event_name == 'schedule'"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: .github/workflow-actions
           sparse-checkout: .github/actions/stamp-version
