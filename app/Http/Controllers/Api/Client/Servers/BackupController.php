@@ -83,7 +83,9 @@ class BackupController extends ClientApiController
         }
 
         $backup = Activity::event('server:backup.start')->transaction(function ($log) use ($action, $server, $request) {
-            $server->backups()->lockForUpdate()->count();
+            // Serialize concurrent creates for this server so the limit check in the service holds.
+            // Locking the parent row works everywhere; a COUNT(*) FOR UPDATE is rejected by Postgres.
+            $server->newQuery()->whereKey($server->getKey())->lockForUpdate()->value('id');
 
             $backup = $action->handle($server, $request->input('name'));
 
