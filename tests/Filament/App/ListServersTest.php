@@ -1,8 +1,10 @@
 <?php
 
 use App\Enums\CustomizationKey;
+use App\Enums\SubuserPermission;
 use App\Filament\App\Resources\Servers\Pages\ListServers;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Http;
 
 use function Pest\Livewire\livewire;
 
@@ -83,4 +85,66 @@ it('keeps separate session per-page values for grid and list layouts', function 
 
     livewire(ListServers::class)
         ->assertSet('tableRecordsPerPage', 20);
+});
+
+function powerRequest(string $uuid, string $action): Closure
+{
+    return fn ($request) => str_ends_with($request->url(), "/api/servers/$uuid/power") && $request['action'] === $action;
+}
+
+it('forbids power actions on a server the user has no access to', function () {
+    Http::fake(['*' => Http::response(['state' => 'running', 'utilization' => []])]);
+
+    [$user] = generateTestAccount();
+    $server = createServerModel();
+
+    $this->actingAs($user);
+
+    livewire(ListServers::class)
+        ->call('powerAction', $server->id, 'kill')
+        ->assertForbidden();
+
+    Http::assertNotSent(powerRequest($server->uuid, 'kill'));
+});
+
+it('forbids power actions the subuser lacks permission for', function () {
+    Http::fake(['*' => Http::response(['state' => 'running', 'utilization' => []])]);
+
+    [$user, $server] = generateTestAccount([SubuserPermission::ControlStart]);
+
+    $this->actingAs($user);
+
+    livewire(ListServers::class)
+        ->call('powerAction', $server->id, 'stop')
+        ->assertForbidden();
+
+    Http::assertNotSent(powerRequest($server->uuid, 'stop'));
+});
+
+it('rejects unknown power actions', function () {
+    Http::fake(['*' => Http::response(['state' => 'running', 'utilization' => []])]);
+
+    [$user, $server] = generateTestAccount();
+
+    $this->actingAs($user);
+
+    livewire(ListServers::class)
+        ->call('powerAction', $server->id, 'explode')
+        ->assertStatus(422);
+
+    Http::assertNotSent(fn ($request) => str_ends_with($request->url(), "/api/servers/{$server->uuid}/power"));
+});
+
+it('sends power actions for a server the user owns', function () {
+    Http::fake(['*' => Http::response(['state' => 'running', 'utilization' => []])]);
+
+    [$user, $server] = generateTestAccount();
+
+    $this->actingAs($user);
+
+    livewire(ListServers::class)
+        ->call('powerAction', $server->id, 'start')
+        ->assertSuccessful();
+
+    Http::assertSent(powerRequest($server->uuid, 'start'));
 });

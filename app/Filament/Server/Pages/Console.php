@@ -166,8 +166,8 @@ class Console extends Page
         /** @var Server $server */
         $server = Filament::getTenant();
 
-        if ($state) {
-            $this->status = ContainerStatus::from($state);
+        if ($state && ($status = ContainerStatus::tryFrom($state))) {
+            $this->status = $status;
             cache()->put("servers.$server->uuid.status", $this->status, now()->addSeconds(15));
         }
 

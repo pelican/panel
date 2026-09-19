@@ -277,12 +277,14 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         return $this->hasMany(Server::class, 'owner_id');
     }
 
+    /** @return HasMany<ApiKey, $this> */
     public function apiKeys(): HasMany
     {
         return $this->hasMany(ApiKey::class)
             ->where('key_type', ApiKey::TYPE_ACCOUNT);
     }
 
+    /** @return HasMany<UserSSHKey, $this> */
     public function sshKeys(): HasMany
     {
         return $this->hasMany(UserSSHKey::class);

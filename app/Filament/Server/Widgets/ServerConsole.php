@@ -118,6 +118,12 @@ class ServerConsole extends Widget
     {
         $data = json_decode($data);
 
+        if (!is_object($data)) {
+            return;
+        }
+
+        $data = array_intersect_key(get_object_vars($data), array_flip(['cpu_absolute', 'memory_bytes', 'disk_bytes', 'network', 'uptime']));
+
         $timestamp = now()->getTimestamp();
 
         foreach ($data as $key => $value) {

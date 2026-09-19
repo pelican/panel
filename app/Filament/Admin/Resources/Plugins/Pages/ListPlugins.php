@@ -15,6 +15,8 @@ class ListPlugins extends ListRecords
 
     public function reorderTable(array $order, int|string|null $draggedRecordKey = null): void
     {
+        abort_unless($this->getTable()->isReorderable(), 403);
+
         /** @var PluginService $pluginService */
         $pluginService = app(PluginService::class); // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
 
