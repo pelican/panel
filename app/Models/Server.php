@@ -552,6 +552,13 @@ class Server extends Model implements HasAvatar, Validatable
             $directory = explode('/', trim($directory, '/'));
             $directory = array_map(fn (string $part) => rawurlencode($part), $directory);
             $directory = '/' . implode('/', $directory);
+
+            // SFTP clients only treat a URL path as a directory when it ends with a
+            // slash, otherwise they prompt to download the path as a file instead of
+            // opening it. See #2577.
+            if ($directory !== '/') {
+                $directory .= '/';
+            }
         }
 
         if ($directory === '/') {
