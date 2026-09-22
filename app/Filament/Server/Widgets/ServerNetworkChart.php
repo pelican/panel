@@ -2,16 +2,15 @@
 
 namespace App\Filament\Server\Widgets;
 
-use App\Enums\CustomizationKey;
 use App\Models\Server;
 use Filament\Facades\Filament;
 use Filament\Support\RawJs;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\HtmlString;
 
 class ServerNetworkChart extends ChartWidget
 {
-    protected ?string $pollingInterval = '1s';
+    protected ?string $pollingInterval = null;
 
     protected ?string $maxHeight = '200px';
 
@@ -27,33 +26,11 @@ class ServerNetworkChart extends ChartWidget
 
     protected function getData(): array
     {
-        $previous = null;
-
-        $period = (int) user()?->getCustomization(CustomizationKey::ConsoleGraphPeriod);
-        $net = collect(cache()->get("servers.{$this->server->id}.network"))
-            ->slice(-$period)
-            ->map(function ($current, $timestamp) use (&$previous) {
-                $net = null;
-
-                if ($previous !== null) {
-                    $net = [
-                        'rx' => max(0, $current->rx_bytes - $previous->rx_bytes),
-                        'tx' => max(0, $current->tx_bytes - $previous->tx_bytes),
-                        'timestamp' => Carbon::createFromTimestamp($timestamp, user()->timezone ?? 'UTC')->format('H:i:s'),
-                    ];
-                }
-
-                $previous = $current;
-
-                return $net;
-            })
-            ->all();
-
         return [
             'datasets' => [
                 [
                     'label' => 'Inbound',
-                    'data' => array_column($net, 'rx'),
+                    'data' => [],
                     'backgroundColor' => [
                         'rgba(100, 255, 105, 0.5)',
                     ],
@@ -62,7 +39,7 @@ class ServerNetworkChart extends ChartWidget
                 ],
                 [
                     'label' => 'Outbound',
-                    'data' => array_column($net, 'tx'),
+                    'data' => [],
                     'backgroundColor' => [
                         'rgba(96, 165, 250, 0.3)',
                     ],
@@ -70,7 +47,7 @@ class ServerNetworkChart extends ChartWidget
                     'fill' => true,
                 ],
             ],
-            'labels' => array_column($net, 'timestamp'),
+            'labels' => [],
         ];
     }
 
@@ -109,10 +86,8 @@ class ServerNetworkChart extends ChartWidget
     JS);
     }
 
-    public function getHeading(): string
+    public function getHeading(): HtmlString
     {
-        $lastData = collect(cache()->get("servers.{$this->server->id}.network"))->last();
-
-        return trans('server/console.labels.network') . ' - ↓' . convert_bytes_to_readable($lastData->rx_bytes ?? 0) . ' - ↑' . convert_bytes_to_readable($lastData->tx_bytes ?? 0);
+        return new HtmlString(e(trans('server/console.labels.network')) . ' <span id="server-network-heading"></span>');
     }
 }
