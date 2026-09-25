@@ -22,7 +22,7 @@ it('server name cannot be changed', function () {
         ->assertStatus(Response::HTTP_FORBIDDEN);
 
     $server = $server->refresh();
-    expect()->toLogActivities(0)
+    expect()->toLogActivities(0, $user)
         ->and($server->name)->toBe($originalName);
 });
 
@@ -38,8 +38,8 @@ it('server description can be changed', function () {
         ->assertStatus(Response::HTTP_NO_CONTENT);
 
     $server = $server->refresh();
-    $logged = ActivityLog::first();
-    expect()->toLogActivities(1)
+    $logged = ActivityLog::forActor($user)->first();
+    expect()->toLogActivities(1, $user)
         ->and($logged->properties['old'])->toBe($originalDescription)
         ->and($logged->properties['new'])->toBe($newDescription)
         ->and($server->description)->toBe($newDescription);
@@ -57,7 +57,7 @@ it('server description cannot be changed', function () {
         ->assertStatus(Response::HTTP_FORBIDDEN);
 
     $server = $server->refresh();
-    expect()->toLogActivities(0)
+    expect()->toLogActivities(0, $user)
         ->and($server->description)->toBe($originalDescription);
 });
 
@@ -72,7 +72,7 @@ it('server name can be changed', function () {
         ->assertStatus(Response::HTTP_NO_CONTENT);
 
     $server = $server->refresh();
-    expect()->toLogActivities(1)
+    expect()->toLogActivities(1, $user)
         ->and($server->name)->not()->toBe($originalName);
 });
 
@@ -87,7 +87,7 @@ test('unauthorized user cannot change docker image in use by server', function (
         ->assertStatus(Response::HTTP_FORBIDDEN);
 
     $server = $server->refresh();
-    expect()->toLogActivities(0)
+    expect()->toLogActivities(0, $user)
         ->and($server->image)->toBe($originalImage);
 });
 
@@ -108,7 +108,7 @@ test('cannot change docker image to image not allowed by egg', function () {
         ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
 
     $server->refresh();
-    expect()->toLogActivities(0)
+    expect()->toLogActivities(0, $user)
         ->and($server->image)->not()->toBe($newImage);
 });
 
@@ -128,8 +128,8 @@ test('can change docker image in use by server', function () {
 
     $server = $server->refresh();
 
-    $logItem = ActivityLog::first();
-    expect()->toLogActivities(1)
+    $logItem = ActivityLog::forActor($user)->first();
+    expect()->toLogActivities(1, $user)
         ->and($logItem->properties['old'])->toBe($oldImage)
         ->and($logItem->properties['new'])->toBe($newImage)
         ->and($server->image)->toBe($newImage);
@@ -151,7 +151,7 @@ test('unable to change the docker image set by administrator', function () {
 
     $server = $server->refresh();
 
-    expect()->toLogActivities(0)
+    expect()->toLogActivities(0, $user)
         ->and($server->image)->toBe($oldImage);
 });
 
@@ -175,6 +175,6 @@ test('can be reinstalled', function () {
         ->assertStatus(Response::HTTP_ACCEPTED);
 
     $server = $server->refresh();
-    expect()->toLogActivities(1)
+    expect()->toLogActivities(1, $user)
         ->and($server->status)->toBe(ServerState::Installing);
 });
