@@ -71,6 +71,8 @@ return [
     'topbar' => 'Topbar',
     'mixed' => 'Mixed',
     'button_style' => 'Button Style',
+    'theme' => 'Theme',
+    'default_theme' => 'Default Theme',
     'icon' => 'Icon',
     'icon_button' => 'Icon Button',
     'redirect_to_admin' => 'Redirect to Admin on Login',

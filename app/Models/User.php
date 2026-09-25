@@ -201,6 +201,7 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         'customization.console_graph_period' => ['integer', 'min:1'],
         'customization.top_navigation' => ['boolean'],
         'customization.dashboard_layout' => ['string', 'in:grid,table'],
+        'customization.theme' => ['string'],
         'customization.servers_per_page' => ['integer', 'min:0'],
     ];
 

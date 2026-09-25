@@ -10,6 +10,7 @@ enum CustomizationKey: string
     case ConsoleGraphPeriod = 'console_graph_period';
     case TopNavigation = 'top_navigation';
     case DashboardLayout = 'dashboard_layout';
+    case Theme = 'theme';
 
     case ButtonStyle = 'button_style';
     case RedirectToAdmin = 'redirect_to_admin';
@@ -25,6 +26,7 @@ enum CustomizationKey: string
             self::ConsoleGraphPeriod => 30,
             self::TopNavigation => config('panel.filament.default-navigation', 'sidebar'),
             self::DashboardLayout => 'grid',
+            self::Theme => config('panel.filament.default-theme'),
             self::ButtonStyle => true,
             self::RedirectToAdmin => false,
             // 0 means "unset", the table falls back to its contextual default (see ListServers).

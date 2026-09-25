@@ -62,6 +62,7 @@ return [
         'avatar-provider' => env('FILAMENT_AVATAR_PROVIDER', 'gravatar'),
         'uploadable-avatars' => env('FILAMENT_UPLOADABLE_AVATARS', false),
         'default-navigation' => env('FILAMENT_DEFAULT_NAVIGATION', 'sidebar'),
+        'default-theme' => env('FILAMENT_DEFAULT_THEME', ''),
     ],
 
     'use_binary_prefix' => env('PANEL_USE_BINARY_PREFIX', true),
