@@ -122,7 +122,7 @@ class PluginController extends ApplicationApiController
     {
         throw_unless($plugin->isUpdateAvailable(), new PanelException("Plugin doesn't need updating"));
 
-        $this->pluginService->updatePlugin($plugin);
+        $plugin = $this->pluginService->updatePlugin($plugin);
 
         return $this->response->item($plugin)
             ->transformWith(PluginData::class)

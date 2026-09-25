@@ -421,8 +421,9 @@ class PluginServiceTest extends IntegrationTestCase
         Plugin::refreshRows();
         $plugin = Plugin::findOrFail('test-update-plugin');
 
-        $this->service->updatePlugin($plugin);
+        $updated = $this->service->updatePlugin($plugin);
 
+        $this->assertSame('2.0.0', $updated->version);
         $this->assertSame('2.0.0', $this->installedVersion('test-update-plugin'));
 
         // installPlugin() ran against the reloaded row and recorded the plugin as installed but disabled.
