@@ -15,16 +15,20 @@ use App\Http\Responses\LoginResponse;
 use App\Models\Allocation;
 use App\Models\ApiKey;
 use App\Models\Backup;
+use App\Models\BackupHost;
 use App\Models\Database;
+use App\Models\DatabaseHost;
 use App\Models\Egg;
 use App\Models\EggVariable;
 use App\Models\Mount;
 use App\Models\Node;
+use App\Models\Role;
 use App\Models\Schedule;
 use App\Models\Server;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\UserSSHKey;
+use App\Models\WebhookConfiguration;
 use App\Observers\AuditObserver;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\SoftwareVersionService;
@@ -81,9 +85,16 @@ class AppServiceProvider extends ServiceProvider
             'user' => User::class,
             'mount' => Mount::class,
             'node' => Node::class,
+            'backup_host' => BackupHost::class,
+            'database_host' => DatabaseHost::class,
+            'role' => Role::class,
+            'webhook' => WebhookConfiguration::class,
         ]);
 
-        foreach ([Node::class, Egg::class, Mount::class, User::class, Server::class] as $model) {
+        foreach ([
+            Node::class, Egg::class, Mount::class, User::class, Server::class,
+            Role::class, ApiKey::class, DatabaseHost::class, BackupHost::class, WebhookConfiguration::class, Database::class,
+        ] as $model) {
             $model::observe(AuditObserver::class);
         }
 
