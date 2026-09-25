@@ -127,16 +127,16 @@
         },
         {
             "name": "aws/aws-sdk-php",
-            "version": "3.395.7",
+            "version": "3.398.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/aws/aws-sdk-php.git",
-                "reference": "575425a1c7c1dabb808badc7995e67874cba102a"
+                "reference": "1b6f116bd571bd461126b7edff8bf7e173b36ea2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/575425a1c7c1dabb808badc7995e67874cba102a",
-                "reference": "575425a1c7c1dabb808badc7995e67874cba102a",
+                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/1b6f116bd571bd461126b7edff8bf7e173b36ea2",
+                "reference": "1b6f116bd571bd461126b7edff8bf7e173b36ea2",
                 "shasum": ""
             },
             "require": {
@@ -218,9 +218,9 @@
             "support": {
                 "forum": "https://github.com/aws/aws-sdk-php/discussions",
                 "issues": "https://github.com/aws/aws-sdk-php/issues",
-                "source": "https://github.com/aws/aws-sdk-php/tree/3.395.7"
+                "source": "https://github.com/aws/aws-sdk-php/tree/3.398.0"
             },
-            "time": "2026-09-21T18:22:34+00:00"
+            "time": "2026-09-24T18:07:06+00:00"
         },
         {
             "name": "blade-ui-kit/blade-heroicons",
@@ -2553,16 +2553,16 @@
         },
         {
             "name": "kirschbaum-development/eloquent-power-joins",
-            "version": "4.3.3",
+            "version": "4.3.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kirschbaum-development/eloquent-power-joins.git",
-                "reference": "c609dbbe4ad2051b667e937f1ab554067519d64b"
+                "reference": "a0e6c0420c381861e1830693c4b74bdac7f7fb5f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kirschbaum-development/eloquent-power-joins/zipball/c609dbbe4ad2051b667e937f1ab554067519d64b",
-                "reference": "c609dbbe4ad2051b667e937f1ab554067519d64b",
+                "url": "https://api.github.com/repos/kirschbaum-development/eloquent-power-joins/zipball/a0e6c0420c381861e1830693c4b74bdac7f7fb5f",
+                "reference": "a0e6c0420c381861e1830693c4b74bdac7f7fb5f",
                 "shasum": ""
             },
             "require": {
@@ -2610,9 +2610,9 @@
             ],
             "support": {
                 "issues": "https://github.com/kirschbaum-development/eloquent-power-joins/issues",
-                "source": "https://github.com/kirschbaum-development/eloquent-power-joins/tree/4.3.3"
+                "source": "https://github.com/kirschbaum-development/eloquent-power-joins/tree/4.3.4"
             },
-            "time": "2026-07-23T11:41:37+00:00"
+            "time": "2026-09-25T11:10:42+00:00"
         },
         {
             "name": "laravel/framework",
@@ -12506,16 +12506,16 @@
         },
         {
             "name": "composer/class-map-generator",
-            "version": "1.7.3",
+            "version": "1.8.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/composer/class-map-generator.git",
-                "reference": "86d8208fc3c649a3a999daf1a63c25201be2990f"
+                "reference": "c0efbeb2f3fd7e23c7f180a59765c0b48a31fbc4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/composer/class-map-generator/zipball/86d8208fc3c649a3a999daf1a63c25201be2990f",
-                "reference": "86d8208fc3c649a3a999daf1a63c25201be2990f",
+                "url": "https://api.github.com/repos/composer/class-map-generator/zipball/c0efbeb2f3fd7e23c7f180a59765c0b48a31fbc4",
+                "reference": "c0efbeb2f3fd7e23c7f180a59765c0b48a31fbc4",
                 "shasum": ""
             },
             "require": {
@@ -12559,7 +12559,7 @@
             ],
             "support": {
                 "issues": "https://github.com/composer/class-map-generator/issues",
-                "source": "https://github.com/composer/class-map-generator/tree/1.7.3"
+                "source": "https://github.com/composer/class-map-generator/tree/1.8.0"
             },
             "funding": [
                 {
@@ -12571,7 +12571,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-05-05T09:17:07+00:00"
+            "time": "2026-09-25T15:24:19+00:00"
         },
         {
             "name": "composer/pcre",
@@ -14187,11 +14187,11 @@
         },
         {
             "name": "phpstan/phpstan",
-            "version": "2.2.14",
+            "version": "2.2.16",
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phpstan/phpstan/zipball/9c672e7a8e791dfc3d30e55f683e73fc0b63a3ac",
-                "reference": "9c672e7a8e791dfc3d30e55f683e73fc0b63a3ac",
+                "url": "https://api.github.com/repos/phpstan/phpstan/zipball/46a6d9060e5a7763adfcc21ebcb8b504ebdbcb92",
+                "reference": "46a6d9060e5a7763adfcc21ebcb8b504ebdbcb92",
                 "shasum": ""
             },
             "require": {
@@ -14247,7 +14247,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-09-12T21:39:33+00:00"
+            "time": "2026-09-25T09:31:51+00:00"
         },
         {
             "name": "phpunit/php-code-coverage",
