@@ -241,11 +241,16 @@ class EditFiles extends Page
             $resource::getUrl() => $resource::getBreadcrumb(),
         ];
 
+        $parts = explode('/', $this->path);
+        $fileName = array_pop($parts);
+
         $previousParts = '';
-        foreach (explode('/', $this->path) as $part) {
+        foreach ($parts as $part) {
             $previousParts = $previousParts . '/' . $part;
             $breadcrumbs[ListFiles::getUrl(['path' => ltrim($previousParts, '/')])] = $part;
         }
+
+        $breadcrumbs[] = $fileName;
 
         return $breadcrumbs;
     }
