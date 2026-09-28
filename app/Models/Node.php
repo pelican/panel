@@ -368,7 +368,7 @@ class Node extends Model implements Validatable
     /** @return array<mixed> */
     public function systemInformation(): array
     {
-        return cache()->remember("nodes.$this->id.system_information", now()->addSeconds(360), function () {
+        return cache()->flexible("nodes.$this->id.system_information", [30, 360], function () {
             try {
                 return (new DaemonSystemRepository())
                     ->setNode($this)
