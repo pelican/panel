@@ -18,11 +18,10 @@ class ActivityLogController extends ClientApiController
      */
     public function __invoke(ClientApiRequest $request): array
     {
-        $activity = QueryBuilder::for($request->user()->activity())
+        $activity = QueryBuilder::for($request->user()->activity()->visibleToCustomers())
             ->allowedFilters(AllowedFilter::partial('event'))
             ->allowedSorts('timestamp')
             ->with('actor')
-            ->visibleToCustomers()
             ->paginate(min($request->query('per_page', '25'), 100))
             ->appends($request->query());
 

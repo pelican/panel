@@ -293,6 +293,8 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
     /**
      * Returns all the activity logs where this user is the subject — not to
      * be confused by activity logs where this user is the _actor_.
+     *
+     * @return MorphToMany<ActivityLog, $this>
      */
     public function activity(): MorphToMany
     {

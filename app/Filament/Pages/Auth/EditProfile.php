@@ -449,6 +449,7 @@ class EditProfile extends BaseEditProfile
                         ->deletable(false)
                         ->addable(false)
                         ->relationship(null, function (Builder $query) {
+                            /** @var Builder<ActivityLog> $query */
                             $query->visibleToCustomers()->orderByDesc('timestamp')->limit(50);
                         })
                         ->schema([
