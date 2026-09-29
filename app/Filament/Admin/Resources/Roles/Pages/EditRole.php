@@ -60,7 +60,7 @@ class EditRole extends EditRecord
 
         // Permissions are a relation, so the AuditObserver never sees them change.
         if ($oldPermissions !== $newPermissions) {
-            Activity::event('role:update')
+            Activity::event('audit:role.update')
                 ->subject($this->record)
                 ->property(AuditObserver::identify($this->record))
                 ->property('changes', ['permissions' => ['old' => $oldPermissions, 'new' => $newPermissions]])

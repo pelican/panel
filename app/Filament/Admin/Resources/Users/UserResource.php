@@ -407,14 +407,8 @@ class UserResource extends Resource
                                         if ($key) {
                                             $apiKey = $user?->apiKeys()->find($key['id'] ?? null);
                                             if ($apiKey) {
+                                                // Logged by the AuditObserver as audit:apiKey.delete.
                                                 $apiKey->delete();
-
-                                                Activity::event('user:api-key.delete')
-                                                    ->actor(user())
-                                                    ->subject($user)
-                                                    ->subject($apiKey)
-                                                    ->property('identifier', $apiKey->identifier)
-                                                    ->log();
                                             }
 
                                             unset($items[$arguments['item']]);

@@ -93,7 +93,7 @@ class AppServiceProvider extends ServiceProvider
 
         foreach ([
             Node::class, Egg::class, Mount::class, User::class, Server::class,
-            Role::class, ApiKey::class, DatabaseHost::class, BackupHost::class, WebhookConfiguration::class, Database::class,
+            Role::class, ApiKey::class, DatabaseHost::class, BackupHost::class, WebhookConfiguration::class,
         ] as $model) {
             $model::observe(AuditObserver::class);
         }

@@ -60,12 +60,16 @@ class AuditObserverTest extends TestCase
         $this->assertSame('********', AuditObserver::redact('totp_secret', 'value'));
         $this->assertSame('plain', AuditObserver::redact('name', 'plain'));
         $this->assertNull(AuditObserver::redact('password', null));
+        $this->assertSame('********', AuditObserver::redact('configuration', '{"secret":"s3"}'));
+        $this->assertSame('********', AuditObserver::redact('headers', '{"Authorization":"Bearer x"}'));
+        $this->assertSame('********', AuditObserver::redact('anything', 'value', ['anything']));
     }
 
-    public function test_redact_strips_credentials_and_query_from_endpoints(): void
+    public function test_redact_keeps_only_the_origin_of_endpoints(): void
     {
-        $this->assertSame('https://example.com/hook', AuditObserver::redact('endpoint', 'https://user:pass@example.com/hook?token=abc123#frag'));
-        $this->assertSame('https://example.com:8443/hook', AuditObserver::redact('endpoint', 'https://example.com:8443/hook'));
+        $this->assertSame('https://example.com', AuditObserver::redact('endpoint', 'https://user:pass@example.com/hook?token=abc123#frag'));
+        $this->assertSame('https://discord.com', AuditObserver::redact('endpoint', 'https://discord.com/api/webhooks/123/secret-token'));
+        $this->assertSame('https://example.com:8443', AuditObserver::redact('endpoint', 'https://example.com:8443/hook'));
         $this->assertSame('********', AuditObserver::redact('endpoint', 'not a url'));
     }
 

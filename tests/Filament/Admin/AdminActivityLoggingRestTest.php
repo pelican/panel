@@ -22,6 +22,7 @@ use App\Models\Mount;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\WebhookConfiguration;
+use App\Services\Databases\DatabaseManagementService;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
@@ -61,7 +62,7 @@ it('logs role create', function () {
         ->assertHasNoFormErrors();
 
     $role = Role::findByName('Audited Role');
-    $this->assertActivityFor('role:create', $this->admin, $role);
+    $this->assertActivityFor('audit:role.create', $this->admin, $role);
 });
 
 it('logs role rename with a diff', function () {
@@ -72,7 +73,7 @@ it('logs role rename with a diff', function () {
         ->call('save')
         ->assertHasNoFormErrors();
 
-    $this->assertActivityFor('role:update', $this->admin, $role);
+    $this->assertActivityFor('audit:role.update', $this->admin, $role);
 });
 
 it('logs a permissions-only role change', function () {
@@ -84,7 +85,7 @@ it('logs a permissions-only role change', function () {
         ->assertHasNoFormErrors();
 
     Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
-        if (!$e->is('role:update')) {
+        if (!$e->is('audit:role.update')) {
             return false;
         }
         $changes = $e->model->properties['changes'];
@@ -102,7 +103,7 @@ it('logs both the rename and the permission change on a role', function () {
         ->assertHasNoFormErrors();
 
     // The observer logs the attribute diff and the page logs the permissions diff.
-    $changes = collect(Event::dispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('role:update')))
+    $changes = collect(Event::dispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('audit:role.update')))
         ->map(fn (array $args) => $args[0]->model->properties['changes']);
 
     expect($changes->pluck('name.new')->filter()->all())->toBe(['New Name'])
@@ -115,7 +116,7 @@ it('logs role delete', function () {
     livewire(EditRole::class, ['record' => $role->getKey()])
         ->callAction(DeleteAction::class);
 
-    $this->assertActivityFor('role:delete', $this->admin, $role);
+    $this->assertActivityFor('audit:role.delete', $this->admin, $role);
 });
 
 it('logs api key create and delete', function () {
@@ -125,12 +126,12 @@ it('logs api key create and delete', function () {
         ->assertHasNoFormErrors();
 
     $apiKey = ApiKey::query()->where('memo', 'audited key')->firstOrFail();
-    $this->assertActivityFor('apiKey:create', $this->admin, $apiKey);
+    $this->assertActivityFor('audit:apiKey.create', $this->admin, $apiKey);
 
     livewire(ListApiKeys::class)
         ->callAction(TestAction::make('delete')->table($apiKey));
 
-    $this->assertActivityFor('apiKey:delete', $this->admin, $apiKey);
+    $this->assertActivityFor('audit:apiKey.delete', $this->admin, $apiKey);
 });
 
 it('logs backup host create, update, and delete with secrets masked', function () {
@@ -148,23 +149,31 @@ it('logs backup host create, update, and delete with secrets masked', function (
         ->assertHasNoFormErrors();
 
     $backupHost = BackupHost::query()->where('name', 'S3 Host')->firstOrFail();
-    $this->assertActivityFor('backupHost:create', $this->admin, $backupHost);
+    $this->assertActivityFor('audit:backupHost.create', $this->admin, $backupHost);
     Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
-        return $e->is('backupHost:create') && !str_contains(json_encode($e->model->properties), 'test-secret');
+        return $e->is('audit:backupHost.create') && !str_contains(json_encode($e->model->properties), 'test-secret');
     });
 
     // The delete action hides when only one backup host exists.
     $other = BackupHost::factory()->create();
 
     livewire(EditBackupHost::class, ['record' => $backupHost->getKey()])
-        ->fillForm(['name' => 'Renamed Host'])
+        ->fillForm(['name' => 'Renamed Host', 'configuration.secret' => 'rotated-secret'])
         ->call('save')
         ->assertHasNoFormErrors();
-    $this->assertActivityFor('backupHost:update', $this->admin, $backupHost);
+    $this->assertActivityFor('audit:backupHost.update', $this->admin, $backupHost);
+    // The S3 credentials live in the configuration JSON, so the whole column is masked.
+    Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
+        $properties = json_encode($e->model->properties);
+
+        return $e->is('audit:backupHost.update')
+            && !str_contains($properties, 'test-secret')
+            && !str_contains($properties, 'rotated-secret');
+    });
 
     livewire(EditBackupHost::class, ['record' => $backupHost->getKey()])
         ->callAction(DeleteAction::class);
-    $this->assertActivityFor('backupHost:delete', $this->admin, $backupHost);
+    $this->assertActivityFor('audit:backupHost.delete', $this->admin, $backupHost);
 });
 
 it('logs database host create, update, and delete', function () {
@@ -182,17 +191,17 @@ it('logs database host create, update, and delete', function () {
         ->assertHasNoFormErrors();
 
     $databaseHost = DatabaseHost::query()->where('name', 'audited-mysql')->firstOrFail();
-    $this->assertActivityFor('databaseHost:create', $this->admin, $databaseHost);
+    $this->assertActivityFor('audit:databaseHost.create', $this->admin, $databaseHost);
 
     livewire(EditDatabaseHost::class, ['record' => $databaseHost->getKey()])
         ->fillForm(['name' => 'renamed-mysql'])
         ->call('save')
         ->assertHasNoFormErrors();
-    $this->assertActivityFor('databaseHost:update', $this->admin, $databaseHost);
+    $this->assertActivityFor('audit:databaseHost.update', $this->admin, $databaseHost);
 
     livewire(EditDatabaseHost::class, ['record' => $databaseHost->getKey()])
         ->callAction(DeleteAction::class);
-    $this->assertActivityFor('databaseHost:delete', $this->admin, $databaseHost);
+    $this->assertActivityFor('audit:databaseHost.delete', $this->admin, $databaseHost);
 });
 
 it('logs webhook create, update, and delete', function () {
@@ -200,34 +209,36 @@ it('logs webhook create, update, and delete', function () {
         ->fillForm([
             'name' => 'Notifier',
             'description' => 'Notifies on new servers',
-            'endpoint' => 'https://example.com/hook?token=abc123',
+            'endpoint' => 'https://discord.com/api/webhooks/123/pathsecret?token=abc123',
             'events' => ['eloquent.created: ' . Server::class],
         ])
         ->call('create')
         ->assertHasNoFormErrors();
 
     $webhook = WebhookConfiguration::query()->where('name', 'Notifier')->firstOrFail();
-    $this->assertActivityFor('webhook:create', $this->admin, $webhook);
-    // The logged endpoint is stripped to scheme://host/path, so query-string secrets stay out.
+    $this->assertActivityFor('audit:webhook.create', $this->admin, $webhook);
+    // The logged endpoint is stripped to its origin, so path and query-string secrets stay out.
     Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
-        return $e->is('webhook:create')
-            && $e->model->properties['endpoint'] === 'https://example.com/hook'
-            && !str_contains(json_encode($e->model->properties), 'abc123');
+        return $e->is('audit:webhook.create')
+            && $e->model->properties['endpoint'] === 'https://discord.com'
+            && !str_contains(json_encode($e->model->properties), 'abc123')
+            && !str_contains(json_encode($e->model->properties), 'pathsecret');
     });
 
     livewire(EditWebhookConfiguration::class, ['record' => $webhook->getKey()])
         ->fillForm(['name' => 'Renamed Hook', 'endpoint' => 'https://user:pass@example.org/hook2?token=newsecret'])
         ->call('save')
         ->assertHasNoFormErrors();
-    $this->assertActivityFor('webhook:update', $this->admin, $webhook);
+    $this->assertActivityFor('audit:webhook.update', $this->admin, $webhook);
     // buildDiff() must sanitize both sides of an endpoint change.
     Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
-        if (!$e->is('webhook:update')) {
+        if (!$e->is('audit:webhook.update')) {
             return false;
         }
         $properties = json_encode($e->model->properties);
 
-        return $e->model->properties['changes']['endpoint'] === ['old' => 'https://example.com/hook', 'new' => 'https://example.org/hook2']
+        return $e->model->properties['changes']['endpoint'] === ['old' => 'https://discord.com', 'new' => 'https://example.org']
+            && !str_contains($properties, 'pathsecret')
             && !str_contains($properties, 'newsecret')
             && !str_contains($properties, 'abc123')
             && !str_contains($properties, 'user:pass');
@@ -235,18 +246,20 @@ it('logs webhook create, update, and delete', function () {
 
     livewire(EditWebhookConfiguration::class, ['record' => $webhook->getKey()])
         ->callAction(DeleteAction::class);
-    $this->assertActivityFor('webhook:delete', $this->admin, $webhook);
+    $this->assertActivityFor('audit:webhook.delete', $this->admin, $webhook);
 });
 
-it('logs database delete from the database host relation manager', function () {
+it('deletes databases from the database host relation manager through the management service', function () {
     $server = Server::factory()->withNode()->create();
     $databaseHost = DatabaseHost::factory()->create();
     $database = Database::factory()->create(['database_host_id' => $databaseHost->id, 'server_id' => $server->id]);
 
+    // The service drops the database on the host and logs server:database.delete.
+    $this->mock(DatabaseManagementService::class)
+        ->shouldReceive('delete')->once()->withArgs(fn (Database $arg) => $arg->is($database))->andReturnTrue();
+
     livewire(DatabasesRelationManager::class, ['ownerRecord' => $databaseHost, 'pageClass' => EditDatabaseHost::class])
         ->callAction(TestAction::make('delete')->table($database));
-
-    $this->assertActivityFor('database:delete', $this->admin, $database);
 });
 
 it('logs one event per record on bulk delete', function () {
@@ -265,6 +278,6 @@ it('logs one event per record on bulk delete', function () {
 
     $mounts->each(function (Mount $mount) {
         $this->assertDatabaseMissing('mounts', ['id' => $mount->id]);
-        $this->assertActivityFor('mount:delete', $this->admin, $mount);
+        $this->assertActivityFor('audit:mount.delete', $this->admin, $mount);
     });
 });
