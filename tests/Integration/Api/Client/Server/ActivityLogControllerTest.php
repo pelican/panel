@@ -117,10 +117,27 @@ class ActivityLogControllerTest extends ClientApiIntegrationTestCase
             ->assertJsonCount(1, 'data');
     }
 
-    private function createActivity(Server $server, ?User $actor): ActivityLog
+    /**
+     * Admin audit rows attach the server as subject but must stay out of its feed.
+     */
+    public function test_admin_audit_activity_is_never_shown(): void
+    {
+        [$user, $server] = $this->generateTestAccount();
+
+        ActivityLog::query()->delete();
+
+        $this->createActivity($server, null, 'audit:server.update');
+
+        $this->actingAs($user)
+            ->getJson($this->link($server, '/activity'))
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    private function createActivity(Server $server, ?User $actor, string $event = 'server:file.read'): ActivityLog
     {
         $log = new ActivityLog([
-            'event' => 'server:file.read',
+            'event' => $event,
             'ip' => '127.0.0.1',
             'properties' => [],
         ]);

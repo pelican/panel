@@ -11,8 +11,11 @@ use Illuminate\Support\Str;
  * Writes {key}:create|update|delete audit events for the models it observes.
  *
  * Customer-facing surfaces (server panel, app panel, client API) already log
- * their own richer events, so they are skipped. Everything else is logged:
- * admin panel, application API, console and daemon writes.
+ * their own richer events, and daemon callbacks are not admin actions, so both
+ * are skipped. Everything else is logged: admin panel, application API, console.
+ *
+ * Events are prefixed "audit:" so the customer-facing activity feeds, which
+ * list rows by subject, can leave them out (ActivityLog::visibleToCustomers).
  */
 class AuditObserver
 {
@@ -68,7 +71,7 @@ class AuditObserver
     public function updated(Model $model): void
     {
         // Fires before syncOriginal(), so raw original vs raw changes is apples to apples.
-        $changes = static::buildDiff($model->getRawOriginal(), $model->getChanges());
+        $changes = static::buildDiff($model->getRawOriginal(), $model->getChanges(), static::sensitiveAttributes($model));
 
         if ($changes === []) {
             return;
@@ -87,12 +90,12 @@ class AuditObserver
     {
         $panel = Filament::getCurrentPanel()?->getId();
 
-        if (($panel !== null && $panel !== 'admin') || request()->is('api/client/*')) {
+        if (($panel !== null && $panel !== 'admin') || request()->is('api/client/*', 'api/remote/*')) {
             return;
         }
 
         $this->activity
-            ->event(static::activityKey($model) . ':' . $action)
+            ->event('audit:' . static::activityKey($model) . '.' . $action)
             ->subject($model)
             ->property(array_merge(static::identify($model), $properties))
             ->log();
@@ -112,7 +115,23 @@ class AuditObserver
      */
     public static function identify(Model $record): array
     {
-        return array_intersect_key($record->getAttributes(), array_flip(static::$identifyingAttributes));
+        $attributes = array_intersect_key($record->getAttributes(), array_flip(static::$identifyingAttributes));
+        $sensitive = static::sensitiveAttributes($record);
+
+        return collect($attributes)->map(fn ($value, $key) => static::redact($key, $value, $sensitive))->all();
+    }
+
+    /**
+     * Hidden and encrypted attributes are secret by the model's own account,
+     * whatever they are named.
+     *
+     * @return string[]
+     */
+    public static function sensitiveAttributes(Model $record): array
+    {
+        $encrypted = array_keys(array_filter($record->getCasts(), fn ($cast) => is_string($cast) && str_starts_with($cast, 'encrypted')));
+
+        return array_merge($record->getHidden(), $encrypted);
     }
 
     /**
@@ -120,9 +139,10 @@ class AuditObserver
      *
      * @param  array<string, mixed>  $old
      * @param  array<string, mixed>  $new
+     * @param  string[]  $sensitive
      * @return array<string, array{old: mixed, new: mixed}>
      */
-    public static function buildDiff(array $old, array $new): array
+    public static function buildDiff(array $old, array $new, array $sensitive = []): array
     {
         $diff = [];
 
@@ -132,17 +152,18 @@ class AuditObserver
             }
 
             $diff[$key] = [
-                'old' => static::redact($key, $old[$key] ?? null),
-                'new' => static::redact($key, $value),
+                'old' => static::redact($key, $old[$key] ?? null, $sensitive),
+                'new' => static::redact($key, $value, $sensitive),
             ];
         }
 
         return $diff;
     }
 
-    public static function redact(string $key, mixed $value): mixed
+    /** @param string[] $sensitive */
+    public static function redact(string $key, mixed $value, array $sensitive = []): mixed
     {
-        if ($value !== null && $value !== '' && Str::is(static::$redactedAttributePatterns, strtolower($key))) {
+        if ($value !== null && $value !== '' && (in_array($key, $sensitive, true) || Str::is(static::$redactedAttributePatterns, strtolower($key)))) {
             return '********';
         }
 

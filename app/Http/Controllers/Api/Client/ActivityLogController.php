@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Client;
 
 use App\Data\Api\Client\ActivityLogData;
 use App\Http\Requests\Api\Client\ClientApiRequest;
-use App\Models\ActivityLog;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -23,7 +22,7 @@ class ActivityLogController extends ClientApiController
             ->allowedFilters(AllowedFilter::partial('event'))
             ->allowedSorts('timestamp')
             ->with('actor')
-            ->whereNotIn('activity_logs.event', ActivityLog::DISABLED_EVENTS)
+            ->visibleToCustomers()
             ->paginate(min($request->query('per_page', '25'), 100))
             ->appends($request->query());
 
