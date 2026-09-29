@@ -3,12 +3,14 @@
 namespace App\Extensions\OAuth\Schemas;
 
 use App\Enums\TablerIcon;
+use App\Models\User;
 use BackedEnum;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Wizard\Step;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
+use Laravel\Socialite\Contracts\User as OAuthUser;
 use SocialiteProviders\Discord\Provider;
 
 final class DiscordSchema extends OAuthSchema
@@ -52,5 +54,11 @@ final class DiscordSchema extends OAuthSchema
     public function getHexColor(): string
     {
         return '#5865F2';
+    }
+
+    public function shouldLinkMissingUser(User $user, OAuthUser $oauthUser): bool
+    {
+        // Discord reports email verification as `verified` instead of `email_verified`
+        return data_get($oauthUser, 'verified') === true && parent::shouldLinkMissingUser($user, $oauthUser);
     }
 }

@@ -77,7 +77,8 @@ class OAuthController extends Controller
             return $this->errorRedirect('No email was linked to your account on the OAuth provider.');
         }
 
-        if ($this->isEmailVerified($oauthUser) === false) {
+        $emailVerified = data_get($oauthUser, 'email_verified');
+        if ($emailVerified !== null && !filter_var($emailVerified, FILTER_VALIDATE_BOOLEAN)) {
             return $this->errorRedirect('Email not verified on OAuth provider.');
         }
 
@@ -85,10 +86,6 @@ class OAuthController extends Controller
         if ($user) {
             if (!$driver->shouldLinkMissingUser($user, $oauthUser)) {
                 return $this->errorRedirect();
-            }
-
-            if ($this->isEmailVerified($oauthUser) !== true) {
-                return $this->errorRedirect('Email must be verified on the OAuth provider to link an existing account.');
             }
 
             $user = $this->oauthService->linkUser($user, $driver, $oauthUser);
@@ -120,30 +117,6 @@ class OAuthController extends Controller
         auth()->guard()->login($user, true);
 
         return redirect('/');
-    }
-
-    /**
-     * Determine whether the OAuth user's email address is verified by the provider.
-     *
-     * Returns true if explicitly verified, false if explicitly unverified,
-     * or null if the provider does not provide verification status.
-     */
-    private function isEmailVerified(OAuthUser $oauthUser): ?bool
-    {
-        $rawUser = method_exists($oauthUser, 'getRaw') ? $oauthUser->getRaw() : ($oauthUser->user ?? []);
-
-        // Common email verification flags across providers:
-        // - `email_verified` (Google, Authentik, OIDC)
-        // - `verified` (Discord, GitLab)
-        $verified = $oauthUser->email_verified
-            ?? (is_array($oauthUser->user ?? null) ? ($oauthUser->user['email_verified'] ?? $oauthUser->user['verified'] ?? null) : null)
-            ?? ($rawUser['email_verified'] ?? $rawUser['verified'] ?? null);
-
-        if ($verified === null) {
-            return null;
-        }
-
-        return filter_var($verified, FILTER_VALIDATE_BOOLEAN);
     }
 
     private function errorRedirect(?string $error = null): RedirectResponse
