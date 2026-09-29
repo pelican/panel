@@ -22,14 +22,17 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Enums\PaginationMode;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 class ActivityResource extends Resource
 {
@@ -49,6 +52,8 @@ class ActivityResource extends Resource
         return $table
             ->paginated([25, 50])
             ->defaultPaginationPageOption(25)
+            // Simple pagination skips the COUNT(*) over the whole activity log.
+            ->paginationMode(PaginationMode::Simple)
             ->columns([
                 TextColumn::make('event')
                     ->label(trans('admin/activity.event'))
@@ -106,19 +111,20 @@ class ActivityResource extends Resource
                     ]),
             ])
             ->filters([
+                // Options come from the translated event names and the morph map rather
+                // than SELECT DISTINCT, which scans the whole log on every page load.
                 SelectFilter::make('event')
                     ->label(trans('admin/activity.event'))
-                    ->options(fn () => ActivityLog::whereNotIn('event', ActivityLog::DISABLED_EVENTS)->select('event')->distinct()->orderBy('event')->pluck('event', 'event'))
-                    ->searchable()
-                    ->preload(),
+                    ->options(fn () => collect(Arr::dot(trans('activity')))->keys()->map(fn (string $key) => Str::replaceFirst('.', ':', $key))->sort()->mapWithKeys(fn (string $event) => [$event => $event]))
+                    ->searchable(),
                 SelectFilter::make('actor_id')
                     ->label(trans('admin/activity.user'))
-                    ->options(fn () => User::whereIn('id', ActivityLog::whereNotNull('actor_id')->select('actor_id'))->pluck('username', 'id'))
                     ->searchable()
-                    ->preload(),
+                    ->getSearchResultsUsing(fn (string $search) => User::where('username', 'like', "%$search%")->orWhere('email', 'like', "%$search%")->limit(50)->pluck('username', 'id'))
+                    ->getOptionLabelUsing(fn ($value) => User::find($value)?->username),
                 SelectFilter::make('subject_type')
                     ->label(trans('admin/activity.subject'))
-                    ->options(fn () => ActivityLogSubject::select('subject_type')->distinct()->orderBy('subject_type')->pluck('subject_type', 'subject_type')->mapWithKeys(fn ($type) => [$type => class_basename($type)]))
+                    ->options(fn () => collect(Relation::morphMap())->mapWithKeys(fn (string $class, string $alias) => [$alias => class_basename($class)])->sort())
                     ->query(fn (Builder $query, array $data) => $query->when($data['value'], fn (Builder $query, $value) => $query->whereHas('subjects', fn (Builder $query) => $query->where('subject_type', $value)))),
                 Filter::make('timestamp')
                     ->schema([

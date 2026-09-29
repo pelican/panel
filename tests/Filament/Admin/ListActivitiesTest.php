@@ -6,6 +6,7 @@ use App\Models\ActivityLog;
 use App\Models\Role;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
@@ -91,4 +92,42 @@ it('user with view activityLog can open the properties modal', function () {
     livewire(ListActivities::class)
         ->callAction(TestAction::make('view')->table($log))
         ->assertHasNoActionErrors();
+});
+
+it('subject filter narrows the table by morph alias', function () {
+    [$admin, $server] = generateTestAccount([]);
+    $admin = $admin->syncRoles(Role::getRootAdmin());
+
+    ActivityLog::query()->delete();
+    Activity::event('server:power.start')->subject($server)->log();
+    Activity::event('auth:success')->actor($admin)->log();
+
+    $this->actingAs($admin);
+    livewire(ListActivities::class)
+        ->filterTable('subject_type', $server->getMorphClass())
+        ->assertCountTableRecords(1);
+});
+
+it('does not query per row', function () {
+    [$admin, $server] = generateTestAccount([]);
+    $admin = $admin->syncRoles(Role::getRootAdmin());
+    $this->actingAs($admin);
+
+    $count = function () {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        livewire(ListActivities::class)->assertSuccessful();
+
+        return count(DB::getQueryLog());
+    };
+
+    Activity::event('server:power.start')->subject($server)->log();
+    $count(); // Warm the permission and settings caches.
+    $baseline = $count();
+
+    foreach (range(1, 10) as $ignored) {
+        Activity::event('server:power.start')->subject($server)->log();
+    }
+
+    expect($count())->toBe($baseline);
 });
