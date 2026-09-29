@@ -5,10 +5,10 @@ namespace App\Services\Databases;
 use App\Exceptions\Repository\DuplicateDatabaseNameException;
 use App\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledException;
 use App\Exceptions\Service\Database\TooManyDatabasesException;
-use App\Facades\Activity;
 use App\Helpers\Utilities;
 use App\Models\Database;
 use App\Models\Server;
+use App\Services\Activity\ActivityLogService;
 use Exception;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Str;
@@ -33,8 +33,11 @@ class DatabaseManagementService
      */
     protected bool $validateDatabaseLimit = true;
 
+    // Injected rather than the Activity facade: the facade caches one service instance, so
+    // logging through it inside a caller's Activity::transaction() would clobber the pending entry.
     public function __construct(
         protected ConnectionInterface $connection,
+        protected ActivityLogService $activity,
     ) {}
 
     /**
@@ -96,7 +99,7 @@ class DatabaseManagementService
                 ->assignUserToDatabase()
                 ->flushPrivileges();
 
-            Activity::event('server:database.create')
+            $this->activity->event('server:database.create')
                 ->subject($database)
                 ->property('name', $database->database)
                 ->log();
@@ -118,7 +121,7 @@ class DatabaseManagementService
                 ->dropUser()
                 ->flushPrivileges();
 
-            Activity::event('server:database.delete')
+            $this->activity->event('server:database.delete')
                 ->subject($database)
                 ->property('name', $database->database)
                 ->log();

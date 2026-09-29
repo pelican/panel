@@ -8,6 +8,7 @@ use App\Models\Server;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Tests\Integration\IntegrationTestCase;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\TestWith;
 
 class RevokeSftpAccessJobTest extends IntegrationTestCase
@@ -64,5 +65,36 @@ class RevokeSftpAccessJobTest extends IntegrationTestCase
         });
 
         (new RevokeSftpAccessJob('user-1', $server))->handle($mock);
+    }
+
+    public function test_deauthorize_sends_request_for_node(): void
+    {
+        Http::fake();
+
+        $node = Node::factory()->make(['uuid' => 'node-1234']);
+
+        (new RevokeSftpAccessJob('user-1', $node))->handle(app(DaemonServerRepository::class));
+
+        Http::assertSent(function ($request) {
+            return str_ends_with($request->url(), '/api/deauthorize-user')
+                && $request['user'] === 'user-1'
+                && $request['servers'] === [];
+        });
+    }
+
+    public function test_deauthorize_sends_request_for_server(): void
+    {
+        Http::fake();
+
+        $node = Node::factory()->make(['uuid' => 'node-1234']);
+        $server = Server::factory()->make(['uuid' => 'server-1234'])->setRelation('node', $node);
+
+        (new RevokeSftpAccessJob('user-1', $server))->handle(app(DaemonServerRepository::class));
+
+        Http::assertSent(function ($request) {
+            return str_ends_with($request->url(), '/api/deauthorize-user')
+                && $request['user'] === 'user-1'
+                && $request['servers'] === ['server-1234'];
+        });
     }
 }

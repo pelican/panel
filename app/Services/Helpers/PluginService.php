@@ -42,6 +42,14 @@ class PluginService
         $plugins = Plugin::orderBy('load_order')->get();
         foreach ($plugins as $plugin) {
             try {
+                // Filter out plugins that require a newer plugin api than this panel supports
+                // (only in production, so plugin developers can work on fixing their plugin locally)
+                if ($this->app->isProduction() && !$plugin->isApiVersionSupported()) {
+                    $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin requires plugin api version ' . $plugin->effectiveApiVersion() . ' but this Panel only supports up to version ' . Plugin::SUPPORTED_API_VERSION . '!');
+
+                    continue;
+                }
+
                 // Filter out plugins that are not compatible with the current panel version
                 if (!$plugin->isCompatible()) {
                     $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin is only compatible with Panel version ' . $plugin->panel_version . (!$plugin->isPanelVersionStrict() ? ' or a compatible newer version' : '') . ' but you are using version ' . $this->app->make(SoftwareVersionService::class)->currentPanelVersion() . '!');
@@ -305,7 +313,7 @@ class PluginService
     }
 
     /** @throws Exception */
-    public function updatePlugin(Plugin $plugin): void
+    public function updatePlugin(Plugin $plugin): Plugin
     {
         $downloadUrl = $plugin->getDownloadUrlForUpdate();
         throw_unless($downloadUrl, new Exception('No download url found.'));
@@ -313,11 +321,13 @@ class PluginService
         $this->downloadPluginFromUrl($downloadUrl, $plugin->id);
 
         Plugin::refreshRows();
-        $plugin = $plugin->refresh();
+        $plugin = Plugin::findOrFail($plugin->id);
 
         $this->installPlugin($plugin, false);
 
         cache()->forget("plugins.$plugin->id.update");
+
+        return $plugin;
     }
 
     /** @throws Exception */

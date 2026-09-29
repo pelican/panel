@@ -26,7 +26,7 @@ class MultiFieldServerFilter implements Filter
      *
      * @param  string  $value
      */
-    public function __invoke(Builder $query, $value, string $property): void
+    public function __invoke(Builder $query, mixed $value, string $property): void
     {
         throw_if($query->getQuery()->from !== 'servers', new BadMethodCallException('Cannot use the MultiFieldServerFilter against a non-server model.'));
 

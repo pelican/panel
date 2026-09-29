@@ -33,8 +33,8 @@ class ActivityLogController extends ClientApiController
             ->when(config('activity.hide_admin_activity'), fn (Builder $builder) => $builder->hideAdminActivity($server));
 
         $activity = QueryBuilder::for($query)
-            ->allowedSorts(['timestamp'])
-            ->allowedFilters([AllowedFilter::partial('event')])
+            ->allowedSorts('timestamp')
+            ->allowedFilters(AllowedFilter::partial('event'))
             ->with('actor')
             ->paginate(min($request->query('per_page', '25'), 100))
             ->appends($request->query());
