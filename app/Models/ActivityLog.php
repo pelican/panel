@@ -41,6 +41,7 @@ use LogicException;
  * @method static Builder<static>|ActivityLog forActor(\Illuminate\Database\Eloquent\Model $actor)
  * @method static Builder<static>|ActivityLog forEvent(string $action)
  * @method static Builder<static>|ActivityLog hideAdminActivity(\App\Models\Server $server)
+ * @method static Builder<static>|ActivityLog visibleToCustomers()
  * @method static Builder<static>|ActivityLog newModelQuery()
  * @method static Builder<static>|ActivityLog newQuery()
  * @method static Builder<static>|ActivityLog query()
@@ -124,6 +125,16 @@ class ActivityLog extends Model implements HasIcon, HasLabel
     }
 
     /**
+     * Leaves out disabled events and the admin audit trail, which attaches the
+     * server or user as subject but is not meant for their activity feeds.
+     */
+    public function scopeVisibleToCustomers(Builder $builder): Builder
+    {
+        return $builder->whereNotIn('activity_logs.event', self::DISABLED_EVENTS)
+            ->where('activity_logs.event', 'not like', 'audit:%');
+    }
+
+    /**
      * Hides entries whose actor holds any role (an admin) but is not the owner
      * or a subuser of the given server.
      */
@@ -158,6 +169,11 @@ class ActivityLog extends Model implements HasIcon, HasLabel
             $model->timestamp = Carbon::now();
         });
 
+        // Activity logs are append-only. Pruning still works because MassPrunable
+        // deletes through the query builder and never fires these model events;
+        // switching to the non-mass Prunable trait would break it.
+        static::updating(fn () => throw new LogicException('Activity logs are append-only and cannot be updated.'));
+        static::deleting(fn () => throw new LogicException('Activity logs are append-only and cannot be deleted.'));
     }
 
     public function getIcon(): BackedEnum

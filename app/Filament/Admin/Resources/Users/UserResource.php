@@ -296,13 +296,18 @@ class UserResource extends Resource
                                         return $path;
                                     }
                                 })
-                                ->deleteUploadedFileUsing(function (FileUpload $fileUpload, $file) {
+                                ->deleteUploadedFileUsing(function (FileUpload $fileUpload, $file, ?User $user) {
                                     if ($file instanceof TemporaryUploadedFile) {
                                         return $file->delete();
                                     }
 
-                                    if ($fileUpload->getDisk()->exists($file)) {
-                                        return $fileUpload->getDisk()->delete($file);
+                                    if (!$user) {
+                                        return null;
+                                    }
+
+                                    $path = $fileUpload->getDirectory() . '/' . $user->id . '.png';
+                                    if ($fileUpload->getDisk()->exists($path)) {
+                                        return $fileUpload->getDisk()->delete($path);
                                     }
                                 }),
                         ]),
@@ -400,8 +405,8 @@ class UserResource extends Resource
                                         $key = $items[$arguments['item']] ?? null;
 
                                         if ($key) {
-                                            $apiKey = ApiKey::find($key['id']);
-                                            if ($apiKey?->exists()) {
+                                            $apiKey = $user?->apiKeys()->find($key['id'] ?? null);
+                                            if ($apiKey) {
                                                 $apiKey->delete();
 
                                                 Activity::event('user:api-key.delete')
@@ -443,8 +448,8 @@ class UserResource extends Resource
                                         $items = $component->getState();
                                         $key = $items[$arguments['item']];
 
-                                        $sshKey = UserSSHKey::find($key['id'] ?? null);
-                                        if ($sshKey->exists()) {
+                                        $sshKey = $user->sshKeys()->find($key['id'] ?? null);
+                                        if ($sshKey) {
                                             $sshKey->delete();
 
                                             Activity::event('user:ssh-key.delete')

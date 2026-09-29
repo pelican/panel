@@ -2,6 +2,8 @@
 
 namespace App\Tests\Integration\Services;
 
+use App\Enums\PluginStatus;
+use App\Models\Plugin;
 use App\Services\Helpers\PluginService;
 use App\Tests\Integration\IntegrationTestCase;
 use Exception;
@@ -9,6 +11,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use ZipArchive;
@@ -42,6 +45,9 @@ class PluginServiceTest extends IntegrationTestCase
         foreach (File::glob(plugin_path('.import-*')) as $leftover) {
             File::deleteDirectory($leftover);
         }
+
+        // Don't leak the in-memory Sushi rows of the plugins removed above into later tests.
+        Plugin::refreshRows();
 
         // TemporaryDirectory::make() does not clean up on its own; remove the upload fixtures.
         foreach ($this->uploadDirs as $dir) {
@@ -388,6 +394,45 @@ class PluginServiceTest extends IntegrationTestCase
         $this->assertDirectoryDoesNotExist(plugin_path('.test-clean-plugin.bak'));
     }
 
+    public function test_update_downloads_and_reinstalls_the_new_version(): void
+    {
+        $this->importedPlugins[] = 'test-update-plugin';
+
+        // Updates are resolved against the panel version, which is null on canary.
+        config()->set('app.version', '1.0.0');
+        Process::fake();
+
+        $updateUrl = 'https://example.test/test-update-plugin/update.json';
+        $downloadUrl = 'https://example.test/test-update-plugin/2.0.0.zip';
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-update-plugin.zip', [
+            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '1.0.0', $updateUrl),
+        ]));
+
+        $update = file_get_contents($this->makeUpload('2.0.0.zip', [
+            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '2.0.0', $updateUrl),
+        ])->getPathname());
+
+        Http::fake([
+            $updateUrl => Http::response(['*' => ['version' => '2.0.0', 'download_url' => $downloadUrl]]),
+            $downloadUrl => Http::response($update),
+        ]);
+
+        Plugin::refreshRows();
+        $plugin = Plugin::findOrFail('test-update-plugin');
+
+        $updated = $this->service->updatePlugin($plugin);
+
+        $this->assertSame('2.0.0', $updated->version);
+        $this->assertSame('2.0.0', $this->installedVersion('test-update-plugin'));
+
+        // installPlugin() ran against the reloaded row and recorded the plugin as installed but disabled.
+        $this->assertSame(PluginStatus::Disabled->value, File::json(plugin_path('test-update-plugin', 'plugin.json'))['meta']['status']);
+
+        Plugin::refreshRows();
+        $this->assertSame('2.0.0', Plugin::findOrFail('test-update-plugin')->version);
+    }
+
     private function installedVersion(string $id): string
     {
         return File::json(plugin_path($id, 'plugin.json'))['version'];
@@ -396,6 +441,20 @@ class PluginServiceTest extends IntegrationTestCase
     private function manifest(string $id, string $version = '1.0.0'): string
     {
         return json_encode(['id' => $id, 'version' => $version]);
+    }
+
+    private function updatableManifest(string $id, string $version, string $updateUrl): string
+    {
+        return json_encode([
+            'id' => $id,
+            'name' => 'Test Update Plugin',
+            'author' => 'Pelican',
+            'version' => $version,
+            'category' => 'plugin',
+            'update_url' => $updateUrl,
+            'namespace' => 'TestUpdatePlugin',
+            'class' => 'TestUpdatePlugin',
+        ]);
     }
 
     /**

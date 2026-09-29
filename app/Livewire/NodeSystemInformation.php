@@ -23,11 +23,13 @@ class NodeSystemInformation extends Component
         $exception = $systemInformation['exception'] ?? null;
         $version = $systemInformation['version'] ?? null;
 
+        $flags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR;
+
         if ($exception) {
-            $this->js('console.error("' . $exception . '");');
+            $this->js('console.error(' . json_encode((string) $exception, $flags) . ');');
         }
 
-        $tooltip = $exception ? 'Error connecting to node!<br>Check browser console for details.' : $version;
+        $tooltip = json_encode($exception ? 'Error connecting to node! Check browser console for details.' : (string) $version, $flags);
 
         $icon = $exception ? TablerIcon::HeartOff : TablerIcon::Heartbeat;
         $color = $exception ? 'danger' : 'success';
@@ -35,9 +37,9 @@ class NodeSystemInformation extends Component
         return generate_icon_html($icon, attributes: (new ComponentAttributeBag())
             ->merge([
                 'x-tooltip' => '{
-                    content: "' . $tooltip . '",
+                    content: ' . $tooltip . ',
                     theme: $store.theme,
-                    allowHTML: true,
+                    allowHTML: false,
                     placement: "bottom",
                 }',
             ], escape: false)

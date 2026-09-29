@@ -19,6 +19,7 @@ use App\Repositories\Daemon\DaemonServerRepository;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 
@@ -52,7 +53,7 @@ it('logs mount create with the admin as actor', function () {
         ->assertHasNoFormErrors();
 
     $mount = Mount::query()->where('name', 'Test Mount')->firstOrFail();
-    $this->assertActivityFor('mount:create', $this->admin, $mount);
+    $this->assertActivityFor('audit:mount.create', $this->admin, $mount);
 });
 
 it('logs mount update with an old-to-new diff', function () {
@@ -63,9 +64,9 @@ it('logs mount update with an old-to-new diff', function () {
         ->call('save')
         ->assertHasNoFormErrors();
 
-    $this->assertActivityFor('mount:update', $this->admin, $mount);
+    $this->assertActivityFor('audit:mount.update', $this->admin, $mount);
     Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
-        if (!$e->is('mount:update')) {
+        if (!$e->is('audit:mount.update')) {
             return false;
         }
         $changes = $e->model->properties['changes'];
@@ -81,7 +82,7 @@ it('logs nothing for a no-op save', function () {
         ->call('save')
         ->assertHasNoFormErrors();
 
-    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('mount:update'));
+    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('audit:mount.update'));
 });
 
 it('logs an anonymous update outside any panel, such as the application API or console', function () {
@@ -91,7 +92,7 @@ it('logs an anonymous update outside any panel, such as the application API or c
     $mount = makeMount();
     $mount->update(['name' => 'Renamed Mount']);
 
-    $this->assertActivityFor('mount:update', null, $mount);
+    $this->assertActivityFor('audit:mount.update', null, $mount);
 });
 
 it('logs nothing from the customer-facing surfaces', function () {
@@ -100,7 +101,27 @@ it('logs nothing from the customer-facing surfaces', function () {
     $mount = makeMount();
     $mount->update(['name' => 'Renamed Mount']);
 
-    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('mount:update'));
+    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('audit:mount.update'));
+});
+
+it('logs nothing from daemon callbacks', function () {
+    Filament::setCurrentPanel(null);
+    app()->instance('request', Request::create('/api/remote/servers/abc/install', 'POST'));
+
+    $mount = makeMount();
+    $mount->update(['name' => 'Renamed Mount']);
+
+    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('audit:mount.update'));
+});
+
+it('masks hidden and encrypted attributes whatever they are named', function () {
+    $user = User::factory()->create();
+    $user->update(['mfa_app_recovery_codes' => ['one', 'two']]);
+
+    Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
+        return $e->is('audit:user.update')
+            && $e->model->properties['changes']['mfa_app_recovery_codes']['new'] === '********';
+    });
 });
 
 it('logs nothing for a remember token rotation', function () {
@@ -108,7 +129,7 @@ it('logs nothing for a remember token rotation', function () {
     $user->setRememberToken(Str::random(60));
     $user->save();
 
-    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('user:update'));
+    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $e) => $e->is('audit:user.update'));
 });
 
 it('logs mount delete', function () {
@@ -118,7 +139,7 @@ it('logs mount delete', function () {
         ->callAction(DeleteAction::class);
 
     $this->assertDatabaseMissing('mounts', ['id' => $mount->id]);
-    $this->assertActivityFor('mount:delete', $this->admin, $mount);
+    $this->assertActivityFor('audit:mount.delete', $this->admin, $mount);
 });
 
 it('logs node create', function () {
@@ -128,7 +149,7 @@ it('logs node create', function () {
         ->assertHasNoFormErrors();
 
     $node = Node::query()->where('name', 'audited-node')->firstOrFail();
-    $this->assertActivityFor('node:create', $this->admin, $node);
+    $this->assertActivityFor('audit:node.create', $this->admin, $node);
 });
 
 it('logs node update and masks daemon tokens in the diff', function () {
@@ -139,9 +160,9 @@ it('logs node update and masks daemon tokens in the diff', function () {
         ->call('save')
         ->assertHasNoFormErrors();
 
-    $this->assertActivityFor('node:update', $this->admin, $node);
+    $this->assertActivityFor('audit:node.update', $this->admin, $node);
     Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
-        if (!$e->is('node:update')) {
+        if (!$e->is('audit:node.update')) {
             return false;
         }
 
@@ -155,7 +176,7 @@ it('logs node delete', function () {
     livewire(EditNode::class, ['record' => $node->getKey()])
         ->callAction(DeleteAction::class);
 
-    $this->assertActivityFor('node:delete', $this->admin, $node);
+    $this->assertActivityFor('audit:node.delete', $this->admin, $node);
 });
 
 it('logs egg update', function () {
@@ -166,7 +187,7 @@ it('logs egg update', function () {
         ->call('save')
         ->assertHasNoFormErrors();
 
-    $this->assertActivityFor('egg:update', $this->admin, $egg);
+    $this->assertActivityFor('audit:egg.update', $this->admin, $egg);
 });
 
 it('logs egg delete', function () {
@@ -175,7 +196,7 @@ it('logs egg delete', function () {
     livewire(EditEgg::class, ['record' => $egg->getKey()])
         ->callAction(DeleteAction::class);
 
-    $this->assertActivityFor('egg:delete', $this->admin, $egg);
+    $this->assertActivityFor('audit:egg.delete', $this->admin, $egg);
 });
 
 it('logs user create', function () {
@@ -185,7 +206,7 @@ it('logs user create', function () {
         ->assertHasNoFormErrors();
 
     $user = User::query()->where('username', 'auditeduser')->firstOrFail();
-    $this->assertActivityFor('user:create', $this->admin, $user);
+    $this->assertActivityFor('audit:user.create', $this->admin, $user);
 });
 
 it('logs user update and masks the password in the diff', function () {
@@ -196,9 +217,9 @@ it('logs user update and masks the password in the diff', function () {
         ->call('save')
         ->assertHasNoFormErrors();
 
-    $this->assertActivityFor('user:update', $this->admin, $user);
+    $this->assertActivityFor('audit:user.update', $this->admin, $user);
     Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $e) {
-        if (!$e->is('user:update')) {
+        if (!$e->is('audit:user.update')) {
             return false;
         }
         $changes = $e->model->properties['changes'];
@@ -213,7 +234,7 @@ it('logs user delete', function () {
     livewire(EditUser::class, ['record' => $user->getKey()])
         ->callAction(DeleteAction::class);
 
-    $this->assertActivityFor('user:delete', $this->admin, $user);
+    $this->assertActivityFor('audit:user.delete', $this->admin, $user);
 });
 
 it('logs server update', function () {
@@ -224,7 +245,7 @@ it('logs server update', function () {
         ->call('save')
         ->assertHasNoFormErrors();
 
-    $this->assertActivityFor('server:update', $this->admin, $server);
+    $this->assertActivityFor('audit:server.update', $this->admin, $server);
 });
 
 it('logs server delete', function () {
@@ -239,5 +260,5 @@ it('logs server delete', function () {
     livewire(EditServer::class, ['record' => $server->getKey()])
         ->callAction(TestAction::make('Delete'));
 
-    $this->assertActivityFor('server:delete', $this->admin, $server);
+    $this->assertActivityFor('audit:server.delete', $this->admin, $server);
 });

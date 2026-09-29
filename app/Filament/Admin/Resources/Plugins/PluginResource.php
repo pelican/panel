@@ -83,6 +83,7 @@ class PluginResource extends Resource
                     ->label(trans('admin/plugin.status'))
                     ->badge()
                     ->tooltip(fn (Plugin $plugin) => $plugin->status_message)
+                    ->description(fn (Plugin $plugin) => is_null($plugin->api_version) ? trans('admin/plugin.api_version_missing') : null)
                     ->sortable(),
             ])
             ->recordActions([

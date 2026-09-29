@@ -29,12 +29,12 @@ class ActivityLogController extends ClientApiController
         Gate::authorize(SubuserPermission::ActivityRead, $server);
 
         $query = ActivityLog::whereHas('subjects', fn (Builder $query) => $query->where('subject_id', $server->id)->where('subject_type', $server->getMorphClass()))
-            ->whereNotIn('activity_logs.event', ActivityLog::DISABLED_EVENTS)
+            ->visibleToCustomers()
             ->when(config('activity.hide_admin_activity'), fn (Builder $builder) => $builder->hideAdminActivity($server));
 
         $activity = QueryBuilder::for($query)
-            ->allowedSorts(['timestamp'])
-            ->allowedFilters([AllowedFilter::partial('event')])
+            ->allowedSorts('timestamp')
+            ->allowedFilters(AllowedFilter::partial('event'))
             ->with('actor')
             ->paginate(min($request->query('per_page', '25'), 100))
             ->appends($request->query());

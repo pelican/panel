@@ -17,6 +17,7 @@ use App\Services\Databases\DatabaseManagementService;
 use App\Services\Databases\DeployServerDatabaseService;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 #[Group('Server - Database')]
@@ -59,14 +60,12 @@ class DatabaseController extends ClientApiController
      */
     public function store(StoreDatabaseRequest $request, Server $server): array
     {
-        $database = Activity::event('server:database.create')->transaction(function ($log) use ($request, $server) {
-            $server->databases()->lockForUpdate()->count();
+        $database = DB::transaction(function () use ($request, $server) {
+            // Serialize concurrent creates for this server so the limit check in the service holds.
+            // Locking the parent row works everywhere; a COUNT(*) FOR UPDATE is rejected by Postgres.
+            $server->newQuery()->whereKey($server->getKey())->lockForUpdate()->value('id');
 
-            $database = $this->deployDatabaseService->handle($server, $request->validated());
-
-            $log->subject($database)->property('name', $database->database);
-
-            return $database;
+            return $this->deployDatabaseService->handle($server, $request->validated());
         });
 
         return $this->response->item($database)
@@ -106,11 +105,6 @@ class DatabaseController extends ClientApiController
     public function delete(DeleteDatabaseRequest $request, Server $server, Database $database): Response
     {
         $this->managementService->delete($database);
-
-        Activity::event('server:database.delete')
-            ->subject($database)
-            ->property('name', $database->database)
-            ->log();
 
         return new Response('', Response::HTTP_NO_CONTENT);
     }

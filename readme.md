@@ -70,6 +70,6 @@ Pelican is built and maintained by volunteers. If Pelican helps you or your comm
 - Share Pelican with other server owners
 
 ## Repository Activity
-![Stats](https://repobeats.axiom.co/api/embed/4d8cc7012b325141e6fae9c34a22b3669ad5753b.svg "Repobeats analytics image")
+![Alt](https://repobeats.axiom.co/api/embed/1f882a81e81841d3138e3a07ea1a3ed9166bb910.svg "Repobeats analytics image")
 
 *Copyright Pelican® 2024-2026*

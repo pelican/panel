@@ -5,10 +5,10 @@ namespace App\Services\Ssh;
 use App\Models\User;
 use App\Models\UserSSHKey;
 use Exception;
-use phpseclib3\Crypt\DSA;
-use phpseclib3\Crypt\PublicKeyLoader;
-use phpseclib3\Crypt\RSA;
-use phpseclib3\Exception\NoKeyLoadedException;
+use phpseclib4\Crypt\DSA;
+use phpseclib4\Crypt\PublicKeyLoader;
+use phpseclib4\Crypt\RSA;
+use phpseclib4\Exception\NoKeyLoadedException;
 
 class KeyCreationService
 {
