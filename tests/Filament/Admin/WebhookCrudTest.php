@@ -1,13 +1,18 @@
 <?php
 
 use App\Enums\RolePermissionModels;
+use App\Enums\WebhookScope;
+use App\Extensions\Webhooks\Schemas\BaseSchema;
+use App\Extensions\Webhooks\WebhookTypeService;
 use App\Filament\Admin\Resources\Webhooks\Pages\CreateWebhookConfiguration;
 use App\Filament\Admin\Resources\Webhooks\Pages\EditWebhookConfiguration;
+use App\Filament\Admin\Resources\Webhooks\Pages\ViewWebhookConfiguration;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\WebhookConfiguration;
 use Filament\Actions\DeleteAction;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\TextInput;
 use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
@@ -69,6 +74,41 @@ it('can delete a webhook configuration', function () {
         ->callAction(DeleteAction::class);
 
     $this->assertSoftDeleted('webhook_configurations', ['id' => $webhookConfig->id]);
+});
+
+it('fills the payload fields when viewing a webhook configuration', function () {
+    app(WebhookTypeService::class)->register(new class extends BaseSchema
+    {
+        public function getId(): string
+        {
+            return 'collapsing';
+        }
+
+        public function getFormComponents(WebhookScope $scope): array
+        {
+            return [TextInput::make('username'), TextInput::make('content')];
+        }
+
+        public function mutateFormDataBeforeFill(array $data): array
+        {
+            $data['username'] = $data['payload']['username'] ?? null;
+            $data['content'] = $data['payload']['content'] ?? null;
+
+            return $data;
+        }
+    });
+
+    $webhookConfig = WebhookConfiguration::factory()->create([
+        'type' => 'collapsing',
+        'payload' => ['username' => 'Valheim-Server', 'content' => 'Valheim-Server: {{event}}'],
+        'events' => ['eloquent.created: '.Server::class],
+    ]);
+
+    livewire(ViewWebhookConfiguration::class, ['record' => $webhookConfig->getKey()])
+        ->assertSchemaStateSet([
+            'username' => 'Valheim-Server',
+            'content' => 'Valheim-Server: {{event}}',
+        ]);
 });
 
 it('non root admin without permission cannot create webhook configurations', function () {

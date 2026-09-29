@@ -1,0 +1,22 @@
+{
+    "object": "server_database",
+    "attributes": {
+        "id": 101,
+        "host": {
+            "address": "192.0.2.20",
+            "port": 3306
+        },
+        "name": "s100_fixture_stored",
+        "username": "u100_kkkkkkkkkk",
+        "connections_from": "%",
+        "max_connections": null,
+        "relationships": {
+            "password": {
+                "object": "database_password",
+                "attributes": {
+                    "password": "!kkkkkkkkkkkkkkkkkkkkkkk"
+                }
+            }
+        }
+    }
+}

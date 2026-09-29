@@ -7,11 +7,11 @@ use App\Models\UserSSHKey;
 use Exception;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Validator;
-use phpseclib3\Crypt\Common\PublicKey;
-use phpseclib3\Crypt\DSA;
-use phpseclib3\Crypt\PublicKeyLoader;
-use phpseclib3\Crypt\RSA;
-use phpseclib3\Exception\NoKeyLoadedException;
+use phpseclib4\Crypt\Common\PublicKey;
+use phpseclib4\Crypt\DSA;
+use phpseclib4\Crypt\PublicKeyLoader;
+use phpseclib4\Crypt\RSA;
+use phpseclib4\Exception\NoKeyLoadedException;
 
 class StoreSSHKeyRequest extends ClientApiRequest
 {

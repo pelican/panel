@@ -28,8 +28,8 @@ class RoleController extends ApplicationApiController
     public function index(GetRoleRequest $request): array
     {
         $roles = QueryBuilder::for(Role::class)
-            ->allowedFilters(['id', 'name'])
-            ->allowedSorts(['id', 'name'])
+            ->allowedFilters('id', 'name')
+            ->allowedSorts('id', 'name')
             ->paginate($request->query('per_page') ?? 10);
 
         return $this->response->collection($roles)

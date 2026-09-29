@@ -11,4 +11,5 @@ return [
     'no_configuration' => 'Ingen yderligere konfiguration påkrævet',
     'no_backup_hosts' => 'Ingen backupværter',
     'local_backups_only' => 'Alle sikkerhedskopier vil blive oprettet lokalt på den respektive node',
+    'delete_help' => 'Sikkerhedskopierings host har sikkerhedskopier',
 ];

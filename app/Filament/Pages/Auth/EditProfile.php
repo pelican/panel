@@ -183,8 +183,9 @@ class EditProfile extends BaseEditProfile
                                 return $file->delete();
                             }
 
-                            if ($fileUpload->getDisk()->exists($file)) {
-                                return $fileUpload->getDisk()->delete($file);
+                            $path = $fileUpload->getDirectory() . '/' . $this->getUser()->id . '.png';
+                            if ($fileUpload->getDisk()->exists($path)) {
+                                return $fileUpload->getDisk()->delete($path);
                             }
                         }),
                 ]),
@@ -310,8 +311,8 @@ class EditProfile extends BaseEditProfile
                                                 $items = $component->getState();
                                                 $key = $items[$arguments['item']];
 
-                                                $apiKey = ApiKey::find($key['id'] ?? null);
-                                                if ($apiKey->exists()) {
+                                                $apiKey = $user->apiKeys()->find($key['id'] ?? null);
+                                                if ($apiKey) {
                                                     $apiKey->delete();
 
                                                     Activity::event('user:api-key.delete')
@@ -405,8 +406,8 @@ class EditProfile extends BaseEditProfile
                                             $items = $component->getState();
                                             $key = $items[$arguments['item']];
 
-                                            $sshKey = UserSSHKey::find($key['id'] ?? null);
-                                            if ($sshKey->exists()) {
+                                            $sshKey = $user->sshKeys()->find($key['id'] ?? null);
+                                            if ($sshKey) {
                                                 $sshKey->delete();
 
                                                 Activity::event('user:ssh-key.delete')

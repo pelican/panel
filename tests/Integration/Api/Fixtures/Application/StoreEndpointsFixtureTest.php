@@ -105,10 +105,13 @@ class StoreEndpointsFixtureTest extends FixtureTestCase
 
     public function test_store_mount(): void
     {
-        // StoreMountRequest declares no rules, so validated() is always empty and the
-        // controller's fill() inserts nothing but the uuid, which 500s on the NOT NULL
-        // mounts.name column. There is no valid 201 response to freeze until that is fixed.
-        $this->markTestSkipped('POST /api/application/mounts always returns a 500: StoreMountRequest has no rules, so the insert violates NOT NULL on mounts.name.');
+        $response = $this->postJson('/api/application/mounts', [
+            'name' => 'Fixture Stored Mount',
+            'source' => '/srv/fixture-stored',
+            'target' => '/mnt/fixture-stored',
+        ]);
+
+        $this->assertFixtureSnapshot($response, 201);
     }
 
     public function test_import_egg(): void
