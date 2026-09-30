@@ -5,6 +5,7 @@ namespace App\Tests\Integration\Migrations;
 use App\Models\EggVariable;
 use App\Models\Node;
 use App\Tests\Integration\IntegrationTestCase;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -37,7 +38,17 @@ class PterodactylDataMigrationTest extends IntegrationTestCase
     public function test_duplicate_egg_variables_are_merged_without_losing_server_values(): void
     {
         $server = $this->createServerModel();
-        $migration = $this->runMigration('2025_04_01_033956_egg_variable_unique_foreign_key', down: true);
+        $migration = require database_path('migrations/2025_04_01_033956_egg_variable_unique_foreign_key.php');
+
+        // MySQL backs the egg_id foreign key with the unique index, so give it its own index first.
+        Schema::table('egg_variables', function (Blueprint $table) {
+            if (!Schema::hasIndex('egg_variables', ['egg_id'])) {
+                $table->index('egg_id');
+            }
+
+            $table->dropUnique(['egg_id', 'env_variable']);
+            $table->dropUnique(['egg_id', 'name']);
+        });
 
         $keep = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'FOO', 'name' => 'Foo']);
         $duplicate = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'FOO', 'name' => 'Foo copy']);
@@ -60,11 +71,8 @@ class PterodactylDataMigrationTest extends IntegrationTestCase
         $this->assertDatabaseHas('egg_variables', ['id' => $sharedName->id, 'name' => 'Shared (BAZ)']);
     }
 
-    private function runMigration(string $name, bool $down = false): object
+    private function runMigration(string $name): void
     {
-        $migration = require database_path("migrations/$name.php");
-        $down ? $migration->down() : $migration->up();
-
-        return $migration;
+        (require database_path("migrations/$name.php"))->up();
     }
 }
