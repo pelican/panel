@@ -21,9 +21,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('api_keys', function (Blueprint $table) {
-            $table->json('permissions')->nullable();
-        });
+        if (!Schema::hasColumn('api_keys', 'permissions')) {
+            Schema::table('api_keys', function (Blueprint $table) {
+                $table->json('permissions')->nullable();
+            });
+        }
 
         foreach (ApiKey::all() as $apiKey) {
             $permissions = [

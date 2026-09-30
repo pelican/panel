@@ -16,8 +16,13 @@ return new class extends Migration
         $this->renameDuplicateNames();
 
         Schema::table('egg_variables', function (Blueprint $table) {
-            $table->unique(['egg_id', 'env_variable']);
-            $table->unique(['egg_id', 'name']);
+            if (!Schema::hasIndex('egg_variables', ['egg_id', 'env_variable'], 'unique')) {
+                $table->unique(['egg_id', 'env_variable']);
+            }
+
+            if (!Schema::hasIndex('egg_variables', ['egg_id', 'name'], 'unique')) {
+                $table->unique(['egg_id', 'name']);
+            }
         });
     }
 

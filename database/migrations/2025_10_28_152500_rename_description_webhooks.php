@@ -11,8 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasColumn('webhook_configurations', 'name')) {
+            Schema::table('webhook_configurations', function (Blueprint $table) {
+                $table->renameColumn('description', 'name');
+            });
+        }
+
         Schema::table('webhook_configurations', function (Blueprint $table) {
-            $table->renameColumn('description', 'name');
             $table->text('description')->nullable()->after('name');
         });
     }
