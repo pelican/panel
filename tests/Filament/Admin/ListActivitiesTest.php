@@ -131,3 +131,32 @@ it('does not query per row', function () {
 
     expect($count())->toBe($baseline);
 });
+
+it('hides request IPs in the properties modal without seeIps activityLog', function () {
+    $role = Role::factory()->create(['name' => 'IP-less Auditor', 'guard_name' => 'web']);
+    $role->givePermissionTo(Permission::findOrCreate('view activityLog', 'web'));
+    [$user] = generateTestAccount([]);
+    $user = $user->syncRoles($role);
+
+    $log = Activity::event('auth:success')->withRequestMetadata()->property('ip', '203.0.113.9')->log();
+
+    $this->actingAs($user);
+    $data = livewire(ListActivities::class)
+        ->mountAction(TestAction::make('view')->table($log))
+        ->instance()->mountedActions[0]['data'];
+
+    expect($data['properties'])->not->toHaveKey('ip')
+        ->and($data)->not->toHaveKey('ip');
+});
+
+it('shows request IPs in the properties modal with seeIps activityLog', function () {
+    [$admin] = generateTestAccount([]);
+    $admin = $admin->syncRoles(Role::getRootAdmin());
+
+    $log = Activity::event('auth:success')->property('ip', '203.0.113.9')->log();
+
+    $this->actingAs($admin);
+    livewire(ListActivities::class)
+        ->mountAction(TestAction::make('view')->table($log))
+        ->assertActionDataSet(['properties' => ['ip' => '203.0.113.9']]);
+});

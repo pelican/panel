@@ -86,7 +86,16 @@ class ActivityResource extends Resource
                     // Flatten before the form fills: KeyValue's state cast mistakes a nested
                     // assoc (first value an array) for its own row format and blanks it.
                     ->mutateRecordDataUsing(function (array $data) {
+                        // Auth events also carry the IP in properties (withRequestMetadata), so
+                        // gate both copies on seeIps, like getIp() does for the column.
+                        $canSeeIps = user()?->can('seeIps activityLog') ?? false;
+
+                        if (!$canSeeIps) {
+                            unset($data['ip']);
+                        }
+
                         $data['properties'] = collect(Arr::dot($data['properties'] ?? []))
+                            ->reject(fn ($value, $key) => $key === 'ip' && !$canSeeIps)
                             ->map(fn ($value) => is_bool($value) || is_null($value) ? var_export($value, true) : $value)
                             ->all();
 
