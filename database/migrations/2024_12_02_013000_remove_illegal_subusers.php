@@ -11,10 +11,11 @@ return new class extends Migration
     public function up(): void
     {
         DB::table('subusers')
-            ->whereIn('user_id', function ($query) {
-                $query->select('id')
+            ->whereExists(function ($query) {
+                $query->select(DB::raw(1))
                     ->from('servers')
-                    ->whereColumn('owner_id', 'subusers.server_id');
+                    ->whereColumn('servers.id', 'subusers.server_id')
+                    ->whereColumn('servers.owner_id', 'subusers.user_id');
             })
             ->delete();
     }
