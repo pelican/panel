@@ -55,17 +55,18 @@ class PterodactylDataMigrationTest extends IntegrationTestCase
         $shared = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'BAR', 'name' => 'Shared']);
         $sharedName = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'BAZ', 'name' => 'Shared']);
 
-        Schema::withoutForeignKeyConstraints(fn () => DB::table('server_variables')->insert([
+        $other = $this->createServerModel(['egg_id' => $server->egg_id]);
+        DB::table('server_variables')->insert([
             ['server_id' => $server->id, 'variable_id' => $keep->id, 'variable_value' => 'kept'],
             ['server_id' => $server->id, 'variable_id' => $duplicate->id, 'variable_value' => 'dropped'],
-            ['server_id' => 999999, 'variable_id' => $duplicate->id, 'variable_value' => 'only value'],
-        ]));
+            ['server_id' => $other->id, 'variable_id' => $duplicate->id, 'variable_value' => 'only value'],
+        ]);
 
         $migration->up();
 
         $this->assertDatabaseMissing('egg_variables', ['id' => $duplicate->id]);
         $this->assertSame('kept', DB::table('server_variables')->where('server_id', $server->id)->where('variable_id', $keep->id)->value('variable_value'));
-        $this->assertSame('only value', DB::table('server_variables')->where('server_id', 999999)->where('variable_id', $keep->id)->value('variable_value'));
+        $this->assertSame('only value', DB::table('server_variables')->where('server_id', $other->id)->where('variable_id', $keep->id)->value('variable_value'));
         $this->assertDatabaseMissing('server_variables', ['variable_id' => $duplicate->id]);
         $this->assertDatabaseHas('egg_variables', ['id' => $shared->id, 'name' => 'Shared']);
         $this->assertDatabaseHas('egg_variables', ['id' => $sharedName->id, 'name' => 'Shared (BAZ)']);
