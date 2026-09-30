@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Node;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
@@ -11,12 +10,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::transaction(function () {
-            $nodes = Node::where('behind_proxy', false)->get();
-            foreach ($nodes as $node) {
-                $node->update(['daemon_connect' => $node->daemon_listen]);
-            }
-        });
+        DB::table('nodes')
+            ->where('behind_proxy', false)
+            ->update(['daemon_connect' => DB::raw('daemon_listen')]);
     }
 
     /**

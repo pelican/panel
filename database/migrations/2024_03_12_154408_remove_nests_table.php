@@ -24,7 +24,7 @@ return new class extends Migration
         foreach ($eggsWithNests as $egg) {
             DB::table('eggs')
                 ->where('id', $egg->id)
-                ->update(['tags' => "[\"$egg->name\"]"]);
+                ->update(['tags' => json_encode([$egg->name])]);
         }
 
         Schema::table('eggs', function (Blueprint $table) {
