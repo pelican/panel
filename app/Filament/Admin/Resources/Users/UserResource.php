@@ -407,8 +407,16 @@ class UserResource extends Resource
                                         if ($key) {
                                             $apiKey = $user?->apiKeys()->find($key['id'] ?? null);
                                             if ($apiKey) {
-                                                // Logged by the AuditObserver as audit:apiKey.delete.
                                                 $apiKey->delete();
+
+                                                // The audit:apiKey.delete row stays out of the owner's feed, so
+                                                // this is the one they see, same as deleting it themselves.
+                                                Activity::event('user:api-key.delete')
+                                                    ->actor(user())
+                                                    ->subject($user)
+                                                    ->subject($apiKey)
+                                                    ->property('identifier', $apiKey->identifier)
+                                                    ->log();
                                             }
 
                                             unset($items[$arguments['item']]);

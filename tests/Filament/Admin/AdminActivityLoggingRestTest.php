@@ -12,6 +12,7 @@ use App\Filament\Admin\Resources\DatabaseHosts\RelationManagers\DatabasesRelatio
 use App\Filament\Admin\Resources\Mounts\Pages\ListMounts;
 use App\Filament\Admin\Resources\Roles\Pages\CreateRole;
 use App\Filament\Admin\Resources\Roles\Pages\EditRole;
+use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Filament\Admin\Resources\Webhooks\Pages\CreateWebhookConfiguration;
 use App\Filament\Admin\Resources\Webhooks\Pages\EditWebhookConfiguration;
 use App\Models\ApiKey;
@@ -21,6 +22,7 @@ use App\Models\DatabaseHost;
 use App\Models\Mount;
 use App\Models\Role;
 use App\Models\Server;
+use App\Models\User;
 use App\Models\WebhookConfiguration;
 use App\Services\Databases\DatabaseManagementService;
 use Filament\Actions\DeleteAction;
@@ -280,4 +282,18 @@ it('logs one event per record on bulk delete', function () {
         $this->assertDatabaseMissing('mounts', ['id' => $mount->id]);
         $this->assertActivityFor('audit:mount.delete', $this->admin, $mount);
     });
+});
+
+it('logs an admin api key delete to the owner\'s feed as well as the audit trail', function () {
+    $owner = User::factory()->create();
+    $apiKey = ApiKey::factory()->create(['user_id' => $owner->id, 'key_type' => ApiKey::TYPE_ACCOUNT]);
+
+    $component = livewire(EditUser::class, ['record' => $owner->getKey()]);
+    $item = array_key_first($component->get('data.api_keys'));
+
+    $component->callFormComponentAction('api_keys', 'delete', arguments: ['item' => $item]);
+
+    $this->assertDatabaseMissing('api_keys', ['id' => $apiKey->id]);
+    $this->assertActivityFor('user:api-key.delete', $this->admin, $owner, $apiKey);
+    $this->assertActivityFor('audit:apiKey.delete', $this->admin, $apiKey);
 });
