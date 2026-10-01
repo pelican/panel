@@ -318,7 +318,7 @@ class PluginService
         $downloadUrl = $plugin->getDownloadUrlForUpdate();
         throw_unless($downloadUrl, new Exception('No download url found.'));
 
-        $this->downloadPluginFromUrl($downloadUrl, $plugin->id);
+        $this->downloadPluginFromUrl($downloadUrl, $plugin->id, $plugin->getChecksumForUpdate());
 
         Plugin::refreshRows();
         $plugin = Plugin::findOrFail($plugin->id);
@@ -478,13 +478,17 @@ class PluginService
     }
 
     /** @throws Exception */
-    public function downloadPluginFromUrl(string $url, ?string $expectedId = null): string
+    public function downloadPluginFromUrl(string $url, ?string $expectedId = null, ?string $expectedSha256 = null): string
     {
         $basename = pathinfo($url, PATHINFO_BASENAME);
         $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
         $tmpPath = $tmpDir->path($basename);
 
-        $content = Http::timeout(60)->connectTimeout(5)->throw()->get($url)->body();
+        $content = Http::withHeaders(HubCredentials::headersFor($url))->timeout(60)->connectTimeout(5)->throw()->get($url)->body();
+
+        if (filled($expectedSha256)) {
+            throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
+        }
 
         // Validate file size to prevent zip bombs
         $maxSize = config('panel.plugin.max_import_size');

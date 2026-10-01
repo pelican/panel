@@ -7,6 +7,7 @@ use App\Enums\PluginCategory;
 use App\Enums\PluginStatus;
 use App\Exceptions\PluginIdMismatchException;
 use App\Facades\Plugins;
+use App\Services\Helpers\HubCredentials;
 use App\Services\Helpers\SoftwareVersionService;
 use Exception;
 use Filament\Schemas\Components\Component;
@@ -294,7 +295,7 @@ class Plugin extends Model implements HasPluginSettings
         return $this->category === PluginCategory::Language;
     }
 
-    /** @return null|array<string, array{version: string, download_url: string}> */
+    /** @return null|array<string, array{version: string, download_url: string, sha256?: string}> */
     private function getUpdateData(): ?array
     {
         if (!$this->update_url) {
@@ -303,7 +304,8 @@ class Plugin extends Model implements HasPluginSettings
 
         return cache()->remember("plugins.$this->id.update", now()->addMinutes(10), function () {
             try {
-                $data = Http::timeout(5)->connectTimeout(1)->get($this->update_url)->throw()->json();
+                $data = Http::withHeaders(HubCredentials::headersFor($this->update_url))
+                    ->timeout(5)->connectTimeout(1)->get($this->update_url)->throw()->json();
 
                 // Support update jsons that cover multiple plugins
                 if (array_key_exists($this->id, $data)) {
@@ -319,29 +321,8 @@ class Plugin extends Model implements HasPluginSettings
         });
     }
 
-    public function isUpdateAvailable(): bool
-    {
-        $panelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
-
-        if ($panelVersion === null) {
-            return false;
-        }
-
-        $updateData = $this->getUpdateData();
-        if ($updateData) {
-            if (array_key_exists($panelVersion, $updateData)) {
-                return version_compare($updateData[$panelVersion]['version'], $this->version, '>');
-            }
-
-            if (array_key_exists('*', $updateData)) {
-                return version_compare($updateData['*']['version'], $this->version, '>');
-            }
-        }
-
-        return false;
-    }
-
-    public function getDownloadUrlForUpdate(): ?string
+    /** @return null|array{version: string, download_url: string, sha256?: string} */
+    private function getUpdateEntry(): ?array
     {
         $panelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
 
@@ -352,15 +333,39 @@ class Plugin extends Model implements HasPluginSettings
         $updateData = $this->getUpdateData();
         if ($updateData) {
             if (array_key_exists($panelVersion, $updateData)) {
-                return $updateData[$panelVersion]['download_url'];
+                return $updateData[$panelVersion];
             }
 
             if (array_key_exists('*', $updateData)) {
-                return $updateData['*']['download_url'];
+                return $updateData['*'];
             }
         }
 
         return null;
+    }
+
+    public function isUpdateAvailable(): bool
+    {
+        $entry = $this->getUpdateEntry();
+
+        if ($entry === null) {
+            return false;
+        }
+
+        return version_compare($entry['version'], $this->version, '>');
+    }
+
+    public function getDownloadUrlForUpdate(): ?string
+    {
+        return $this->getUpdateEntry()['download_url'] ?? null;
+    }
+
+    /**
+     * Optional sha256 of the update zip, advertised by the update feed.
+     */
+    public function getChecksumForUpdate(): ?string
+    {
+        return $this->getUpdateEntry()['sha256'] ?? null;
     }
 
     public function hasSettings(): bool
