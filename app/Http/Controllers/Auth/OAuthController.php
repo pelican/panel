@@ -12,6 +12,7 @@ use Exception;
 use Filament\Notifications\Notification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Laravel\Socialite\Contracts\User as OAuthUser;
 use Laravel\Socialite\Facades\Socialite;
 use Symfony\Component\HttpFoundation\RedirectResponse as SymfonyRedirectResponse;
@@ -48,7 +49,13 @@ class OAuthController extends Controller
 
         // Check for errors (https://www.oauth.com/oauth2-servers/server-side-apps/possible-errors/)
         if ($request->input('error')) {
-            report($request->input('error_description') ?? $request->input('error'));
+            // The error text arrives in the query string, so anyone can send any: keep it to
+            // one short line in the log.
+            report(sprintf(
+                'OAuth login with %s failed: %s',
+                $driver->getId(),
+                Str::limit((string) preg_replace('/\s+/', ' ', (string) ($request->input('error_description') ?? $request->input('error'))), 200),
+            ));
 
             return $this->errorRedirect($request->input('error'));
         }
