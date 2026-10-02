@@ -10,9 +10,12 @@ use App\Models\Webhook;
 use App\Models\WebhookConfiguration;
 use App\Tests\Integration\IntegrationTestCase;
 use Illuminate\Contracts\Queue\Job;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 /**
  * Covers the job's data normalization and the fallback delivery path used when a
@@ -47,6 +50,21 @@ class ProcessWebhookTest extends IntegrationTestCase
 
         Http::assertSentCount(1);
         $this->assertNotNull(Webhook::query()->latest('id')->first()->successful_at);
+    }
+
+    public function test_a_transport_failure_is_reported_without_the_endpoint_secret(): void
+    {
+        $webhook = $this->webhook(['endpoint' => 'https://discord.com/api/webhooks/123/secret-token']);
+
+        Exceptions::fake();
+        Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out for https://discord.com/api/webhooks/123/secret-token'));
+
+        ProcessWebhook::dispatchSync($webhook, self::EVENT, [['name' => 'Example']]);
+
+        $messages = collect(Exceptions::reported())->map(fn (Throwable $e) => $e->getMessage());
+        $this->assertTrue($messages->contains(fn (string $message) => str_contains($message, 'discord.com')));
+        $this->assertFalse($messages->contains(fn (string $message) => str_contains($message, 'secret-token')));
+        $this->assertNull(Webhook::query()->latest('id')->first()->successful_at);
     }
 
     public function test_a_single_key_payload_is_delivered_intact(): void

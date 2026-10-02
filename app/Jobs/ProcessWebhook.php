@@ -62,7 +62,13 @@ class ProcessWebhook implements ShouldQueue
                 $retryAfter = $schema->retryAfter($response);
             }
         } catch (Exception $exception) {
-            report($exception);
+            // Transport errors (timeouts, DNS, TLS) quote the full URL, secret included.
+            report(sprintf(
+                'Webhook #%d delivery to %s failed: %s',
+                $this->webhookConfiguration->id,
+                $this->redactedEndpoint(),
+                preg_replace('#[a-z][a-z0-9+.-]*://\S+#i', '[url]', $exception->getMessage()),
+            ));
             $successful = null;
         }
 
