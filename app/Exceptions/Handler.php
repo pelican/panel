@@ -8,6 +8,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Container\Container;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\JsonResponse;
@@ -94,12 +95,18 @@ class Handler extends ExceptionHandler
             $this->dontReport = [];
         }
 
+        // Log the cleaned stack instead of the default report, which would include the query's
+        // bound values. Returning false stops the default reporting.
         $this->reportable(function (PDOException $ex) {
-            $ex = $this->generateCleanedExceptionStack($ex);
+            logger()->error($this->generateCleanedExceptionStack($ex));
+
+            return false;
         });
 
         $this->reportable(function (TransportException $ex) {
-            $ex = $this->generateCleanedExceptionStack($ex);
+            logger()->error($this->generateCleanedExceptionStack($ex));
+
+            return false;
         });
 
         $this->renderable(fn (AuthenticatorResponseVerificationException $ex, Request $request) => $this->invalidPasskey($ex, $request));
@@ -184,10 +191,16 @@ class Handler extends ExceptionHandler
             );
         }
 
+        // A query exception's message has the bound values filled in; use the driver's error
+        // and the SQL with its placeholders instead.
+        $text = $exception instanceof QueryException
+            ? sprintf('%s (SQL: %s)', $exception->getPrevious()?->getMessage() ?? 'Query failed', $exception->getSql())
+            : $exception->getMessage();
+
         $message = sprintf(
             '%s: %s in %s:%d',
             class_basename($exception),
-            $exception->getMessage(),
+            $text,
             $exception->getFile(),
             $exception->getLine()
         );
