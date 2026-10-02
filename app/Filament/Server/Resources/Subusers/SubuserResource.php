@@ -288,7 +288,8 @@ class SubuserResource extends Resource
                                 ->property([
                                     'email' => $data['email'],
                                     'permissions' => $permissions,
-                                ]);
+                                ])
+                                ->log();
 
                             Notification::make()
                                 ->title(trans('server/user.notification_add'))
