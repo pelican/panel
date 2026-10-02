@@ -200,7 +200,7 @@ class ApiKey extends PersonalAccessToken
 
         /** @var static|null $model */
         $model = static::where('identifier', $identifier)->first();
-        if (!is_null($model) && $model->token === substr($token, strlen($identifier))) {
+        if (!is_null($model) && hash_equals((string) $model->token, substr($token, strlen($identifier)))) {
             return $model;
         }
 
