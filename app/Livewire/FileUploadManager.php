@@ -75,6 +75,12 @@ class FileUploadManager extends Component
         abort_if(is_null($server), 404);
         abort_unless(user()?->can(SubuserPermission::FileCreate, $server), 403, 'You do not have permission to upload files.');
 
+        // Same rule as the Client API's file routes (AuthenticateServerAccess): a suspended,
+        // installing, transferring or restoring server only takes file changes from an admin.
+        if (!user()->can('update server', $server)) {
+            $server->validateCurrentState();
+        }
+
         return $server;
     }
 

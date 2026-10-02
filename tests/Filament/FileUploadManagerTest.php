@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ServerState;
 use App\Enums\SubuserPermission;
 use App\Events\ActivityLogged;
 use App\Livewire\FileUploadManager;
@@ -128,4 +129,23 @@ it('mounts the upload manager and the drop zone on the files page', function () 
         ->assertSuccessful()
         ->assertSee('file-upload-manager', false)
         ->assertDontSee('fileDropZone', false);
+});
+
+it('refuses file changes on a suspended server', function () {
+    [$user, $server] = generateTestAccount();
+    $server->forceFill(['status' => ServerState::Suspended])->save();
+
+    Http::fake();
+
+    $this->actingAs($user);
+
+    livewire(FileUploadManager::class)
+        ->call('createFolder', $server->uuid, 'folder', '/')
+        ->assertStatus(409);
+
+    livewire(FileUploadManager::class)
+        ->call('logUploadedFiles', $server->uuid, ['foo.txt'], '/')
+        ->assertStatus(409);
+
+    Http::assertNothingSent();
 });
