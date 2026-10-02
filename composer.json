@@ -15,7 +15,7 @@
         "dedoc/scramble": "^0.13",
         "filament/filament": "^5.8",
         "gboquizosanchez/filament-log-viewer": "^2.3",
-        "guzzlehttp/guzzle": "^7.15",
+        "guzzlehttp/guzzle": "^8.2",
         "laravel/framework": "^13.34",
         "laravel/helpers": "^1.8",
         "laravel/passkeys": "^0.2",
