@@ -11,10 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('webhook_configurations', function (Blueprint $table) {
-            $table->renameColumn('description', 'name');
-            $table->text('description')->nullable()->after('name');
-        });
+        if (!Schema::hasColumn('webhook_configurations', 'name')) {
+            Schema::table('webhook_configurations', function (Blueprint $table) {
+                $table->renameColumn('description', 'name');
+            });
+        }
+
+        if (!Schema::hasColumn('webhook_configurations', 'description')) {
+            Schema::table('webhook_configurations', function (Blueprint $table) {
+                $table->text('description')->nullable()->after('name');
+            });
+        }
     }
 
     /**

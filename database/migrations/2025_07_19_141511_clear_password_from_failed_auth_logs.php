@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\ActivityLog;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
@@ -12,9 +11,18 @@ return new class extends Migration
     public function up(): void
     {
         DB::transaction(function () {
-            $logs = ActivityLog::where('event', 'auth:fail')->get();
+            $logs = DB::table('activity_logs')->where('event', 'auth:fail')->get(['id', 'properties']);
             foreach ($logs as $log) {
-                $log->update(['properties' => collect($log->properties)->except(['password'])->toArray()]);
+                $properties = json_decode($log->properties ?? '', true);
+                if (!is_array($properties) || !array_key_exists('password', $properties)) {
+                    continue;
+                }
+
+                unset($properties['password']);
+
+                DB::table('activity_logs')
+                    ->where('id', $log->id)
+                    ->update(['properties' => json_encode($properties)]);
             }
         });
     }

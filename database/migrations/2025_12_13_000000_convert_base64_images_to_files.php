@@ -15,27 +15,31 @@ return new class extends Migration
      */
     public function up(): void
     {
-        $eggs = DB::table('eggs')->whereNotNull('image')->get();
-        foreach ($eggs as $egg) {
-            if (!empty($egg->image) && str_starts_with($egg->image, 'data:')) {
-                $this->convertBase64ToFile($egg->image, $egg->uuid, Egg::getIconStoragePath());
+        if (Schema::hasColumn('eggs', 'image')) {
+            $eggs = DB::table('eggs')->whereNotNull('image')->get();
+            foreach ($eggs as $egg) {
+                if (!empty($egg->image) && str_starts_with($egg->image, 'data:')) {
+                    $this->convertBase64ToFile($egg->image, $egg->uuid, Egg::getIconStoragePath());
+                }
             }
+
+            Schema::table('eggs', function (Blueprint $table) {
+                $table->dropColumn('image');
+            });
         }
 
-        $servers = DB::table('servers')->whereNotNull('icon')->get();
-        foreach ($servers as $server) {
-            if (!empty($server->icon) && str_starts_with($server->icon, 'data:')) {
-                $this->convertBase64ToFile($server->icon, $server->uuid, Server::getIconStoragePath());
+        if (Schema::hasColumn('servers', 'icon')) {
+            $servers = DB::table('servers')->whereNotNull('icon')->get();
+            foreach ($servers as $server) {
+                if (!empty($server->icon) && str_starts_with($server->icon, 'data:')) {
+                    $this->convertBase64ToFile($server->icon, $server->uuid, Server::getIconStoragePath());
+                }
             }
+
+            Schema::table('servers', function (Blueprint $table) {
+                $table->dropColumn('icon');
+            });
         }
-
-        Schema::table('eggs', function (Blueprint $table) {
-            $table->dropColumn('image');
-        });
-
-        Schema::table('servers', function (Blueprint $table) {
-            $table->dropColumn('icon');
-        });
     }
 
     /**

@@ -23,7 +23,7 @@ return new class extends Migration
         foreach ($nodesWithLocations as $node) {
             DB::table('nodes')
                 ->where('id', $node->id)
-                ->update(['tags' => "[\"$node->short\"]"]);
+                ->update(['tags' => json_encode([$node->short])]);
         }
 
         Schema::table('nodes', function (Blueprint $table) {

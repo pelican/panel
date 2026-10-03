@@ -12,9 +12,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('servers', function (Blueprint $table) {
-            $table->tinyInteger('oom_killer')->unsigned()->default(0)->after('oom_disabled');
-        });
+        if (!Schema::hasColumn('servers', 'oom_killer')) {
+            Schema::table('servers', function (Blueprint $table) {
+                $table->tinyInteger('oom_killer')->unsigned()->default(0)->after('oom_disabled');
+            });
+        }
 
         DB::table('servers')->select(['id', 'oom_disabled'])->cursor()->each(function ($server) {
             DB::table('servers')->where('id', $server->id)->update(['oom_killer' => !$server->oom_disabled]);

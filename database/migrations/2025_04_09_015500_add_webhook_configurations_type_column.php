@@ -12,10 +12,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('webhook_configurations', function (Blueprint $table) {
-            $table->string('type')->nullable()->after('id');
-            $table->json('payload')->nullable()->after('type');
-        });
+        if (!Schema::hasColumn('webhook_configurations', 'type')) {
+            Schema::table('webhook_configurations', function (Blueprint $table) {
+                $table->string('type')->nullable()->after('id');
+            });
+        }
+
+        if (!Schema::hasColumn('webhook_configurations', 'payload')) {
+            Schema::table('webhook_configurations', function (Blueprint $table) {
+                $table->json('payload')->nullable()->after('type');
+            });
+        }
 
         DB::table('webhook_configurations')
             ->whereNull('type')

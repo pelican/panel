@@ -13,9 +13,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('eggs', function (Blueprint $table) {
-            $table->json('startup_commands')->after('startup')->nullable();
-        });
+        if (!Schema::hasColumn('eggs', 'startup_commands')) {
+            Schema::table('eggs', function (Blueprint $table) {
+                $table->json('startup_commands')->after('startup')->nullable();
+            });
+        }
 
         DB::table('eggs')->select(['id', 'startup'])->cursor()->each(function ($egg) {
             DB::table('eggs')->where('id', $egg->id)->update(['startup_commands' => json_encode(['Default' => $egg->startup], JSON_UNESCAPED_SLASHES)]);

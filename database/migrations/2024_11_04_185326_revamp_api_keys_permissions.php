@@ -21,9 +21,16 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('api_keys', function (Blueprint $table) {
-            $table->json('permissions')->nullable();
-        });
+        if (!Schema::hasColumn('api_keys', 'permissions')) {
+            Schema::table('api_keys', function (Blueprint $table) {
+                $table->json('permissions')->nullable();
+            });
+        }
+
+        // The legacy columns are dropped in one statement, so if one is gone the permissions were already converted.
+        if (!Schema::hasColumn('api_keys', 'r_servers')) {
+            return;
+        }
 
         foreach (ApiKey::all() as $apiKey) {
             $permissions = [
