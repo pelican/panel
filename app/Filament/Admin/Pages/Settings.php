@@ -7,6 +7,7 @@ use App\Extensions\Avatar\AvatarService;
 use App\Extensions\Captcha\CaptchaService;
 use App\Extensions\OAuth\OAuthService;
 use App\Notifications\MailTested;
+use App\Services\Helpers\ThemeService;
 use App\Traits\EnvironmentWriterTrait;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
@@ -73,6 +74,8 @@ class Settings extends Page implements HasSchemas
 
     protected IconFactory $iconFactory;
 
+    protected ThemeService $themeService;
+
     /** @var array<mixed>|null */
     public ?array $data = [];
 
@@ -81,12 +84,13 @@ class Settings extends Page implements HasSchemas
         $this->form->fill();
     }
 
-    public function boot(OAuthService $oauthService, AvatarService $avatarService, CaptchaService $captchaService, IconFactory $iconFactory): void
+    public function boot(OAuthService $oauthService, AvatarService $avatarService, CaptchaService $captchaService, IconFactory $iconFactory, ThemeService $themeService): void
     {
         $this->oauthService = $oauthService;
         $this->avatarService = $avatarService;
         $this->captchaService = $captchaService;
         $this->iconFactory = $iconFactory;
+        $this->themeService = $themeService;
     }
 
     public static function canAccess(): bool
@@ -227,6 +231,14 @@ class Settings extends Page implements HasSchemas
                     'mixed' => trans('admin/setting.general.mixed'),
                 ])
                 ->default(env('FILAMENT_DEFAULT_NAVIGATION', config('panel.filament.default-navigation'))),
+            Select::make('FILAMENT_DEFAULT_THEME')
+                ->label(trans('admin/setting.general.default_theme'))
+                ->hintIcon(TablerIcon::QuestionMark, trans('admin/setting.general.default_theme_help'))
+                ->options($this->themeService->getThemeOptions())
+                ->placeholder(trans('profile.default_theme'))
+                ->selectablePlaceholder(false)
+                ->visible(fn () => $this->themeService->getThemes() !== [])
+                ->default(config('panel.filament.default-theme')),
             ToggleButtons::make('APP_2FA_REQUIRED')
                 ->label(trans('admin/setting.general.2fa_requirement'))
                 ->inline()

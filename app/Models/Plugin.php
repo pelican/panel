@@ -10,6 +10,7 @@ use App\Facades\Plugins;
 use App\Services\Helpers\SoftwareVersionService;
 use Exception;
 use Filament\Schemas\Components\Component;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\App;
@@ -282,6 +283,17 @@ class Plugin extends Model implements HasPluginSettings
         }
 
         return !str($this->panel_version)->startsWith('^');
+    }
+
+    /**
+     * @param  Builder<self>  $builder
+     * @return Builder<self>
+     */
+    public function scopeThemes(Builder $builder): Builder
+    {
+        return $builder
+            ->where('category', PluginCategory::Theme->value)
+            ->where('status', PluginStatus::Enabled->value);
     }
 
     public function isTheme(): bool

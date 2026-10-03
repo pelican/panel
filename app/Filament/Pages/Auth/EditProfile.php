@@ -11,6 +11,7 @@ use App\Models\ApiKey;
 use App\Models\User;
 use App\Models\UserSSHKey;
 use App\Services\Helpers\LanguageService;
+use App\Services\Helpers\ThemeService;
 use App\Services\Ssh\KeyCreationService;
 use App\Services\Users\UserUpdateService;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -489,6 +490,12 @@ class EditProfile extends BaseEditProfile
                                     true => trans('profile.icon'),
                                     false => trans('profile.icon_button'),
                                 ]),
+                            Select::make('theme')
+                                ->label(trans('profile.theme'))
+                                ->options(fn (ThemeService $themeService) => $themeService->getThemeOptions())
+                                ->placeholder(trans('profile.default_theme'))
+                                ->selectablePlaceholder(false)
+                                ->visible(fn (ThemeService $themeService) => $themeService->getThemes() !== []),
                         ]),
                     Section::make(trans('profile.admin'))
                         ->collapsible()
@@ -624,6 +631,7 @@ class EditProfile extends BaseEditProfile
             'console_rows' => $data['console_rows'],
             'console_graph_period' => $data['console_graph_period'],
             'dashboard_layout' => $data['dashboard_layout'],
+            'theme' => $data['theme'] ?? $this->getUser()->getCustomization(CustomizationKey::Theme),
             'top_navigation' => $data['top_navigation'],
             'button_style' => $data['button_style'],
             'redirect_to_admin' => $data['redirect_to_admin'] ?? $this->getUser()->getCustomization(CustomizationKey::RedirectToAdmin),
@@ -634,6 +642,7 @@ class EditProfile extends BaseEditProfile
             $data['console_font_size'],
             $data['console_rows'],
             $data['dashboard_layout'],
+            $data['theme'],
             $data['top_navigation'],
             $data['button_style'],
             $data['redirect_to_admin'],
@@ -651,6 +660,7 @@ class EditProfile extends BaseEditProfile
         $data['console_rows'] = (int) $this->getUser()->getCustomization(CustomizationKey::ConsoleRows);
         $data['console_graph_period'] = (int) $this->getUser()->getCustomization(CustomizationKey::ConsoleGraphPeriod);
         $data['dashboard_layout'] = $this->getUser()->getCustomization(CustomizationKey::DashboardLayout);
+        $data['theme'] = $this->getUser()->getCustomization(CustomizationKey::Theme);
         $data['button_style'] = $this->getUser()->getCustomization(CustomizationKey::ButtonStyle);
         $data['redirect_to_admin'] = $this->getUser()->getCustomization(CustomizationKey::RedirectToAdmin);
 

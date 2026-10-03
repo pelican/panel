@@ -21,6 +21,8 @@ return [
         'debug_mode' => 'Debug Mode',
         'navigation' => 'Navigation',
         'default_navigation' => 'Default Navigation Type',
+        'default_theme' => 'Default Theme',
+        'default_theme_help' => 'The theme users who have not picked one themselves sees.',
         'sidebar' => 'Sidebar',
         'topbar' => 'Topbar',
         'mixed' => 'Mixed',
