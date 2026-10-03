@@ -478,6 +478,58 @@ class PluginServiceTest extends IntegrationTestCase
         $this->assertSame('2.0.0', $this->service->updatePlugin(Plugin::findOrFail('test-update-plugin'))->version);
     }
 
+    public function test_update_rejects_an_empty_advertised_checksum(): void
+    {
+        $this->importedPlugins[] = 'test-update-plugin';
+
+        config()->set('app.version', '1.0.0');
+        Process::fake();
+
+        $updateUrl = 'https://example.test/test-update-plugin/update.json';
+        $downloadUrl = 'https://example.test/test-update-plugin/2.0.0.zip';
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-update-plugin.zip', [
+            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '1.0.0', $updateUrl),
+        ]));
+
+        Http::fake([
+            $updateUrl => Http::response(['*' => ['version' => '2.0.0', 'download_url' => $downloadUrl, 'sha256' => '']]),
+            $downloadUrl => Http::response(file_get_contents($this->makeUpload('2.0.0.zip', [
+                'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '2.0.0', $updateUrl),
+            ])->getPathname())),
+        ]);
+
+        Plugin::refreshRows();
+
+        try {
+            $this->service->updatePlugin(Plugin::findOrFail('test-update-plugin'));
+            $this->fail('Expected an empty checksum to be rejected.');
+        } catch (Exception $e) {
+            $this->assertSame(trans('admin/plugin.notifications.import_checksum_mismatch'), $e->getMessage());
+        }
+
+        $this->assertSame('1.0.0', $this->installedVersion('test-update-plugin'));
+    }
+
+    public function test_update_download_comes_from_a_single_feed_entry(): void
+    {
+        $this->importedPlugins[] = 'test-update-plugin';
+
+        config()->set('app.version', '1.0.0');
+
+        $updateUrl = 'https://example.test/test-update-plugin/update.json';
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-update-plugin.zip', [
+            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '1.0.0', $updateUrl),
+        ]));
+
+        Http::fake([$updateUrl => Http::response(['*' => ['version' => '2.0.0', 'download_url' => 'https://example.test/a.zip']])]);
+        Plugin::refreshRows();
+
+        $this->assertSame(['url' => 'https://example.test/a.zip', 'sha256' => null], Plugin::findOrFail('test-update-plugin')->getUpdateDownload());
+        Http::assertSentCount(1);
+    }
+
     public function test_hub_key_is_only_sent_to_the_hub_over_https(): void
     {
         config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');

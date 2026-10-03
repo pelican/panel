@@ -314,10 +314,10 @@ class PluginService
     /** @throws Exception */
     public function updatePlugin(Plugin $plugin): Plugin
     {
-        $downloadUrl = $plugin->getDownloadUrlForUpdate();
-        throw_unless($downloadUrl, new Exception('No download url found.'));
+        $download = $plugin->getUpdateDownload();
+        throw_unless($download, new Exception('No download url found.'));
 
-        $this->downloadPluginFromUrl($downloadUrl, $plugin->id, $plugin->getChecksumForUpdate());
+        $this->downloadPluginFromUrl($download['url'], $plugin->id, $download['sha256']);
 
         Plugin::refreshRows();
         $plugin = Plugin::findOrFail($plugin->id);
@@ -485,7 +485,8 @@ class PluginService
 
         $content = HubCredentials::request($url)->timeout(60)->connectTimeout(5)->throw()->get($url)->body();
 
-        if (filled($expectedSha256)) {
+        // Any advertised checksum must match, including an empty or malformed one.
+        if ($expectedSha256 !== null) {
             throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
         }
 

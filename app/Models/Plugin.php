@@ -360,11 +360,27 @@ class Plugin extends Model implements HasPluginSettings
     }
 
     /**
-     * Optional sha256 of the update zip, advertised by the update feed.
+     * Download URL and advertised checksum taken from one read of the update
+     * feed, so the two always describe the same archive. The checksum is null
+     * only when the feed doesn't include one; a present but empty or invalid
+     * value is kept so verification rejects it.
+     *
+     * @return null|array{url: string, sha256: ?string}
      */
-    public function getChecksumForUpdate(): ?string
+    public function getUpdateDownload(): ?array
     {
-        return $this->getUpdateEntry()['sha256'] ?? null;
+        $entry = $this->getUpdateEntry();
+
+        if (blank($entry['download_url'] ?? null)) {
+            return null;
+        }
+
+        $sha256 = null;
+        if (array_key_exists('sha256', $entry)) {
+            $sha256 = (string) $entry['sha256'];
+        }
+
+        return ['url' => (string) $entry['download_url'], 'sha256' => $sha256];
     }
 
     public function hasSettings(): bool
