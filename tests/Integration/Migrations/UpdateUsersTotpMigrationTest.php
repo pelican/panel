@@ -43,6 +43,23 @@ class UpdateUsersTotpMigrationTest extends IntegrationTestCase
         $this->assertNull($disabled->mfa_app_recovery_codes);
     }
 
+    public function test_rerun_after_partial_run_finishes_the_schema_changes(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn(['mfa_app_recovery_codes', 'mfa_email_enabled']);
+        });
+        Schema::table('users', function (Blueprint $table) {
+            $table->text('totp_secret')->nullable();
+            $table->timestamp('totp_authenticated_at')->nullable();
+        });
+
+        (require database_path('migrations/2025_07_22_091435_update_users_totp.php'))->up();
+
+        $this->assertTrue(Schema::hasColumns('users', ['mfa_app_secret', 'mfa_app_recovery_codes', 'mfa_email_enabled']));
+        $this->assertFalse(Schema::hasColumn('users', 'totp_secret'));
+        $this->assertFalse(Schema::hasColumn('users', 'totp_authenticated_at'));
+    }
+
     private function recreatePterodactylSchema(): void
     {
         Schema::table('users', function (Blueprint $table) {
