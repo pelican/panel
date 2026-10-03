@@ -4,6 +4,7 @@ namespace App\Tests\Integration\Services;
 
 use App\Enums\PluginStatus;
 use App\Models\Plugin;
+use App\Services\Helpers\HubCredentials;
 use App\Services\Helpers\PluginService;
 use App\Tests\Integration\IntegrationTestCase;
 use Exception;
@@ -431,6 +432,179 @@ class PluginServiceTest extends IntegrationTestCase
 
         Plugin::refreshRows();
         $this->assertSame('2.0.0', Plugin::findOrFail('test-update-plugin')->version);
+    }
+
+    public function test_update_verifies_the_checksum_from_the_update_feed(): void
+    {
+        $this->importedPlugins[] = 'test-update-plugin';
+
+        config()->set('app.version', '1.0.0');
+        Process::fake();
+
+        $updateUrl = 'https://example.test/test-update-plugin/update.json';
+        $downloadUrl = 'https://example.test/test-update-plugin/2.0.0.zip';
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-update-plugin.zip', [
+            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '1.0.0', $updateUrl),
+        ]));
+
+        $update = file_get_contents($this->makeUpload('2.0.0.zip', [
+            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '2.0.0', $updateUrl),
+        ])->getPathname());
+
+        $advertisedSha256 = str_repeat('0', 64);
+
+        Http::fake([
+            $updateUrl => function () use (&$advertisedSha256, $downloadUrl) {
+                return Http::response(['*' => ['version' => '2.0.0', 'download_url' => $downloadUrl, 'sha256' => $advertisedSha256]]);
+            },
+            $downloadUrl => Http::response($update),
+        ]);
+
+        Plugin::refreshRows();
+
+        try {
+            $this->service->updatePlugin(Plugin::findOrFail('test-update-plugin'));
+            $this->fail('Expected the update to be rejected for a checksum mismatch.');
+        } catch (Exception $e) {
+            $this->assertSame(trans('admin/plugin.notifications.import_checksum_mismatch'), $e->getMessage());
+        }
+
+        $this->assertSame('1.0.0', $this->installedVersion('test-update-plugin'));
+
+        cache()->forget('plugins.test-update-plugin.update');
+        $advertisedSha256 = hash('sha256', $update);
+
+        $this->assertSame('2.0.0', $this->service->updatePlugin(Plugin::findOrFail('test-update-plugin'))->version);
+    }
+
+    public function test_update_rejects_an_empty_advertised_checksum(): void
+    {
+        $this->importedPlugins[] = 'test-update-plugin';
+
+        config()->set('app.version', '1.0.0');
+        Process::fake();
+
+        $updateUrl = 'https://example.test/test-update-plugin/update.json';
+        $downloadUrl = 'https://example.test/test-update-plugin/2.0.0.zip';
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-update-plugin.zip', [
+            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '1.0.0', $updateUrl),
+        ]));
+
+        Http::fake([
+            $updateUrl => Http::response(['*' => ['version' => '2.0.0', 'download_url' => $downloadUrl, 'sha256' => '']]),
+            $downloadUrl => Http::response(file_get_contents($this->makeUpload('2.0.0.zip', [
+                'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '2.0.0', $updateUrl),
+            ])->getPathname())),
+        ]);
+
+        Plugin::refreshRows();
+
+        try {
+            $this->service->updatePlugin(Plugin::findOrFail('test-update-plugin'));
+            $this->fail('Expected an empty checksum to be rejected.');
+        } catch (Exception $e) {
+            $this->assertSame(trans('admin/plugin.notifications.import_checksum_mismatch'), $e->getMessage());
+        }
+
+        $this->assertSame('1.0.0', $this->installedVersion('test-update-plugin'));
+    }
+
+    public function test_update_download_comes_from_a_single_feed_entry(): void
+    {
+        $this->importedPlugins[] = 'test-update-plugin';
+
+        config()->set('app.version', '1.0.0');
+
+        $updateUrl = 'https://example.test/test-update-plugin/update.json';
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-update-plugin.zip', [
+            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '1.0.0', $updateUrl),
+        ]));
+
+        Http::fake([$updateUrl => Http::response(['*' => ['version' => '2.0.0', 'download_url' => 'https://example.test/a.zip']])]);
+        Plugin::refreshRows();
+
+        $this->assertSame(['url' => 'https://example.test/a.zip', 'sha256' => null], Plugin::findOrFail('test-update-plugin')->getUpdateDownload());
+        Http::assertSentCount(1);
+    }
+
+    public function test_hub_key_is_only_sent_to_the_hub_over_https(): void
+    {
+        config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+        config()->set('panel.plugin.hub_api_key', 'pnl_secret');
+
+        $zips = [];
+        foreach (['test-hub-a', 'test-hub-b', 'test-hub-c'] as $id) {
+            $this->importedPlugins[] = $id;
+            $zips[$id] = file_get_contents($this->makeUpload("$id.zip", ["$id/plugin.json" => $this->manifest($id)])->getPathname());
+        }
+
+        Http::fake([
+            'https://hub.pelican.dev/*' => Http::response($zips['test-hub-a']),
+            'https://example.test/*' => Http::response($zips['test-hub-b']),
+            'http://hub.pelican.dev/*' => Http::response($zips['test-hub-c']),
+        ]);
+
+        $this->service->downloadPluginFromUrl('https://hub.pelican.dev/plugins/test-hub-a/download/1/test-hub-a.zip');
+        $this->service->downloadPluginFromUrl('https://example.test/test-hub-b.zip');
+        $this->service->downloadPluginFromUrl('http://hub.pelican.dev/test-hub-c.zip');
+
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://hub.pelican.dev/') && $request->header('X-Panel-Api-Key') === ['pnl_secret']);
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://example.test/') && !$request->hasHeader('X-Panel-Api-Key'));
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'http://hub.pelican.dev/') && !$request->hasHeader('X-Panel-Api-Key'));
+    }
+
+    public function test_hub_key_matches_scheme_case_insensitively_and_requires_the_hub_port(): void
+    {
+        config()->set('panel.plugin.hub_url', 'https://hub.example:8443');
+        config()->set('panel.plugin.hub_api_key', 'pnl_secret');
+
+        $this->assertSame(['X-Panel-Api-Key' => 'pnl_secret'], HubCredentials::headersFor('HTTPS://HUB.example:8443/plugins/x/update.json'));
+        $this->assertSame([], HubCredentials::headersFor('https://hub.example:9443/plugins/x/update.json'));
+        $this->assertSame([], HubCredentials::headersFor('https://hub.example/plugins/x/update.json'));
+
+        config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+
+        $this->assertSame(['X-Panel-Api-Key' => 'pnl_secret'], HubCredentials::headersFor('https://hub.pelican.dev:443/plugins/x/update.json'));
+        $this->assertSame([], HubCredentials::headersFor('https://hub.pelican.dev:8443/plugins/x/update.json'));
+    }
+
+    public function test_hub_key_is_never_carried_across_a_redirect(): void
+    {
+        config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+        config()->set('panel.plugin.hub_api_key', 'pnl_secret');
+
+        Http::fake([
+            'https://hub.pelican.dev/*' => Http::response('', 302, ['Location' => 'https://attacker.example/steal.zip']),
+            'https://attacker.example/*' => Http::response('stolen'),
+        ]);
+
+        try {
+            $this->service->downloadPluginFromUrl('https://hub.pelican.dev/plugins/x/download/1/x.zip');
+        } catch (Exception) {
+            // The redirect body is not a zip; all that matters is where the key went.
+        }
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'attacker.example'));
+    }
+
+    public function test_no_hub_key_is_sent_when_none_is_configured(): void
+    {
+        config()->set('panel.plugin.hub_api_key', null);
+
+        $this->importedPlugins[] = 'test-hub-plugin';
+
+        $bytes = file_get_contents($this->makeUpload('test-hub-plugin.zip', [
+            'test-hub-plugin/plugin.json' => $this->manifest('test-hub-plugin'),
+        ])->getPathname());
+
+        Http::fake(['*' => Http::response($bytes)]);
+
+        $this->service->downloadPluginFromUrl('https://hub.pelican.dev/plugins/test-hub-plugin/download/1/test-hub-plugin.zip');
+
+        Http::assertSent(fn ($request) => !$request->hasHeader('X-Panel-Api-Key'));
     }
 
     private function installedVersion(string $id): string
