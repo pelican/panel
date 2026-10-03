@@ -79,7 +79,25 @@ return new class extends Migration
                 ->get(['id', 'env_variable'])
                 ->each(fn ($variable) => DB::table('egg_variables')
                     ->where('id', $variable->id)
-                    ->update(['name' => "$group->name ($variable->env_variable)"]));
+                    ->update(['name' => $this->uniqueName($group->egg_id, $group->name, $variable->env_variable)]));
+        }
+    }
+
+    /**
+     * Appends the env variable to the name, or a counter if that is too long or already taken, within the 191 character column.
+     */
+    private function uniqueName(int $eggId, string $name, string $envVariable): string
+    {
+        $suffix = " ($envVariable)";
+
+        for ($i = 2; ; $i++) {
+            $candidate = mb_substr($name, 0, max(0, 191 - mb_strlen($suffix))) . $suffix;
+
+            if (mb_strlen($candidate) <= 191 && !DB::table('egg_variables')->where('egg_id', $eggId)->where('name', $candidate)->exists()) {
+                return $candidate;
+            }
+
+            $suffix = " ($i)";
         }
     }
 

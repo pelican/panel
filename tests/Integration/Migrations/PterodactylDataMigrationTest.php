@@ -2,6 +2,7 @@
 
 namespace App\Tests\Integration\Migrations;
 
+use App\Models\ApiKey;
 use App\Models\EggVariable;
 use App\Models\Node;
 use App\Tests\Integration\IntegrationTestCase;
@@ -54,6 +55,9 @@ class PterodactylDataMigrationTest extends IntegrationTestCase
         $duplicate = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'FOO', 'name' => 'Foo copy']);
         $shared = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'BAR', 'name' => 'Shared']);
         $sharedName = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'BAZ', 'name' => 'Shared']);
+        EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'TAKEN', 'name' => 'Shared (BAZ)']);
+        $long = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'LONG_ONE', 'name' => str_repeat('a', 191)]);
+        $longDuplicate = EggVariable::factory()->create(['egg_id' => $server->egg_id, 'env_variable' => 'LONG_TWO', 'name' => str_repeat('a', 191)]);
 
         $other = $this->createServerModel(['egg_id' => $server->egg_id]);
         DB::table('server_variables')->insert([
@@ -69,7 +73,21 @@ class PterodactylDataMigrationTest extends IntegrationTestCase
         $this->assertSame('only value', DB::table('server_variables')->where('server_id', $other->id)->where('variable_id', $keep->id)->value('variable_value'));
         $this->assertDatabaseMissing('server_variables', ['variable_id' => $duplicate->id]);
         $this->assertDatabaseHas('egg_variables', ['id' => $shared->id, 'name' => 'Shared']);
-        $this->assertDatabaseHas('egg_variables', ['id' => $sharedName->id, 'name' => 'Shared (BAZ)']);
+        $this->assertDatabaseHas('egg_variables', ['id' => $sharedName->id, 'name' => 'Shared (2)']);
+        $this->assertDatabaseHas('egg_variables', ['id' => $long->id, 'name' => str_repeat('a', 191)]);
+        $this->assertDatabaseHas('egg_variables', ['id' => $longDuplicate->id, 'name' => str_repeat('a', 180) . ' (LONG_TWO)']);
+    }
+
+    public function test_api_key_and_webhook_migrations_can_rerun_on_a_migrated_schema(): void
+    {
+        ApiKey::factory()->create(['user_id' => $this->createServerModel()->owner_id, 'permissions' => [Node::RESOURCE_NAME => 3]]);
+        $permissions = DB::table('api_keys')->pluck('permissions', 'id');
+        $this->assertNotEmpty($permissions);
+
+        $this->runMigration('2024_11_04_185326_revamp_api_keys_permissions');
+        $this->runMigration('2025_10_28_152500_rename_description_webhooks');
+
+        $this->assertEquals($permissions, DB::table('api_keys')->pluck('permissions', 'id'));
     }
 
     private function runMigration(string $name): void

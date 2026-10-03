@@ -17,9 +17,11 @@ return new class extends Migration
             });
         }
 
-        Schema::table('webhook_configurations', function (Blueprint $table) {
-            $table->text('description')->nullable()->after('name');
-        });
+        if (!Schema::hasColumn('webhook_configurations', 'description')) {
+            Schema::table('webhook_configurations', function (Blueprint $table) {
+                $table->text('description')->nullable()->after('name');
+            });
+        }
     }
 
     /**

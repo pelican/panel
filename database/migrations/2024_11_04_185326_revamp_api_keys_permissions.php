@@ -27,6 +27,11 @@ return new class extends Migration
             });
         }
 
+        // The legacy columns are dropped in one statement, so if one is gone the permissions were already converted.
+        if (!Schema::hasColumn('api_keys', 'r_servers')) {
+            return;
+        }
+
         foreach (ApiKey::all() as $apiKey) {
             $permissions = [
                 Server::RESOURCE_NAME => intval($apiKey->r_servers ?? 0),
