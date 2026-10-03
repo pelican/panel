@@ -4,6 +4,7 @@ namespace App\Tests\Integration\Services;
 
 use App\Enums\PluginStatus;
 use App\Models\Plugin;
+use App\Services\Helpers\HubCredentials;
 use App\Services\Helpers\PluginService;
 use App\Tests\Integration\IntegrationTestCase;
 use Exception;
@@ -501,6 +502,40 @@ class PluginServiceTest extends IntegrationTestCase
         Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://hub.pelican.dev/') && $request->header('X-Panel-Api-Key') === ['pnl_secret']);
         Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://example.test/') && !$request->hasHeader('X-Panel-Api-Key'));
         Http::assertSent(fn ($request) => str_starts_with($request->url(), 'http://hub.pelican.dev/') && !$request->hasHeader('X-Panel-Api-Key'));
+    }
+
+    public function test_hub_key_matches_scheme_case_insensitively_and_requires_the_hub_port(): void
+    {
+        config()->set('panel.plugin.hub_url', 'https://hub.example:8443');
+        config()->set('panel.plugin.hub_api_key', 'pnl_secret');
+
+        $this->assertSame(['X-Panel-Api-Key' => 'pnl_secret'], HubCredentials::headersFor('HTTPS://HUB.example:8443/plugins/x/update.json'));
+        $this->assertSame([], HubCredentials::headersFor('https://hub.example:9443/plugins/x/update.json'));
+        $this->assertSame([], HubCredentials::headersFor('https://hub.example/plugins/x/update.json'));
+
+        config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+
+        $this->assertSame(['X-Panel-Api-Key' => 'pnl_secret'], HubCredentials::headersFor('https://hub.pelican.dev:443/plugins/x/update.json'));
+        $this->assertSame([], HubCredentials::headersFor('https://hub.pelican.dev:8443/plugins/x/update.json'));
+    }
+
+    public function test_hub_key_is_never_carried_across_a_redirect(): void
+    {
+        config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+        config()->set('panel.plugin.hub_api_key', 'pnl_secret');
+
+        Http::fake([
+            'https://hub.pelican.dev/*' => Http::response('', 302, ['Location' => 'https://attacker.example/steal.zip']),
+            'https://attacker.example/*' => Http::response('stolen'),
+        ]);
+
+        try {
+            $this->service->downloadPluginFromUrl('https://hub.pelican.dev/plugins/x/download/1/x.zip');
+        } catch (Exception) {
+            // The redirect body is not a zip; all that matters is where the key went.
+        }
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'attacker.example'));
     }
 
     public function test_no_hub_key_is_sent_when_none_is_configured(): void

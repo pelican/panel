@@ -211,6 +211,11 @@ class PluginController extends ApplicationApiController
         // Plugin updates run on the queue; restart workers so they pick up the key.
         Artisan::call('queue:restart');
 
+        // Update checks cached without the key would hide beta builds until they expire.
+        foreach (Plugin::query()->pluck('id') as $pluginId) {
+            cache()->forget("plugins.$pluginId.update");
+        }
+
         return $this->returnNoContent();
     }
 }

@@ -46,6 +46,28 @@ class PluginHubCredentialsTest extends ApplicationApiIntegrationTestCase
         $this->assertStringContainsString('APP_NAME=Pelican', $env);
     }
 
+    public function test_clears_cached_update_checks_so_betas_show_up_immediately(): void
+    {
+        File::ensureDirectoryExists(plugin_path('test-hub-cache'));
+        File::put(plugin_path('test-hub-cache', 'plugin.json'), json_encode(['id' => 'test-hub-cache', 'name' => 'Test', 'version' => '1.0.0']));
+        Plugin::refreshRows();
+        cache()->put('plugins.test-hub-cache.update', ['*' => ['version' => '1.0.0', 'download_url' => 'https://hub.pelican.dev/x.zip']], now()->addMinutes(10));
+
+        try {
+            $this->createNewDefaultApiKey($this->getApiUser(), [Plugin::RESOURCE_NAME => AdminAcl::READ | AdminAcl::WRITE]);
+
+            $this->putJson('/api/application/plugins/hub', [
+                'hub_url' => 'https://hub.pelican.dev',
+                'api_key' => 'pnl_abc123',
+            ])->assertStatus(Response::HTTP_NO_CONTENT);
+
+            $this->assertFalse(cache()->has('plugins.test-hub-cache.update'));
+        } finally {
+            File::deleteDirectory(plugin_path('test-hub-cache'));
+            Plugin::refreshRows();
+        }
+    }
+
     public function test_requires_plugin_write_permission(): void
     {
         $this->createNewDefaultApiKey($this->getApiUser(), [Plugin::RESOURCE_NAME => AdminAcl::READ]);

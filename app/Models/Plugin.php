@@ -15,7 +15,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use JsonException;
 use Sushi\Sushi;
@@ -304,7 +303,7 @@ class Plugin extends Model implements HasPluginSettings
 
         return cache()->remember("plugins.$this->id.update", now()->addMinutes(10), function () {
             try {
-                $data = Http::withHeaders(HubCredentials::headersFor($this->update_url))
+                $data = HubCredentials::request($this->update_url)
                     ->timeout(5)->connectTimeout(1)->get($this->update_url)->throw()->json();
 
                 // Support update jsons that cover multiple plugins

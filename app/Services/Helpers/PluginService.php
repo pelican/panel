@@ -16,7 +16,6 @@ use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\ServiceProvider;
@@ -484,7 +483,7 @@ class PluginService
         $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
         $tmpPath = $tmpDir->path($basename);
 
-        $content = Http::withHeaders(HubCredentials::headersFor($url))->timeout(60)->connectTimeout(5)->throw()->get($url)->body();
+        $content = HubCredentials::request($url)->timeout(60)->connectTimeout(5)->throw()->get($url)->body();
 
         if (filled($expectedSha256)) {
             throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
