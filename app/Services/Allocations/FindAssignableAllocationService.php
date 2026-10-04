@@ -36,6 +36,7 @@ class FindAssignableAllocationService
     public function handle(Server $server): Allocation
     {
         throw_unless(config('panel.client_features.allocations.enabled'), new AutoAllocationNotEnabledException());
+        throw_unless($server->allocation, new DisplayException(trans('server/network.no_primary')));
 
         $createNew = config('panel.client_features.allocations.create_new', true);
 

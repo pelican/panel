@@ -2,6 +2,7 @@
 
 namespace App\Tests\Integration\Services\Allocations;
 
+use App\Exceptions\DisplayException;
 use App\Exceptions\Service\Allocation\AutoAllocationNotEnabledException;
 use App\Exceptions\Service\Allocation\NoAutoAllocationSpaceAvailableException;
 use App\Models\Allocation;
@@ -168,6 +169,16 @@ class FindAssignableAllocationServiceTest extends IntegrationTestCase
         $this->expectException(AutoAllocationNotEnabledException::class);
 
         $this->getService()->handle($server);
+    }
+
+    public function test_exception_is_thrown_if_server_has_no_primary_allocation(): void
+    {
+        $server = $this->createServerModel();
+        $server->update(['allocation_id' => null]);
+
+        $this->expectException(DisplayException::class);
+
+        $this->getService()->handle($server->refresh());
     }
 
     private function getService(): FindAssignableAllocationService

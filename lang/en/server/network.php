@@ -4,6 +4,7 @@ return [
     'title' => 'Network',
     'add' => 'Add Allocation',
     'limit' => 'Allocation limit reached',
+    'no_primary' => 'A primary allocation is required before adding more',
     'address' => 'Address',
     'port' => 'Port',
     'port_hidden' => 'Hidden',

@@ -104,12 +104,16 @@ class AllocationResource extends Resource
             ->toolbarActions([
                 Action::make('add_allocation')
                     ->hiddenLabel()
-                    ->icon(fn () => $server->allocations()->count() >= $server->allocation_limit ? TablerIcon::NetworkOff : TablerIcon::Network)
+                    ->icon(fn () => $server->allocation === null || $server->allocations()->count() >= $server->allocation_limit ? TablerIcon::NetworkOff : TablerIcon::Network)
                     ->authorize(fn () => user()?->can(SubuserPermission::AllocationCreate, $server))
-                    ->tooltip(fn () => $server->allocations()->count() >= $server->allocation_limit ? trans('server/network.limit') : trans('server/network.add'))
-                    ->hidden(fn () => !config('panel.client_features.allocations.enabled') || $server->allocation === null)
-                    ->disabled(fn () => $server->allocations()->count() >= $server->allocation_limit)
-                    ->color(fn () => $server->allocations()->count() >= $server->allocation_limit ? 'danger' : 'primary')
+                    ->tooltip(fn () => match (true) {
+                        $server->allocation === null => trans('server/network.no_primary'),
+                        $server->allocations()->count() >= $server->allocation_limit => trans('server/network.limit'),
+                        default => trans('server/network.add'),
+                    })
+                    ->hidden(fn () => !config('panel.client_features.allocations.enabled'))
+                    ->disabled(fn () => $server->allocation === null || $server->allocations()->count() >= $server->allocation_limit)
+                    ->color(fn () => $server->allocation === null || $server->allocations()->count() >= $server->allocation_limit ? 'danger' : 'primary')
                     ->action(function (FindAssignableAllocationService $service) use ($server) {
                         $allocation = $service->handle($server);
 
