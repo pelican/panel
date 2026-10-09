@@ -84,7 +84,7 @@ class GSLTokenSchema implements FeatureSchemaInterface
                     ->prefix(fn () => '{{' . $serverVariable->variable->env_variable . '}}')
                     ->helperText(fn () => empty($serverVariable->variable->description) ? '—' : $serverVariable->variable->description),
             ])
-            ->action(function (array $data, DaemonServerRepository $serverRepository) use ($server, $serverVariable) {
+            ->action(function (array $data, DaemonServerRepository $serverRepository) use ($serverVariable) {
                 /** @var Server $server */
                 $server = Filament::getTenant();
                 try {
