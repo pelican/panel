@@ -190,6 +190,8 @@ it('keeps the node relation managers read-only on the view page', function () {
         RolePermissionModels::Node->viewAny(),
         RolePermissionModels::Node->view(),
         RolePermissionModels::Node->update(),
+        RolePermissionModels::Allocation->viewAny(),
+        RolePermissionModels::Allocation->update(),
     ]));
 
     Filament::setCurrentPanel(Filament::getPanel('admin'));

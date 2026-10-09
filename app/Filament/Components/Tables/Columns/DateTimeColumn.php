@@ -4,6 +4,7 @@ namespace App\Filament\Components\Tables\Columns;
 
 use Closure;
 use Filament\Tables\Columns\TextColumn;
+use Illuminate\Database\Eloquent\Model;
 
 class DateTimeColumn extends TextColumn
 {
@@ -22,7 +23,7 @@ class DateTimeColumn extends TextColumn
         return $this;
     }
 
-    public function getTimezone(): string
+    public function getTimezone(mixed $state = null, ?Model $relatedRecord = null): string
     {
         return user()->timezone ?? config('app.timezone', 'UTC');
     }
