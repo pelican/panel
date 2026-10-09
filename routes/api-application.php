@@ -187,6 +187,7 @@ Route::prefix('/plugins')->group(function () {
 
     Route::post('/import/file', [Application\Plugins\PluginController::class, 'importFile']);
     Route::post('/import/url', [Application\Plugins\PluginController::class, 'importUrl']);
+    Route::put('/hub', [Application\Plugins\PluginController::class, 'hub']);
 
     Route::post('/{plugin:id}/install', [Application\Plugins\PluginController::class, 'install']);
     Route::post('/{plugin:id}/update', [Application\Plugins\PluginController::class, 'update']);

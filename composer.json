@@ -9,14 +9,14 @@
         "ext-mbstring": "*",
         "ext-pdo": "*",
         "ext-zip": "*",
-        "aws/aws-sdk-php": "^3.394",
+        "aws/aws-sdk-php": "^3.399",
         "calebporzio/sushi": "^2.5",
         "charrafimed/global-search-modal": "^5.0",
         "dedoc/scramble": "^0.13",
-        "filament/filament": "^5.8",
-        "gboquizosanchez/filament-log-viewer": "^2.3",
+        "filament/filament": "^5.9",
+        "gboquizosanchez/filament-log-viewer": "^2.4",
         "guzzlehttp/guzzle": "^8.2",
-        "laravel/framework": "^13.34",
+        "laravel/framework": "^13.35",
         "laravel/helpers": "^1.8",
         "laravel/passkeys": "^0.2",
         "laravel/sanctum": "^4.3",
@@ -43,7 +43,7 @@
         "symfony/mailgun-mailer": "^7.4",
         "symfony/postmark-mailer": "^7.4",
         "symfony/yaml": "^7.4",
-        "webmozart/assert": "^2.4"
+        "webmozart/assert": "^2.5"
     },
     "require-dev": {
         "barryvdh/laravel-ide-helper": "^3.7",

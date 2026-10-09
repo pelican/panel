@@ -86,5 +86,9 @@ return [
     'plugin' => [
         'dev_mode' => env('PANEL_PLUGIN_DEV_MODE', false),
         'max_import_size' => env('PANEL_PLUGIN_MAX_IMPORT_SIZE', 1024 * 1024 * 100),
+        // Optional Pelican Hub key for this panel. Only sent to hub_url over https,
+        // so the Hub can serve beta builds this panel was explicitly enrolled in.
+        'hub_url' => env('PANEL_PLUGIN_HUB_URL', 'https://hub.pelican.dev'),
+        'hub_api_key' => env('PANEL_PLUGIN_HUB_API_KEY'),
     ],
 ];

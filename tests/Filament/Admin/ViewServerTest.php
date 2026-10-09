@@ -144,6 +144,8 @@ it('keeps the server relation managers read-only on the view page', function () 
         RolePermissionModels::Server->viewAny(),
         RolePermissionModels::Server->view(),
         RolePermissionModels::Server->update(),
+        RolePermissionModels::Allocation->viewAny(),
+        RolePermissionModels::Allocation->update(),
     ]));
     $allocation = serverAllocation($server);
 
