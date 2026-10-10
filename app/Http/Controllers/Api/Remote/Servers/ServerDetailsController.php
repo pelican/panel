@@ -62,8 +62,9 @@ class ServerDetailsController extends Controller
         $node = $request->attributes->get('node');
 
         // Avoid run-away N+1 SQL queries by preloading the relationships that are used
-        // within each of the services called below.
-        $servers = Server::query()->with(['allocations', 'egg', 'mounts', 'variables'])
+        // within each of the services called below. Server::variables() can't be eager
+        // loaded (its join needs the server's own id), so it is lazy loaded per server.
+        $servers = Server::query()->with(['allocations', 'egg', 'mounts'])
             ->where('node_id', $node->id)
             // If you don't cast this to a string you'll end up with a stringified per_page returned in
             // the metadata, and then daemon will panic crash as a result.
