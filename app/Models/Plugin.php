@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Contracts\Plugins\HasPluginSettings;
+use App\Contracts\Plugins\HasTheme;
 use App\Enums\PluginCategory;
 use App\Enums\PluginStatus;
 use App\Exceptions\PluginIdMismatchException;
@@ -11,6 +12,7 @@ use App\Services\Helpers\HubCredentials;
 use App\Services\Helpers\SoftwareVersionService;
 use Exception;
 use Filament\Schemas\Components\Component;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\App;
@@ -284,9 +286,26 @@ class Plugin extends Model implements HasPluginSettings
         return !str($this->panel_version)->startsWith('^');
     }
 
+    /**
+     * @param  Builder<self>  $builder
+     * @return Builder<self>
+     */
+    public function scopeThemes(Builder $builder): Builder
+    {
+        return $builder
+            ->where('category', PluginCategory::Theme->value)
+            ->where('status', PluginStatus::Enabled->value);
+    }
+
     public function isTheme(): bool
     {
         return $this->category === PluginCategory::Theme;
+    }
+
+    /** Themes implementing HasTheme only apply when picked, so they can be enabled alongside each other. */
+    public function isSwitchableTheme(): bool
+    {
+        return $this->isTheme() && is_subclass_of($this->fullClass(), HasTheme::class);
     }
 
     public function isLanguage(): bool

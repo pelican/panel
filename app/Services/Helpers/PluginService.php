@@ -420,6 +420,8 @@ class PluginService
         $pluginName = Str::lower(trim($id));
         throw_unless(preg_match('/^[a-z0-9][a-z0-9._-]*$/', $pluginName), new Exception(trans('admin/plugin.notifications.import_invalid_id')));
 
+        throw_if(in_array($pluginName, [ThemeService::Default, ThemeService::None], true), new Exception(trans('admin/plugin.notifications.import_reserved_id', ['id' => $pluginName])));
+
         // When updating a known plugin, the archive must be for that same plugin — reject a
         // mismatched id before moving anything, so an update can't overwrite a different plugin.
         throw_if($expectedId !== null && $pluginName !== $expectedId, new Exception(trans('admin/plugin.notifications.import_id_mismatch', ['expected' => $expectedId, 'actual' => $pluginName])));
@@ -555,11 +557,23 @@ class PluginService
         }
     }
 
-    public function hasThemePluginEnabled(): bool
+    public function hasAnyThemeEnabled(): bool
     {
         $plugins = Plugin::orderBy('load_order')->get();
         foreach ($plugins as $plugin) {
             if ($plugin->isTheme() && $plugin->status === PluginStatus::Enabled) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasThemePluginEnabled(): bool
+    {
+        $plugins = Plugin::orderBy('load_order')->get();
+        foreach ($plugins as $plugin) {
+            if ($plugin->isTheme() && !$plugin->isSwitchableTheme() && $plugin->status === PluginStatus::Enabled) {
                 return true;
             }
         }

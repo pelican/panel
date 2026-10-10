@@ -28,7 +28,9 @@ class InstallPlugin implements ShouldBeUnique, ShouldQueue
             Plugin::refreshRows();
             $plugin = Plugin::findOrFail($this->pluginId);
 
-            $pluginService->installPlugin($plugin, !$plugin->isTheme() || !$pluginService->hasThemePluginEnabled());
+            $pluginService->installPlugin($plugin, !$plugin->isTheme() || ($plugin->isSwitchableTheme()
+                ? !$pluginService->hasThemePluginEnabled()
+                : !$pluginService->hasAnyThemeEnabled()));
 
             Notification::make()
                 ->success()
