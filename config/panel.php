@@ -91,4 +91,9 @@ return [
         'hub_url' => env('PANEL_PLUGIN_HUB_URL', 'https://hub.pelican.dev'),
         'hub_api_key' => env('PANEL_PLUGIN_HUB_API_KEY'),
     ],
+
+    'updates' => [
+        // Snapshots contain .env and possibly SQLite data, so retain only a small recovery window.
+        'retained_snapshots' => env('PANEL_UPDATE_RETAINED_SNAPSHOTS', 3),
+    ],
 ];
