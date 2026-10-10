@@ -30,11 +30,10 @@ return [
     'enabled' => 'Enable Schedule?',
     'enabled_hint' => 'This schedule will be executed automatically if enabled.',
 
-    'cron_body' => 'The cron inputs below use the selected timezone.',
+    'cron_body' => 'The cron inputs below use your timezone.',
     'cron_timezone' => 'Next run in your timezone (:timezone): <b> :next_run </b>',
 
     'invalid' => 'Invalid',
-    'timezone' => 'Timezone',
 
     'time' => [
         'minute' => 'Minute',

@@ -21,7 +21,6 @@ use App\Traits\Filament\CanCustomizeRelations;
 use App\Traits\Filament\CanModifyForm;
 use App\Traits\Filament\CanModifyTable;
 use BackedEnum;
-use DateTimeZone;
 use Exception;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -102,7 +101,7 @@ class ScheduleResource extends Resource
                 Section::make(trans('server/schedule.cron'))
                     ->description(function (Get $get) {
                         try {
-                            $nextRun = Utilities::getScheduleNextRunDate($get('cron_minute'), $get('cron_hour'), $get('cron_day_of_month'), $get('cron_month'), $get('cron_day_of_week'), $get('timezone') ?? 'UTC')->timezone(user()->timezone ?? 'UTC');
+                            $nextRun = Utilities::getScheduleNextRunDate($get('cron_minute'), $get('cron_hour'), $get('cron_day_of_month'), $get('cron_month'), $get('cron_day_of_week'), user()->timezone ?? 'UTC')->timezone(user()->timezone ?? 'UTC');
                         } catch (Exception) {
                             $nextRun = trans('server/schedule.invalid');
                         }
@@ -296,14 +295,6 @@ class ScheduleResource extends Resource
                                 'default' => 4,
                                 'lg' => 5,
                             ]),
-                        Select::make('timezone')
-                            ->label(trans('server/schedule.timezone'))
-                            ->required()
-                            ->default(user()->timezone ?? 'UTC')
-                            ->selectablePlaceholder(false)
-                            ->options(fn () => collect(DateTimeZone::listIdentifiers())->mapWithKeys(fn ($tz) => [$tz => $tz]))
-                            ->searchable()
-                            ->live(),
                     ])
                     ->columnSpanFull(),
             ]);
