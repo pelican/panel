@@ -114,24 +114,12 @@ class AllocationsRelationManager extends RelationManager
                     ->authorize(fn (Allocation $allocation) => user()?->can('update', $allocation))
                     ->tooltip(trans('admin/server.remove_allocation'))
                     ->hidden(fn () => $this->isReadOnly())
-                    ->after(function (Allocation $allocation) {
-                        $allocation->update(Allocation::RELEASE_ATTRIBUTES);
-
-                        if (!$this->getOwnerRecord()->allocation_id || $this->getOwnerRecord()->allocation_id === $allocation->id) {
-                            $this->getOwnerRecord()->update(['allocation_id' => $this->getOwnerRecord()->allocations()->first()?->id]);
-                        }
-                    }),
+                    ->after(fn (Allocation $allocation) => $this->getOwnerRecord()->releaseAllocations([$allocation->id])),
             ])
             ->toolbarActions([
                 DissociateBulkAction::make()
                     ->hidden(fn () => $this->isReadOnly())
-                    ->after(function (Collection $records) {
-                        Allocation::whereIn('id', $records->pluck('id'))->update(Allocation::RELEASE_ATTRIBUTES);
-
-                        if (!$this->getOwnerRecord()->allocation_id || $records->contains('id', $this->getOwnerRecord()->allocation_id)) {
-                            $this->getOwnerRecord()->update(['allocation_id' => $this->getOwnerRecord()->allocations()->first()?->id]);
-                        }
-                    }),
+                    ->after(fn (Collection $records) => $this->getOwnerRecord()->releaseAllocations($records->pluck('id')->all())),
                 CreateAction::make()
                     ->hidden(fn () => $this->isReadOnly())
                     ->hiddenLabel()

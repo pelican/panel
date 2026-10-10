@@ -86,20 +86,14 @@ class AllocationResource extends Resource
                     ->visible(fn (Allocation $allocation) => !$allocation->is_locked || user()?->can('update', $allocation->node))
                     ->authorize(fn () => user()?->can(SubuserPermission::AllocationDelete, $server))
                     ->label(trans('server/network.delete'))
-                    ->action(function (Allocation $allocation) {
-                        Allocation::where('id', $allocation->id)->update([
-                            'notes' => null,
-                            'is_locked' => false,
-                            'show_port' => true,
-                            'server_id' => null,
-                        ]);
+                    ->action(function (Allocation $allocation) use ($server) {
+                        $server->releaseAllocations([$allocation->id]);
 
                         Activity::event('server:allocation.delete')
                             ->subject($allocation)
                             ->property('allocation', $allocation->address)
                             ->log();
-                    })
-                    ->after(fn (Allocation $allocation) => $allocation->id === $server->allocation_id && $server->update(['allocation_id' => $server->allocations()->first()?->id])),
+                    }),
             ])
             ->toolbarActions([
                 Action::make('add_allocation')

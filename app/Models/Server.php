@@ -243,6 +243,22 @@ class Server extends Model implements HasAvatar, Validatable
         })->toArray();
     }
 
+    /**
+     * Releases the given allocations from this server, and moves the primary allocation
+     * to one of the remaining allocations if the primary was released.
+     *
+     * @param  array<int>  $ids
+     */
+    public function releaseAllocations(array $ids): void
+    {
+        Allocation::query()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
+
+        if (!$this->allocation_id || in_array($this->allocation_id, $ids)) {
+            $this->allocation()->associate($this->allocations()->first());
+            $this->save();
+        }
+    }
+
     public function isInstalled(): bool
     {
         return $this->status !== ServerState::Installing && !$this->isFailedInstall();
