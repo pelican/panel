@@ -267,6 +267,7 @@ class Server extends Model implements HasAvatar, Validatable
             );
 
             $this->allocations()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
+            $this->unsetRelation('allocations');
 
             if (!$this->allocation_id || in_array($this->allocation_id, $ids)) {
                 $this->allocation()->associate($primary = $this->allocations()->where('node_id', $this->node_id)->orderBy('id')->first());

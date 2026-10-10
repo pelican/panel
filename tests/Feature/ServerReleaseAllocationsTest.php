@@ -51,3 +51,13 @@ it('does not release a free allocation that never belonged to the server', funct
         ->notes->toBe('reserved')
         ->is_locked->toBeTrue();
 });
+
+it('does not keep released allocations in an already loaded relation', function () {
+    $server = createServerModel();
+    $released = Allocation::factory()->forServer($server)->create();
+    $server->load('allocations');
+
+    $server->releaseAllocations([$released->id]);
+
+    expect($server->getAllocationMappings())->toBe([$server->allocation->ip => [$server->allocation->port]]);
+});
