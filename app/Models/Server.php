@@ -266,11 +266,7 @@ class Server extends Model implements HasAvatar, Validatable
                 new DisplayException('You cannot delete the last allocation for this server.')
             );
 
-            // Admin dissociation has already cleared server_id, so those rows are matched too.
-            Allocation::query()
-                ->whereIn('id', $ids)
-                ->where(fn ($query) => $query->where('server_id', $this->id)->orWhereNull('server_id'))
-                ->update(Allocation::RELEASE_ATTRIBUTES);
+            $this->allocations()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
 
             if (!$this->allocation_id || in_array($this->allocation_id, $ids)) {
                 $this->allocation()->associate($primary = $this->allocations()->where('node_id', $this->node_id)->orderBy('id')->first());

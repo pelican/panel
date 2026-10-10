@@ -92,12 +92,17 @@ it('can delete a server', function () {
 it('moves the primary allocation when it is removed from a server', function () {
     $server = createServerModel();
     $primary = $server->allocation;
+    $primary->update(['notes' => 'mine', 'is_locked' => true]);
     $other = Allocation::factory()->forServer($server)->create();
 
     livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
-        ->callAction(TestAction::make('dissociate')->table($primary));
+        ->callAction(TestAction::make('dissociate')->table($primary))
+        ->assertNotified();
 
-    expect($primary->refresh()->server_id)->toBeNull()
+    expect($primary->refresh())
+        ->server_id->toBeNull()
+        ->notes->toBeNull()
+        ->is_locked->toBeFalse()
         ->and($server->refresh()->allocation_id)->toBe($other->id);
 });
 
@@ -117,14 +122,21 @@ it('clears the primary allocation when the last allocation is removed from a ser
 it('moves the primary allocation when it is removed from a server in bulk', function () {
     $server = createServerModel();
     $primary = $server->allocation;
-    [$removed, $kept] = Allocation::factory()->count(2)->forServer($server)->create();
+    [$removed, $kept] = Allocation::factory()->count(2)->forServer($server)->create(['notes' => 'mine', 'is_locked' => true]);
 
     livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
         ->selectTableRecords([$primary->id, $removed->id])
-        ->callAction(TestAction::make('dissociate')->table()->bulk());
+        ->callAction(TestAction::make('dissociate')->table()->bulk())
+        ->assertNotified();
 
     expect($primary->refresh()->server_id)->toBeNull()
-        ->and($removed->refresh()->server_id)->toBeNull()
+        ->and($removed->refresh())
+        ->server_id->toBeNull()
+        ->notes->toBeNull()
+        ->is_locked->toBeFalse()
+        ->and($kept->refresh())
+        ->server_id->toBe($server->id)
+        ->notes->toBe('mine')
         ->and($server->refresh()->allocation_id)->toBe($kept->id);
 });
 

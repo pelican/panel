@@ -114,12 +114,18 @@ class AllocationsRelationManager extends RelationManager
                     ->authorize(fn (Allocation $allocation) => user()?->can('update', $allocation))
                     ->tooltip(trans('admin/server.remove_allocation'))
                     ->hidden(fn () => $this->isReadOnly())
-                    ->after(fn (Allocation $allocation) => $this->getOwnerRecord()->releaseAllocations([$allocation->id])),
+                    ->action(function (Allocation $allocation, DissociateAction $action) {
+                        $this->getOwnerRecord()->releaseAllocations([$allocation->id]);
+                        $action->success();
+                    }),
             ])
             ->toolbarActions([
                 DissociateBulkAction::make()
                     ->hidden(fn () => $this->isReadOnly())
-                    ->after(fn (Collection $records) => $this->getOwnerRecord()->releaseAllocations($records->pluck('id')->all())),
+                    ->action(function (Collection $records, DissociateBulkAction $action) {
+                        $this->getOwnerRecord()->releaseAllocations($records->pluck('id')->all());
+                        $action->success();
+                    }),
                 CreateAction::make()
                     ->hidden(fn () => $this->isReadOnly())
                     ->hiddenLabel()

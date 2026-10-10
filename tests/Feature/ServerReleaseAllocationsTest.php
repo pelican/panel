@@ -40,3 +40,14 @@ it('does not release an allocation that now belongs to another server', function
         ->server_id->toBe($other->id)
         ->notes->toBe('mine');
 });
+
+it('does not release a free allocation that never belonged to the server', function () {
+    $server = createServerModel();
+    $free = Allocation::factory()->create(['node_id' => $server->node_id, 'notes' => 'reserved', 'is_locked' => true]);
+
+    $server->releaseAllocations([$free->id]);
+
+    expect($free->refresh())
+        ->notes->toBe('reserved')
+        ->is_locked->toBeTrue();
+});
