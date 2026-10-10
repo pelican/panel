@@ -78,6 +78,7 @@ class DeleteAllocationTest extends ClientApiIntegrationTestCase
         $this->actingAs($user)->deleteJson($this->link($allocation))->assertStatus(Response::HTTP_NO_CONTENT);
 
         $this->assertSame($other->id, $server->refresh()->allocation_id);
+        $this->assertDatabaseHas('activity_logs', ['event' => 'server:allocation.primary', 'properties->allocation' => $other->address]);
     }
 
     /**

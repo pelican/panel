@@ -9,6 +9,7 @@ use App\Enums\ServerState;
 use App\Enums\WebhookScope;
 use App\Exceptions\DisplayException;
 use App\Exceptions\Http\Server\ServerStateConflictException;
+use App\Facades\Activity;
 use App\Models\Traits\HasIcon;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Subusers\SubuserDeletionService;
@@ -268,8 +269,15 @@ class Server extends Model implements HasAvatar, Validatable
             Allocation::query()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
 
             if (!$this->allocation_id || in_array($this->allocation_id, $ids)) {
-                $this->allocation()->associate($this->allocations()->where('node_id', $this->node_id)->orderBy('id')->first());
+                $this->allocation()->associate($primary = $this->allocations()->where('node_id', $this->node_id)->orderBy('id')->first());
                 $this->save();
+
+                if ($primary) {
+                    Activity::event('server:allocation.primary')
+                        ->subject($this, $primary)
+                        ->property('allocation', $primary->address)
+                        ->log();
+                }
             }
         });
     }
