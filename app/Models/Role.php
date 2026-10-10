@@ -65,6 +65,7 @@ class Role extends BaseRole
             'view',
         ],
         'activityLog' => [
+            'view',
             'seeIps',
         ],
         'panelLog' => [
