@@ -57,6 +57,25 @@ class DeleteAllocationTest extends ClientApiIntegrationTestCase
         $this->actingAs($user)->deleteJson($this->link($allocation))->assertStatus(Response::HTTP_NO_CONTENT);
 
         $this->assertDatabaseHas('allocations', ['id' => $allocation->id, 'server_id' => null, 'notes' => null]);
+        $this->assertNull($server->refresh()->allocation_id);
+    }
+
+    /**
+     * Test that deleting the primary allocation makes one of the remaining allocations
+     * the new primary allocation for the server.
+     */
+    public function test_primary_allocation_is_moved_when_deleted_from_server(): void
+    {
+        /** @var Server $server */
+        [$user, $server] = $this->generateTestAccount();
+        $server->update(['allocation_limit' => 2]);
+
+        $allocation = $server->allocation;
+        $other = Allocation::factory()->forServer($server)->create();
+
+        $this->actingAs($user)->deleteJson($this->link($allocation))->assertStatus(Response::HTTP_NO_CONTENT);
+
+        $this->assertSame($other->id, $server->refresh()->allocation_id);
     }
 
     /**

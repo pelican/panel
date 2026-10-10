@@ -117,7 +117,7 @@ class AllocationsRelationManager extends RelationManager
                     ->after(function (Allocation $allocation) {
                         $allocation->update(Allocation::RELEASE_ATTRIBUTES);
 
-                        if (!$this->getOwnerRecord()->allocation_id) {
+                        if (!$this->getOwnerRecord()->allocation_id || $this->getOwnerRecord()->allocation_id === $allocation->id) {
                             $this->getOwnerRecord()->update(['allocation_id' => $this->getOwnerRecord()->allocations()->first()?->id]);
                         }
                     }),
@@ -128,7 +128,7 @@ class AllocationsRelationManager extends RelationManager
                     ->after(function (Collection $records) {
                         Allocation::whereIn('id', $records->pluck('id'))->update(Allocation::RELEASE_ATTRIBUTES);
 
-                        if (!$this->getOwnerRecord()->allocation_id) {
+                        if (!$this->getOwnerRecord()->allocation_id || $records->contains('id', $this->getOwnerRecord()->allocation_id)) {
                             $this->getOwnerRecord()->update(['allocation_id' => $this->getOwnerRecord()->allocations()->first()?->id]);
                         }
                     }),

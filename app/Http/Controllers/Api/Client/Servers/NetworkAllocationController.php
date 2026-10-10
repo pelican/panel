@@ -139,6 +139,10 @@ class NetworkAllocationController extends ClientApiController
 
         Allocation::query()->where('id', $allocation->id)->update(Allocation::RELEASE_ATTRIBUTES);
 
+        if ($allocation->id === $server->allocation_id) {
+            $server->update(['allocation_id' => $server->allocations()->first()?->id]);
+        }
+
         Activity::event('server:allocation.delete')
             ->subject($allocation)
             ->property('allocation', $allocation->address)

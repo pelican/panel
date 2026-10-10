@@ -231,11 +231,14 @@ class Server extends Model implements HasAvatar, Validatable
      */
     public function getAllocationMappings(): array
     {
-        if (!$this->allocation) {
+        $allocations = $this->allocations->where('node_id', $this->node_id);
+
+        // Daemon expects a map here, and an empty array would be encoded as a JSON list.
+        if (!$this->allocation || $allocations->isEmpty()) {
             return ['' => []];
         }
 
-        return $this->allocations->where('node_id', $this->node_id)->groupBy('ip')->map(function ($item) {
+        return $allocations->groupBy('ip')->map(function ($item) {
             return $item->pluck('port');
         })->toArray();
     }

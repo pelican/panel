@@ -2,9 +2,11 @@
 
 namespace App\Tests\Unit\Models;
 
+use App\Models\Allocation;
 use App\Models\Node;
 use App\Models\Server;
 use App\Tests\TestCase;
+use Illuminate\Database\Eloquent\Collection;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 class ServerTest extends TestCase
@@ -42,6 +44,16 @@ class ServerTest extends TestCase
         $server = $this->serverWithNode();
 
         $this->assertSame('sftp://user%20name.abcdefgh@node.example.com:2022/data/', $server->getSftpUrl('user name', '/data'));
+    }
+
+    public function test_allocation_mappings_stay_an_object_when_the_server_has_no_allocations(): void
+    {
+        $server = new Server();
+        $server->node_id = 1;
+        $server->setRelation('allocation', new Allocation(['node_id' => 1, 'ip' => '127.0.0.1', 'port' => 25565]));
+        $server->setRelation('allocations', new Collection());
+
+        $this->assertSame('{"":[]}', json_encode($server->getAllocationMappings()));
     }
 
     private function serverWithNode(string $fqdn = 'node.example.com', ?string $sftpAlias = null): Server
