@@ -259,7 +259,7 @@ class Server extends Model implements HasAvatar, Validatable
             Allocation::query()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
 
             if (!$this->allocation_id || in_array($this->allocation_id, $ids)) {
-                $this->allocation()->associate($this->allocations()->first());
+                $this->allocation()->associate($this->allocations()->where('node_id', $this->node_id)->orderBy('id')->first());
                 $this->save();
             }
         });
