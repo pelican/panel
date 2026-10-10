@@ -409,6 +409,8 @@ class UserResource extends Resource
                                             if ($apiKey) {
                                                 $apiKey->delete();
 
+                                                // The audit:apiKey.delete row stays out of the owner's feed, so
+                                                // this is the one they see, same as deleting it themselves.
                                                 Activity::event('user:api-key.delete')
                                                     ->actor(user())
                                                     ->subject($user)

@@ -42,6 +42,9 @@ class AuditObserver
         '*token*',
         'api_key',
         '*_key',
+        // Free-form JSON that holds credentials: backup host S3 keys, webhook auth headers.
+        'configuration',
+        'headers',
     ];
 
     /**
@@ -49,7 +52,7 @@ class AuditObserver
      *
      * @var string[]
      */
-    protected static array $identifyingAttributes = ['id', 'uuid', 'name', 'username', 'email'];
+    protected static array $identifyingAttributes = ['id', 'uuid', 'name', 'username', 'email', 'identifier', 'endpoint', 'database', 'ip', 'port'];
 
     /**
      * Attribute changes that are never worth an audit row.
@@ -163,7 +166,28 @@ class AuditObserver
     /** @param string[] $sensitive */
     public static function redact(string $key, mixed $value, array $sensitive = []): mixed
     {
-        if ($value !== null && $value !== '' && (in_array($key, $sensitive, true) || Str::is(static::$redactedAttributePatterns, strtolower($key)))) {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+
+        // URLs can carry credentials in user-info, the query string, or the path
+        // (Discord and Slack webhook tokens), so only the origin is kept.
+        if (strtolower($key) === 'endpoint' && is_string($value)) {
+            $parts = parse_url($value);
+
+            if (!is_array($parts) || !isset($parts['host'])) {
+                return '********';
+            }
+
+            return sprintf(
+                '%s%s%s',
+                isset($parts['scheme']) ? $parts['scheme'] . '://' : '',
+                $parts['host'],
+                isset($parts['port']) ? ':' . $parts['port'] : '',
+            );
+        }
+
+        if (in_array($key, $sensitive, true) || Str::is(static::$redactedAttributePatterns, strtolower($key))) {
             return '********';
         }
 
