@@ -443,6 +443,19 @@ class PluginService
         // backup all sit under plugins/, so each move is a same-filesystem rename.
         $rollback = null;
         if (File::isDirectory($target)) {
+            // The archive brings its own plugin.json, so keep the install state (status, load order)
+            // of the copy it replaces. Callers reinstall an installed plugin to apply its changes.
+            // A copy without meta was never installed, so drop whatever meta the archive claims.
+            // Written before the swap so a failed write leaves the existing plugin untouched.
+            $oldManifest = join_paths($target, 'plugin.json');
+            $meta = File::exists($oldManifest) ? (File::json($oldManifest)['meta'] ?? []) : [];
+            if ($meta === []) {
+                unset($data['meta']);
+            } else {
+                $data['meta'] = $meta;
+            }
+            throw_if(File::put($manifest, json_encode($data, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false, new Exception('Could not write the plugin manifest.'));
+
             $rollback = plugin_path('.' . $pluginName . '.bak');
             File::deleteDirectory($rollback);
             throw_unless(File::moveDirectory($target, $rollback), new Exception('Could not set the existing plugin aside.'));
@@ -459,18 +472,6 @@ class PluginService
         }
 
         if ($rollback !== null) {
-            // The archive brings its own plugin.json, so keep the install state (status, load order)
-            // of the copy it replaced. Callers reinstall an installed plugin to apply its changes.
-            $oldManifest = join_paths($rollback, 'plugin.json');
-            // A copy without meta was never installed, so drop whatever meta the archive claims.
-            $meta = File::exists($oldManifest) ? (File::json($oldManifest)['meta'] ?? []) : [];
-            if ($meta === []) {
-                unset($data['meta']);
-            } else {
-                $data['meta'] = $meta;
-            }
-            File::put(plugin_path($pluginName, 'plugin.json'), json_encode($data, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
             File::deleteDirectory($rollback);
         }
 
