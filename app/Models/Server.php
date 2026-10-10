@@ -31,6 +31,7 @@ use Illuminate\Notifications\DatabaseNotificationCollection;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\ResponseInterface;
 
@@ -251,12 +252,17 @@ class Server extends Model implements HasAvatar, Validatable
      */
     public function releaseAllocations(array $ids): void
     {
-        Allocation::query()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
+        DB::transaction(function () use ($ids) {
+            // Lock the server row so concurrent releases see each other's primary changes.
+            $this->allocation_id = static::query()->whereKey($this->id)->lockForUpdate()->value('allocation_id');
 
-        if (!$this->allocation_id || in_array($this->allocation_id, $ids)) {
-            $this->allocation()->associate($this->allocations()->first());
-            $this->save();
-        }
+            Allocation::query()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
+
+            if (!$this->allocation_id || in_array($this->allocation_id, $ids)) {
+                $this->allocation()->associate($this->allocations()->first());
+                $this->save();
+            }
+        });
     }
 
     public function isInstalled(): bool
