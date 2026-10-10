@@ -27,3 +27,16 @@ it('picks a new primary allocation on the server\'s own node', function () {
 
     expect($server->refresh()->allocation_id)->toBe($kept->id);
 });
+
+it('does not release an allocation that now belongs to another server', function () {
+    $server = createServerModel();
+    $stale = Allocation::factory()->forServer($server)->create();
+    $other = createServerModel(['node_id' => $server->node_id]);
+    $stale->update(['server_id' => $other->id, 'notes' => 'mine']);
+
+    $server->releaseAllocations([$stale->id]);
+
+    expect($stale->refresh())
+        ->server_id->toBe($other->id)
+        ->notes->toBe('mine');
+});
