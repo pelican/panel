@@ -369,7 +369,8 @@ class Server extends Model implements HasAvatar, Validatable
             ->leftJoin('server_variables', function (JoinClause $join) {
                 // Don't forget to join against the server ID as well since the way we're using this relationship
                 // would actually return all the variables and their values for _all_ servers using that egg,
-                // rather than only the server for this model.
+                // rather than only the server for this model. This also means it can't be eager loaded,
+                // since $this->id is null on the model Laravel builds the eager query from.
                 $join->on('server_variables.variable_id', 'egg_variables.id')
                     ->where('server_variables.server_id', $this->id);
             });
