@@ -22,6 +22,7 @@ class ScheduleExporterService
             'cron_day_of_month' => $schedule->cron_day_of_month,
             'cron_month' => $schedule->cron_month,
             'cron_day_of_week' => $schedule->cron_day_of_week,
+            'timezone' => $schedule->timezone,
 
             'tasks' => $schedule->tasks->map(function (Task $task) {
                 return [

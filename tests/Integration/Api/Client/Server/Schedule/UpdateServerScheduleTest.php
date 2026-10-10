@@ -49,6 +49,26 @@ class UpdateServerScheduleTest extends ClientApiIntegrationTestCase
     }
 
     /**
+     * Test that updating a schedule evaluates the cron in the schedule's timezone.
+     */
+    public function test_next_run_uses_schedule_timezone(): void
+    {
+        [$user, $server] = $this->generateTestAccount();
+
+        /** @var Schedule $schedule */
+        $schedule = Schedule::factory()->create(['server_id' => $server->id, 'timezone' => 'America/New_York']);
+        $data = array_merge($this->updateData, ['minute' => '0', 'hour' => '3']);
+
+        $this->actingAs($user)
+            ->postJson("/api/client/servers/{$server->uuid}/schedules/{$schedule->id}", $data)
+            ->assertOk();
+
+        $nextRun = $schedule->refresh()->next_run_at->timezone('America/New_York');
+
+        $this->assertSame('03:00', $nextRun->format('H:i'));
+    }
+
+    /**
      * Test that an error is returned if the schedule exists but does not belong to this
      * specific server instance.
      */

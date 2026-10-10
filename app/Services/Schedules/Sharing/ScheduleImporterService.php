@@ -34,6 +34,7 @@ class ScheduleImporterService
             $dayOfMonth = Arr::get($parsed, 'cron_day_of_month', '*');
             $month = Arr::get($parsed, 'cron_month', '*');
             $dayOfWeek = Arr::get($parsed, 'cron_day_of_week', '*');
+            $timezone = Arr::get($parsed, 'timezone') ?? 'UTC';
 
             $schedule = Schedule::create([
                 'server_id' => $server->id,
@@ -45,7 +46,8 @@ class ScheduleImporterService
                 'cron_day_of_month' => $dayOfMonth,
                 'cron_month' => $month,
                 'cron_day_of_week' => $dayOfWeek,
-                'next_run_at' => Utilities::getScheduleNextRunDate($minute, $hour, $dayOfMonth, $month, $dayOfWeek),
+                'timezone' => $timezone,
+                'next_run_at' => Utilities::getScheduleNextRunDate($minute, $hour, $dayOfMonth, $month, $dayOfWeek, $timezone),
             ]);
 
             foreach (Arr::get($parsed, 'tasks', []) as $task) {

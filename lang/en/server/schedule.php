@@ -30,7 +30,7 @@ return [
     'enabled' => 'Enable Schedule?',
     'enabled_hint' => 'This schedule will be executed automatically if enabled.',
 
-    'cron_body' => 'Please keep in mind that the cron inputs below always assume UTC.',
+    'cron_body' => 'The cron inputs below use your timezone.',
     'cron_timezone' => 'Next run in your timezone (:timezone): <b> :next_run </b>',
 
     'invalid' => 'Invalid',
