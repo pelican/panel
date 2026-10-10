@@ -114,23 +114,17 @@ class AllocationsRelationManager extends RelationManager
                     ->authorize(fn (Allocation $allocation) => user()?->can('update', $allocation))
                     ->tooltip(trans('admin/server.remove_allocation'))
                     ->hidden(fn () => $this->isReadOnly())
-                    ->after(function (Allocation $allocation) {
-                        $allocation->update(Allocation::RELEASE_ATTRIBUTES);
-
-                        if (!$this->getOwnerRecord()->allocation_id) {
-                            $this->getOwnerRecord()->update(['allocation_id' => $this->getOwnerRecord()->allocations()->first()?->id]);
-                        }
+                    ->action(function (Allocation $allocation, DissociateAction $action) {
+                        $this->getOwnerRecord()->releaseAllocations([$allocation->id]);
+                        $action->success();
                     }),
             ])
             ->toolbarActions([
                 DissociateBulkAction::make()
                     ->hidden(fn () => $this->isReadOnly())
-                    ->after(function (Collection $records) {
-                        Allocation::whereIn('id', $records->pluck('id'))->update(Allocation::RELEASE_ATTRIBUTES);
-
-                        if (!$this->getOwnerRecord()->allocation_id) {
-                            $this->getOwnerRecord()->update(['allocation_id' => $this->getOwnerRecord()->allocations()->first()?->id]);
-                        }
+                    ->action(function (Collection $records, DissociateBulkAction $action) {
+                        $this->getOwnerRecord()->releaseAllocations($records->pluck('id')->all());
+                        $action->success();
                     }),
                 CreateAction::make()
                     ->hidden(fn () => $this->isReadOnly())

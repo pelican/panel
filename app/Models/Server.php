@@ -7,7 +7,9 @@ use App\Enums\ContainerStatus;
 use App\Enums\ServerResourceType;
 use App\Enums\ServerState;
 use App\Enums\WebhookScope;
+use App\Exceptions\DisplayException;
 use App\Exceptions\Http\Server\ServerStateConflictException;
+use App\Facades\Activity;
 use App\Models\Traits\HasIcon;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Subusers\SubuserDeletionService;
@@ -31,6 +33,7 @@ use Illuminate\Notifications\DatabaseNotificationCollection;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\ResponseInterface;
 
@@ -231,13 +234,53 @@ class Server extends Model implements HasAvatar, Validatable
      */
     public function getAllocationMappings(): array
     {
-        if (!$this->allocation) {
+        $allocations = $this->allocations->where('node_id', $this->node_id);
+
+        // Daemon expects a map here, and an empty array would be encoded as a JSON list.
+        if (!$this->allocation || $allocations->isEmpty()) {
             return ['' => []];
         }
 
-        return $this->allocations->where('node_id', $this->node_id)->groupBy('ip')->map(function ($item) {
+        return $allocations->groupBy('ip')->map(function ($item) {
             return $item->pluck('port');
         })->toArray();
+    }
+
+    /**
+     * Releases the given allocations from this server, and moves the primary allocation
+     * to one of the remaining allocations if the primary was released.
+     *
+     * @param  array<int>  $ids
+     * @param  bool  $keepOne  refuse to release the server's last allocation
+     *
+     * @throws DisplayException
+     */
+    public function releaseAllocations(array $ids, bool $keepOne = false): void
+    {
+        DB::transaction(function () use ($ids, $keepOne) {
+            // Lock the server row so concurrent releases see each other's primary changes.
+            $this->allocation_id = static::query()->whereKey($this->id)->lockForUpdate()->value('allocation_id');
+
+            throw_if(
+                $keepOne && $this->allocations()->where('node_id', $this->node_id)->whereNotIn('id', $ids)->doesntExist(),
+                new DisplayException('You cannot delete the last allocation for this server.')
+            );
+
+            $this->allocations()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
+            $this->unsetRelation('allocations');
+
+            if (!$this->allocation_id || in_array($this->allocation_id, $ids)) {
+                $this->allocation()->associate($primary = $this->allocations()->where('node_id', $this->node_id)->orderBy('id')->first());
+                $this->save();
+
+                if ($primary) {
+                    Activity::event('server:allocation.primary')
+                        ->subject($this, $primary)
+                        ->property('allocation', $primary->address)
+                        ->log();
+                }
+            }
+        });
     }
 
     public function isInstalled(): bool
