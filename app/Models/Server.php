@@ -7,6 +7,7 @@ use App\Enums\ContainerStatus;
 use App\Enums\ServerResourceType;
 use App\Enums\ServerState;
 use App\Enums\WebhookScope;
+use App\Exceptions\DisplayException;
 use App\Exceptions\Http\Server\ServerStateConflictException;
 use App\Models\Traits\HasIcon;
 use App\Repositories\Daemon\DaemonServerRepository;
@@ -249,12 +250,20 @@ class Server extends Model implements HasAvatar, Validatable
      * to one of the remaining allocations if the primary was released.
      *
      * @param  array<int>  $ids
+     * @param  bool  $keepOne  refuse to release the server's last allocation
+     *
+     * @throws DisplayException
      */
-    public function releaseAllocations(array $ids): void
+    public function releaseAllocations(array $ids, bool $keepOne = false): void
     {
-        DB::transaction(function () use ($ids) {
+        DB::transaction(function () use ($ids, $keepOne) {
             // Lock the server row so concurrent releases see each other's primary changes.
             $this->allocation_id = static::query()->whereKey($this->id)->lockForUpdate()->value('allocation_id');
+
+            throw_if(
+                $keepOne && $this->allocations()->where('node_id', $this->node_id)->whereNotIn('id', $ids)->doesntExist(),
+                new DisplayException('You cannot delete the last allocation for this server.')
+            );
 
             Allocation::query()->whereIn('id', $ids)->update(Allocation::RELEASE_ATTRIBUTES);
 

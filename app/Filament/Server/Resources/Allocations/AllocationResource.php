@@ -83,11 +83,11 @@ class AllocationResource extends Resource
             ])
             ->recordActions([
                 DetachAction::make()
-                    ->visible(fn (Allocation $allocation) => !$allocation->is_locked || user()?->can('update', $allocation->node))
+                    ->visible(fn (Allocation $allocation) => (!$allocation->is_locked || user()?->can('update', $allocation->node)) && $server->allocations()->count() > 1)
                     ->authorize(fn () => user()?->can(SubuserPermission::AllocationDelete, $server))
                     ->label(trans('server/network.delete'))
                     ->action(function (Allocation $allocation) use ($server) {
-                        $server->releaseAllocations([$allocation->id]);
+                        $server->releaseAllocations([$allocation->id], keepOne: true);
 
                         Activity::event('server:allocation.delete')
                             ->subject($allocation)

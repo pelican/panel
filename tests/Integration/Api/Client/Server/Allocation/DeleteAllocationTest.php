@@ -43,10 +43,9 @@ class DeleteAllocationTest extends ClientApiIntegrationTestCase
     }
 
     /**
-     * Test that an allocation is deleted if it is currently marked as the primary allocation
-     * for the server.
+     * Test that the last allocation can't be deleted, so the server always keeps a port to bind to.
      */
-    public function test_primary_allocation_can_be_deleted_from_server(): void
+    public function test_last_allocation_cannot_be_deleted_from_server(): void
     {
         /** @var Server $server */
         [$user, $server] = $this->generateTestAccount();
@@ -54,10 +53,13 @@ class DeleteAllocationTest extends ClientApiIntegrationTestCase
 
         $allocation = $server->allocation;
 
-        $this->actingAs($user)->deleteJson($this->link($allocation))->assertStatus(Response::HTTP_NO_CONTENT);
+        $this->actingAs($user)->deleteJson($this->link($allocation))
+            ->assertStatus(Response::HTTP_BAD_REQUEST)
+            ->assertJsonPath('errors.0.code', 'DisplayException')
+            ->assertJsonPath('errors.0.detail', 'You cannot delete the last allocation for this server.');
 
-        $this->assertDatabaseHas('allocations', ['id' => $allocation->id, 'server_id' => null, 'notes' => null]);
-        $this->assertNull($server->refresh()->allocation_id);
+        $this->assertDatabaseHas('allocations', ['id' => $allocation->id, 'server_id' => $server->id]);
+        $this->assertSame($allocation->id, $server->refresh()->allocation_id);
     }
 
     /**
