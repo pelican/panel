@@ -20,7 +20,7 @@ class InstallPlugin implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public function __construct(public User $user, public string $pluginId) {}
+    public function __construct(public User $user, public string $pluginId, public bool $reinstall = false) {}
 
     public function handle(PluginService $pluginService): void
     {
@@ -28,7 +28,8 @@ class InstallPlugin implements ShouldBeUnique, ShouldQueue
             Plugin::refreshRows();
             $plugin = Plugin::findOrFail($this->pluginId);
 
-            $pluginService->installPlugin($plugin, !$plugin->isTheme() || !$pluginService->hasThemePluginEnabled());
+            // A reinstall keeps the plugin enabled or disabled as it was.
+            $pluginService->installPlugin($plugin, !$this->reinstall && (!$plugin->isTheme() || !$pluginService->hasThemePluginEnabled()));
 
             Notification::make()
                 ->success()

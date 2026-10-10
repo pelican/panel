@@ -75,7 +75,12 @@ class PluginController extends ApplicationApiController
     {
         throw_unless($request->hasFile('plugin'), new PanelException("No 'plugin' file in request"));
 
-        $this->pluginService->downloadPluginFromFile($request->file('plugin'));
+        $id = $this->pluginService->downloadPluginFromFile($request->file('plugin'));
+
+        // Importing over an installed plugin is an update, so reinstall it.
+        if ($this->pluginService->isInstalled($id)) {
+            $this->pluginService->installPlugin(Plugin::findOrFail($id), false);
+        }
 
         return new Response('', Response::HTTP_CREATED);
     }
@@ -89,7 +94,12 @@ class PluginController extends ApplicationApiController
      */
     public function importUrl(ImportFilePluginRequest $request): Response
     {
-        $this->pluginService->downloadPluginFromUrl($request->input('url'));
+        $id = $this->pluginService->downloadPluginFromUrl($request->input('url'));
+
+        // Importing over an installed plugin is an update, so reinstall it.
+        if ($this->pluginService->isInstalled($id)) {
+            $this->pluginService->installPlugin(Plugin::findOrFail($id), false);
+        }
 
         return new Response('', Response::HTTP_CREATED);
     }
