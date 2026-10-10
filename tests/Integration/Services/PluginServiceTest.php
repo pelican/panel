@@ -356,6 +356,28 @@ class PluginServiceTest extends IntegrationTestCase
         $this->assertDirectoryDoesNotExist(plugin_path('test-other-plugin'));
     }
 
+    public function test_import_keeps_the_install_state_of_the_plugin_it_replaces(): void
+    {
+        $this->importedPlugins[] = 'test-reimport-plugin';
+
+        $installed = json_decode($this->manifest('test-reimport-plugin', '1.0.0'), true);
+        $installed['meta'] = ['status' => PluginStatus::Disabled->value, 'load_order' => 2];
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-reimport-plugin.zip', [
+            'test-reimport-plugin/plugin.json' => json_encode($installed),
+        ]));
+
+        $this->assertTrue($this->service->isInstalled('test-reimport-plugin'));
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-reimport-plugin.zip', [
+            'test-reimport-plugin/plugin.json' => $this->manifest('test-reimport-plugin', '2.0.0'),
+        ]));
+
+        $manifest = File::json(plugin_path('test-reimport-plugin', 'plugin.json'));
+        $this->assertSame('2.0.0', $manifest['version']);
+        $this->assertSame(['status' => PluginStatus::Disabled->value, 'load_order' => 2], $manifest['meta']);
+    }
+
     public function test_import_keeps_the_existing_plugin_when_the_move_fails(): void
     {
         $this->importedPlugins[] = 'test-clean-plugin';
@@ -395,7 +417,7 @@ class PluginServiceTest extends IntegrationTestCase
         $this->assertDirectoryDoesNotExist(plugin_path('.test-clean-plugin.bak'));
     }
 
-    public function test_update_downloads_and_reinstalls_the_new_version(): void
+    public function test_update_only_swaps_the_files_of_a_plugin_that_is_not_installed(): void
     {
         $this->importedPlugins[] = 'test-update-plugin';
 
@@ -427,11 +449,45 @@ class PluginServiceTest extends IntegrationTestCase
         $this->assertSame('2.0.0', $updated->version);
         $this->assertSame('2.0.0', $this->installedVersion('test-update-plugin'));
 
-        // installPlugin() ran against the reloaded row and recorded the plugin as installed but disabled.
-        $this->assertSame(PluginStatus::Disabled->value, File::json(plugin_path('test-update-plugin', 'plugin.json'))['meta']['status']);
+        // A plugin that was never installed only has its files swapped, nothing gets installed.
+        $this->assertFalse($this->service->isInstalled('test-update-plugin'));
+        Process::assertNothingRan();
 
         Plugin::refreshRows();
         $this->assertSame('2.0.0', Plugin::findOrFail('test-update-plugin')->version);
+    }
+
+    public function test_update_keeps_the_status_and_load_order_of_an_installed_plugin(): void
+    {
+        $this->importedPlugins[] = 'test-update-plugin';
+
+        config()->set('app.version', '1.0.0');
+        Process::fake();
+
+        $updateUrl = 'https://example.test/test-update-plugin/update.json';
+        $downloadUrl = 'https://example.test/test-update-plugin/2.0.0.zip';
+
+        $installed = json_decode($this->updatableManifest('test-update-plugin', '1.0.0', $updateUrl), true);
+        $installed['meta'] = ['status' => PluginStatus::Enabled->value, 'load_order' => 3];
+
+        $this->service->downloadPluginFromFile($this->makeUpload('test-update-plugin.zip', [
+            'test-update-plugin/plugin.json' => json_encode($installed),
+        ]));
+
+        Http::fake([
+            $updateUrl => Http::response(['*' => ['version' => '2.0.0', 'download_url' => $downloadUrl]]),
+            $downloadUrl => Http::response(file_get_contents($this->makeUpload('2.0.0.zip', [
+                'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '2.0.0', $updateUrl),
+            ])->getPathname())),
+        ]);
+
+        Plugin::refreshRows();
+        $this->service->updatePlugin(Plugin::findOrFail('test-update-plugin'));
+
+        $meta = File::json(plugin_path('test-update-plugin', 'plugin.json'))['meta'];
+        $this->assertSame(PluginStatus::Enabled->value, $meta['status']);
+        $this->assertSame(3, $meta['load_order']);
+        $this->assertSame('2.0.0', $this->installedVersion('test-update-plugin'));
     }
 
     public function test_update_verifies_the_checksum_from_the_update_feed(): void

@@ -322,11 +322,21 @@ class PluginService
         Plugin::refreshRows();
         $plugin = Plugin::findOrFail($plugin->id);
 
-        $this->installPlugin($plugin, false);
+        // A plugin that was never installed only gets its files swapped.
+        if ($plugin->status !== PluginStatus::NotInstalled) {
+            $this->installPlugin($plugin, false);
+        }
 
         cache()->forget("plugins.$plugin->id.update");
 
         return $plugin;
+    }
+
+    public function isInstalled(string $id): bool
+    {
+        Plugin::refreshRows();
+
+        return Plugin::findOrFail($id)->status !== PluginStatus::NotInstalled;
     }
 
     /** @throws Exception */
@@ -449,6 +459,15 @@ class PluginService
         }
 
         if ($rollback !== null) {
+            // The archive brings its own plugin.json, so keep the install state (status, load order)
+            // of the copy it replaced. Callers reinstall an installed plugin to apply its changes.
+            $oldManifest = join_paths($rollback, 'plugin.json');
+            $meta = File::exists($oldManifest) ? (File::json($oldManifest)['meta'] ?? null) : null;
+            if ($meta !== null) {
+                $data['meta'] = $meta;
+                File::put(plugin_path($pluginName, 'plugin.json'), json_encode($data, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            }
+
             File::deleteDirectory($rollback);
         }
 
