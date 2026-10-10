@@ -432,8 +432,12 @@ class PluginServiceTest extends IntegrationTestCase
             'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '1.0.0', $updateUrl),
         ]));
 
+        // The archive claiming to be enabled must not get the plugin installed.
+        $archived = json_decode($this->updatableManifest('test-update-plugin', '2.0.0', $updateUrl), true);
+        $archived['meta'] = ['status' => PluginStatus::Enabled->value];
+
         $update = file_get_contents($this->makeUpload('2.0.0.zip', [
-            'test-update-plugin/plugin.json' => $this->updatableManifest('test-update-plugin', '2.0.0', $updateUrl),
+            'test-update-plugin/plugin.json' => json_encode($archived),
         ])->getPathname());
 
         Http::fake([
@@ -455,6 +459,7 @@ class PluginServiceTest extends IntegrationTestCase
 
         Plugin::refreshRows();
         $this->assertSame('2.0.0', Plugin::findOrFail('test-update-plugin')->version);
+        $this->assertSame(PluginStatus::NotInstalled, Plugin::findOrFail('test-update-plugin')->status);
     }
 
     public function test_update_keeps_the_status_and_load_order_of_an_installed_plugin(): void

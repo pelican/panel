@@ -462,11 +462,14 @@ class PluginService
             // The archive brings its own plugin.json, so keep the install state (status, load order)
             // of the copy it replaced. Callers reinstall an installed plugin to apply its changes.
             $oldManifest = join_paths($rollback, 'plugin.json');
-            $meta = File::exists($oldManifest) ? (File::json($oldManifest)['meta'] ?? null) : null;
-            if ($meta !== null) {
+            // A copy without meta was never installed, so drop whatever meta the archive claims.
+            $meta = File::exists($oldManifest) ? (File::json($oldManifest)['meta'] ?? []) : [];
+            if ($meta === []) {
+                unset($data['meta']);
+            } else {
                 $data['meta'] = $meta;
-                File::put(plugin_path($pluginName, 'plugin.json'), json_encode($data, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             }
+            File::put(plugin_path($pluginName, 'plugin.json'), json_encode($data, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             File::deleteDirectory($rollback);
         }
