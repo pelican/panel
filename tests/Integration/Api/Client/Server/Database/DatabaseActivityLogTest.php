@@ -49,6 +49,7 @@ class DatabaseActivityLogTest extends ClientApiIntegrationTestCase
 
         $this->assertDatabaseMissing('databases', ['id' => $database->id]);
         $this->assertSame(1, ActivityLog::query()->where('event', 'server:database.delete')->count());
-        $this->assertSame(2, ActivityLog::query()->count());
+        // Fixture setup is audited too (audit:*); only the customer-facing rows matter here.
+        $this->assertSame(2, ActivityLog::visibleToCustomers()->count());
     }
 }

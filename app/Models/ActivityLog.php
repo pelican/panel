@@ -41,6 +41,7 @@ use LogicException;
  * @method static Builder<static>|ActivityLog forActor(\Illuminate\Database\Eloquent\Model $actor)
  * @method static Builder<static>|ActivityLog forEvent(string $action)
  * @method static Builder<static>|ActivityLog hideAdminActivity(\App\Models\Server $server)
+ * @method static Builder<static>|ActivityLog visibleToCustomers()
  * @method static Builder<static>|ActivityLog newModelQuery()
  * @method static Builder<static>|ActivityLog newQuery()
  * @method static Builder<static>|ActivityLog query()
@@ -121,6 +122,16 @@ class ActivityLog extends Model implements HasIcon, HasLabel
     public function scopeForActor(Builder $builder, Model $actor): Builder
     {
         return $builder->whereMorphedTo('actor', $actor);
+    }
+
+    /**
+     * Leaves out disabled events and the admin audit trail, which attaches the
+     * server or user as subject but is not meant for their activity feeds.
+     */
+    public function scopeVisibleToCustomers(Builder $builder): Builder
+    {
+        return $builder->whereNotIn('activity_logs.event', self::DISABLED_EVENTS)
+            ->where('activity_logs.event', 'not like', 'audit:%');
     }
 
     /**
