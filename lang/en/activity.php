@@ -126,6 +126,30 @@ return [
         'crashed' => 'Server crashed',
     ],
     'audit' => [
+        'apiKey' => [
+            'create' => 'Created API key <b>:identifier</b>',
+            'delete' => 'Deleted API key <b>:identifier</b>',
+        ],
+        'backupHost' => [
+            'create' => 'Created backup host <b>:name</b>',
+            'update' => 'Updated backup host <b>:name</b>',
+            'delete' => 'Deleted backup host <b>:name</b>',
+        ],
+        'databaseHost' => [
+            'create' => 'Created database host <b>:name</b>',
+            'update' => 'Updated database host <b>:name</b>',
+            'delete' => 'Deleted database host <b>:name</b>',
+        ],
+        'role' => [
+            'create' => 'Created role <b>:name</b>',
+            'update' => 'Updated role <b>:name</b>',
+            'delete' => 'Deleted role <b>:name</b>',
+        ],
+        'webhook' => [
+            'create' => 'Created webhook <b>:endpoint</b>',
+            'update' => 'Updated webhook <b>:endpoint</b>',
+            'delete' => 'Deleted webhook <b>:endpoint</b>',
+        ],
         'user' => [
             'create' => 'Created user <b>:username</b>',
             'update' => 'Updated user <b>:username</b>',
