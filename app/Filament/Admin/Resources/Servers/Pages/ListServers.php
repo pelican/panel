@@ -17,6 +17,7 @@ use Filament\Actions\ViewAction;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ViewColumn;
 use Filament\Tables\Grouping\Group;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -38,12 +39,9 @@ class ListServers extends ListRecords
                 Group::make('egg.name')->getDescriptionFromRecordUsing(fn (Server $server) => str($server->egg->description)->limit(150)),
             ])
             ->columns([
-                TextColumn::make('condition')
+                ViewColumn::make('condition')
                     ->label(trans('admin/server.condition'))
-                    ->default('unknown')
-                    ->badge()
-                    ->icon(fn (Server $server) => $server->condition->getIcon())
-                    ->color(fn (Server $server) => $server->condition->getColor()),
+                    ->view('livewire.columns.server-condition-column'),
                 TextColumn::make('uuid')
                     ->hidden()
                     ->label(trans('admin/server.uuid'))
