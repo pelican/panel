@@ -2,11 +2,14 @@
 
 namespace App\Services\Schedules\Sharing;
 
+use App\Exceptions\Http\HttpForbiddenException;
 use App\Exceptions\Service\InvalidFileUploadException;
+use App\Extensions\Tasks\TaskService;
 use App\Helpers\Utilities;
 use App\Models\Schedule;
 use App\Models\Server;
 use App\Models\Task;
+use App\Models\User;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
@@ -16,9 +19,9 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ScheduleImporterService
 {
-    public function __construct(protected ConnectionInterface $connection) {}
+    public function __construct(protected ConnectionInterface $connection, protected TaskService $taskService) {}
 
-    public function fromFile(UploadedFile $file, Server $server): Schedule
+    public function fromFile(UploadedFile $file, Server $server, User $user): Schedule
     {
         throw_if($file->getError() !== UPLOAD_ERR_OK, new InvalidFileUploadException('The selected file was not uploaded successfully'));
 
@@ -28,7 +31,7 @@ class ScheduleImporterService
             throw new InvalidFileUploadException('Could not read JSON file: ' . $exception->getMessage());
         }
 
-        return $this->connection->transaction(function () use ($server, $parsed) {
+        return $this->connection->transaction(function () use ($server, $user, $parsed) {
             $minute = Arr::get($parsed, 'cron_minute', '0');
             $hour = Arr::get($parsed, 'cron_hour', '0');
             $dayOfMonth = Arr::get($parsed, 'cron_day_of_month', '*');
@@ -51,6 +54,12 @@ class ScheduleImporterService
             ]);
 
             foreach (Arr::get($parsed, 'tasks', []) as $task) {
+                $action = Arr::get($task, 'action');
+                $taskSchema = is_string($action) ? $this->taskService->get($action) : null;
+
+                throw_unless($taskSchema, new InvalidFileUploadException('Invalid task action provided: ' . json_encode($action)));
+                throw_unless($taskSchema->canCreate($schedule, $user, Arr::get($task, 'payload')), new HttpForbiddenException(trans('server/schedule.tasks.no_permission')));
+
                 Task::create([
                     'schedule_id' => $schedule->id,
                     'sequence_id' => Arr::get($task, 'sequence_id'),
@@ -65,7 +74,7 @@ class ScheduleImporterService
         });
     }
 
-    public function fromUrl(string $url, Server $server): Schedule
+    public function fromUrl(string $url, Server $server, User $user): Schedule
     {
         $basename = pathinfo($url, PATHINFO_BASENAME);
         $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
@@ -75,6 +84,6 @@ class ScheduleImporterService
 
         throw_if(!$fileContents || !file_put_contents($tmpPath, $fileContents), new InvalidFileUploadException('Could not write temporary file.'));
 
-        return $this->fromFile(new UploadedFile($tmpPath, $basename, 'application/json'), $server);
+        return $this->fromFile(new UploadedFile($tmpPath, $basename, 'application/json'), $server, $user);
     }
 }

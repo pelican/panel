@@ -170,8 +170,100 @@ class CreateServerScheduleTaskTest extends ClientApiIntegrationTestCase
             ->assertForbidden();
     }
 
+    /**
+     * Test that a subuser can only create tasks for actions they have the permissions for.
+     */
+    #[DataProvider('actionPermissionsDataProvider')]
+    public function test_subuser_requires_action_permission_to_create_task(string $action, string $payload, SubuserPermission $permission): void
+    {
+        $data = ['action' => $action, 'payload' => $payload, 'time_offset' => 0];
+
+        [$user, $server] = $this->generateTestAccount([SubuserPermission::ScheduleUpdate]);
+        $server->update(['backup_limit' => 1]);
+
+        /** @var Schedule $schedule */
+        $schedule = Schedule::factory()->create(['server_id' => $server->id]);
+
+        $this->actingAs($user)->postJson($this->link($schedule, '/tasks'), $data)
+            ->assertForbidden()
+            ->assertJsonPath('errors.0.detail', trans('server/schedule.tasks.no_permission'));
+
+        $this->assertEmpty($schedule->tasks()->get());
+
+        [$user, $server] = $this->generateTestAccount([SubuserPermission::ScheduleUpdate, $permission]);
+        $server->update(['backup_limit' => 1]);
+
+        /** @var Schedule $schedule */
+        $schedule = Schedule::factory()->create(['server_id' => $server->id]);
+
+        $this->actingAs($user)->postJson($this->link($schedule, '/tasks'), $data)->assertOk();
+    }
+
+    /**
+     * Test that a subuser can only create power tasks for the signals they have the permissions for.
+     */
+    public function test_subuser_requires_matching_control_permission_for_power_signal(): void
+    {
+        [$user, $server] = $this->generateTestAccount([SubuserPermission::ScheduleUpdate, SubuserPermission::ControlStart]);
+
+        /** @var Schedule $schedule */
+        $schedule = Schedule::factory()->create(['server_id' => $server->id]);
+
+        $this->actingAs($user)->postJson($this->link($schedule, '/tasks'), [
+            'action' => 'power',
+            'payload' => 'start',
+            'time_offset' => 0,
+        ])->assertOk();
+
+        foreach (['stop', 'restart', 'kill', 'hodor'] as $signal) {
+            $this->actingAs($user)->postJson($this->link($schedule, '/tasks'), [
+                'action' => 'power',
+                'payload' => $signal,
+                'time_offset' => 0,
+            ])->assertForbidden();
+        }
+
+        $this->assertSame(1, $schedule->tasks()->count());
+    }
+
+    /**
+     * Test that a subuser can not update an existing task to an action they do not have the permissions for.
+     */
+    public function test_subuser_requires_action_permission_to_update_task(): void
+    {
+        [$user, $server] = $this->generateTestAccount([SubuserPermission::ScheduleUpdate, SubuserPermission::ControlStart]);
+
+        /** @var Schedule $schedule */
+        $schedule = Schedule::factory()->create(['server_id' => $server->id]);
+        /** @var Task $task */
+        $task = Task::factory()->create(['schedule_id' => $schedule->id, 'action' => 'power', 'payload' => 'start']);
+
+        $this->actingAs($user)->postJson($this->link($schedule, "/tasks/$task->id"), [
+            'action' => 'command',
+            'payload' => 'op attacker',
+            'time_offset' => 0,
+        ])->assertForbidden();
+
+        $task->refresh();
+        $this->assertSame('power', $task->action);
+        $this->assertSame('start', $task->payload);
+    }
+
     public static function permissionsDataProvider(): array
     {
-        return [[[]], [[SubuserPermission::ScheduleUpdate]]];
+        return [[[]], [[SubuserPermission::ScheduleUpdate, SubuserPermission::ControlConsole]]];
+    }
+
+    public static function actionPermissionsDataProvider(): array
+    {
+        return [
+            'command' => ['command', 'say Test', SubuserPermission::ControlConsole],
+            'power start' => ['power', 'start', SubuserPermission::ControlStart],
+            'power stop' => ['power', 'stop', SubuserPermission::ControlStop],
+            'power kill' => ['power', 'kill', SubuserPermission::ControlStop],
+            'power restart' => ['power', 'restart', SubuserPermission::ControlRestart],
+            'delete files' => ['delete_files', 'file.txt', SubuserPermission::FileDelete],
+            'backup' => ['backup', '', SubuserPermission::BackupCreate],
+        ];
     }
 }

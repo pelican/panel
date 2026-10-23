@@ -2,7 +2,10 @@
 
 namespace App\Extensions\Tasks\Schemas;
 
+use App\Enums\SubuserPermission;
+use App\Models\Schedule;
 use App\Models\Task;
+use App\Models\User;
 use App\Services\Files\DeleteFilesService;
 
 final class DeleteFilesSchema extends TaskSchema
@@ -17,6 +20,11 @@ final class DeleteFilesSchema extends TaskSchema
     public function runTask(Task $task): void
     {
         $this->deleteFilesService->handle($task->server, explode(PHP_EOL, $task->payload));
+    }
+
+    public function canCreate(Schedule $schedule, ?User $user = null, ?string $payload = null): bool
+    {
+        return $user?->can(SubuserPermission::FileDelete, $schedule->server) ?? true;
     }
 
     public function getPayloadLabel(): string

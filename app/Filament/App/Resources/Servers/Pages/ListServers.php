@@ -250,12 +250,7 @@ class ListServers extends ListRecords
     #[On('powerAction')]
     public function powerAction(Server $server, string $action): void
     {
-        $permission = match ($action) {
-            'start' => SubuserPermission::ControlStart,
-            'restart' => SubuserPermission::ControlRestart,
-            'stop', 'kill' => SubuserPermission::ControlStop,
-            default => abort(422),
-        };
+        $permission = SubuserPermission::fromPowerSignal($action) ?? abort(422);
 
         abort_unless(user()?->can($permission, $server), 403);
         abort_if($server->isInConflictState(), 403);
