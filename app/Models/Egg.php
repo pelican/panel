@@ -141,7 +141,7 @@ class Egg extends Model implements Validatable
         'name' => ['required', 'string', 'max:255'],
         'description' => ['string', 'nullable'],
         'features' => ['array', 'nullable'],
-        'author' => ['required', 'string', 'email'],
+        'author' => ['required', 'string', 'max:255'],
         'file_denylist' => ['array', 'nullable'],
         'file_denylist.*' => ['string'],
         'docker_images' => ['required', 'array', 'min:1'],
