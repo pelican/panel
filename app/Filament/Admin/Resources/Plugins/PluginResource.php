@@ -4,7 +4,9 @@ namespace App\Filament\Admin\Resources\Plugins;
 
 use App\Enums\PluginStatus;
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Resources\Plugins\Pages\BrowsePlugins;
 use App\Filament\Admin\Resources\Plugins\Pages\ListPlugins;
+use App\Filament\Components\Actions\ReportPluginIssueAction;
 use App\Jobs\Plugin\InstallPlugin;
 use App\Jobs\Plugin\UninstallPlugin;
 use App\Jobs\Plugin\UpdatePlugin;
@@ -240,9 +242,17 @@ class PluginResource extends Resource
                                     ->send();
                             }
                         }),
+                    ReportPluginIssueAction::make(),
                 ]),
             ])
             ->headerActions([
+                Action::make('browse_hub')
+                    ->label(trans('admin/plugin.hub.browse'))
+                    ->hiddenLabel()
+                    ->tooltip(trans('admin/plugin.hub.browse'))
+                    ->authorize(fn () => user()?->can('create', Plugin::class))
+                    ->icon(TablerIcon::BuildingStore)
+                    ->url(BrowsePlugins::getUrl()),
                 Action::make('import_from_file')
                     ->label(trans('admin/plugin.import_from_file'))
                     ->modalHeading(trans('admin/plugin.import_from_file'))
@@ -336,6 +346,7 @@ class PluginResource extends Resource
     {
         return [
             'index' => ListPlugins::route('/'),
+            'browse' => BrowsePlugins::route('/browse'),
         ];
     }
 }
