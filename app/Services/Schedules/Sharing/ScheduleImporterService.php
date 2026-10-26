@@ -55,16 +55,18 @@ class ScheduleImporterService
 
             foreach (Arr::get($parsed, 'tasks', []) as $task) {
                 $action = Arr::get($task, 'action');
+                $payload = Arr::get($task, 'payload');
                 $taskSchema = is_string($action) ? $this->taskService->get($action) : null;
 
                 throw_unless($taskSchema, new InvalidFileUploadException('Invalid task action provided: ' . json_encode($action)));
-                throw_unless($taskSchema->canCreate($schedule, $user, Arr::get($task, 'payload')), new HttpForbiddenException(trans('server/schedule.tasks.no_permission')));
+                throw_unless(is_string($payload) || is_null($payload), new InvalidFileUploadException('Invalid task payload provided'));
+                throw_unless($taskSchema->canCreate($schedule, $user, $payload), new HttpForbiddenException(trans('server/schedule.tasks.no_permission')));
 
                 Task::create([
                     'schedule_id' => $schedule->id,
                     'sequence_id' => Arr::get($task, 'sequence_id'),
-                    'action' => Arr::get($task, 'action'),
-                    'payload' => Arr::get($task, 'payload'),
+                    'action' => $action,
+                    'payload' => $payload,
                     'time_offset' => Arr::get($task, 'time_offset'),
                     'continue_on_failure' => Arr::get($task, 'continue_on_failure'),
                 ]);

@@ -78,7 +78,7 @@ final class PowerActionSchema extends TaskSchema
                     /** @var Server|null $server */
                     $server = Filament::getTenant();
 
-                    return $server && !$this->canSendSignal($server, user(), $value);
+                    return $server ? !$this->canSendSignal($server, user(), $value) : true;
                 })
                 ->selectablePlaceholder(false)
                 ->default($this->getDefaultPayload()),

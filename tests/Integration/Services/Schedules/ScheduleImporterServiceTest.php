@@ -55,7 +55,24 @@ class ScheduleImporterServiceTest extends IntegrationTestCase
         $this->getService()->fromFile($this->makeFile('hodor', 'test'), $server, $user);
     }
 
-    private function makeFile(string $action, string $payload): UploadedFile
+    /**
+     * Test that a schedule containing a task with a non-string payload is not imported.
+     */
+    public function test_schedule_with_invalid_payload_is_not_imported(): void
+    {
+        [$user, $server] = $this->generateTestAccount([SubuserPermission::ScheduleCreate, SubuserPermission::ControlConsole]);
+
+        try {
+            $this->getService()->fromFile($this->makeFile('command', ['say Test']), $server, $user);
+            $this->fail('Expected an InvalidFileUploadException to be thrown.');
+        } catch (InvalidFileUploadException) {
+        }
+
+        $this->assertSame(0, Schedule::query()->where('server_id', $server->id)->count());
+        $this->assertSame(0, Task::query()->count());
+    }
+
+    private function makeFile(string $action, mixed $payload): UploadedFile
     {
         return UploadedFile::fake()->createWithContent('schedule.json', json_encode([
             'name' => 'Test',
