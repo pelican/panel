@@ -12,8 +12,8 @@ use App\Services\Helpers\PluginService;
 use Carbon\Carbon;
 use Exception;
 use Filament\Actions\Action;
-use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Filament\Schemas\Components\EmbeddedTable;
@@ -21,6 +21,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Support\Htmlable;
@@ -90,6 +91,10 @@ class BrowsePlugins extends Page implements HasTable
 
         return $table
             ->records(function (?string $search, array $filters, int $page, int $recordsPerPage) use ($hub) {
+                if ($filters['installed']['isActive'] ?? false) {
+                    return $this->installedRecords($hub, $search, $filters, $page, $recordsPerPage);
+                }
+
                 $results = $hub->search(
                     $search,
                     $filters['sort']['value'] ?? 'popular',
@@ -128,15 +133,13 @@ class BrowsePlugins extends Page implements HasTable
                     ->state(fn (array $record) => $this->plainText($record['description'] ?? null))
                     ->limit(100)
                     ->wrap(),
-                TextColumn::make('categories')
-                    ->label(trans('admin/plugin.category'))
-                    ->state(fn (array $record) => collect($record['categories'] ?? [])->pluck('name')->filter()->all())
-                    ->badge()
-                    ->visibleFrom('lg'),
                 TextColumn::make('latest_version')
                     ->label(trans('admin/plugin.version'))
                     ->badge()
                     ->color(fn (array $record) => $this->installState($record) === 'update' ? 'warning' : 'gray')
+                    ->tooltip(fn (array $record) => filled($record['last_version_at'] ?? null)
+                        ? trans('admin/plugin.hub.updated') . ': ' . Carbon::parse($record['last_version_at'])->diffForHumans()
+                        : null)
                     ->description(fn (array $record) => match ($this->installState($record)) {
                         'installed' => trans('admin/plugin.hub.installed'),
                         'update' => trans('admin/plugin.hub.installed_version', ['version' => Plugin::find($record['slug'])?->version]),
@@ -153,11 +156,6 @@ class BrowsePlugins extends Page implements HasTable
                     ->formatStateUsing(fn ($state) => is_numeric($state) ? round((float) $state) . '%' : null)
                     ->placeholder('-')
                     ->visibleFrom('md'),
-                TextColumn::make('last_version_at')
-                    ->label(trans('admin/plugin.hub.updated'))
-                    ->formatStateUsing(fn ($state) => filled($state) ? Carbon::parse($state)->diffForHumans() : null)
-                    ->placeholder('-')
-                    ->visibleFrom('lg'),
             ])
             ->filters([
                 SelectFilter::make('sort')
@@ -172,6 +170,9 @@ class BrowsePlugins extends Page implements HasTable
                     ->label(trans('admin/plugin.hub.tags'))
                     ->multiple()
                     ->options(fn () => $hub->tags()),
+                Filter::make('installed')
+                    ->label(trans('admin/plugin.hub.installed'))
+                    ->toggle(),
             ])
             ->recordActions([
                 Action::make('exclude_view')
@@ -262,6 +263,42 @@ class BrowsePlugins extends Page implements HasTable
      * @param  array<string, mixed>  $record
      * @return 'not_installed'|'installed'|'update'
      */
+    /**
+     * Hub listings for plugins present on disk. The Hub search can't filter by
+     * what's installed here, so look each one up and filter/paginate locally.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function installedRecords(PluginHubService $hub, ?string $search, array $filters, int $page, int $recordsPerPage): LengthAwarePaginator
+    {
+        $category = $filters['category']['value'] ?? null;
+        $tags = array_filter($filters['tags']['values'] ?? [], 'filled');
+        $slugsOf = fn (mixed $items) => collect(is_array($items) ? $items : [])
+            ->map(fn ($item) => is_array($item) ? ($item['slug'] ?? null) : $item)
+            ->filter()
+            ->all();
+
+        $plugins = Plugin::all()
+            ->map(fn (Plugin $plugin) => $hub->find($plugin->id))
+            ->filter(fn (?array $plugin) => $plugin !== null && $hub->isFree($plugin))
+            ->filter(fn (array $plugin) => blank($search)
+                || Str::contains(($plugin['title'] ?? '') . ' ' . ($plugin['description'] ?? '') . ' ' . $plugin['slug'], trim($search), true))
+            ->filter(fn (array $plugin) => blank($category) || in_array($category, $slugsOf($plugin['categories'] ?? null), true))
+            ->filter(fn (array $plugin) => empty($tags) || array_diff($tags, $slugsOf($plugin['tags'] ?? null)) === []);
+
+        $plugins = match ($filters['sort']['value'] ?? 'popular') {
+            'name' => $plugins->sortBy(fn (array $plugin) => mb_strtolower($plugin['title'] ?? $plugin['slug'])),
+            'rating' => $plugins->sortByDesc(fn (array $plugin) => (float) ($plugin['review_percentage'] ?? 0)),
+            'updated', 'newest' => $plugins->sortByDesc(fn (array $plugin) => (string) ($plugin['last_version_at'] ?? '')),
+            default => $plugins->sortByDesc(fn (array $plugin) => (int) ($plugin['downloads_count'] ?? 0)),
+        };
+
+        $plugins = $plugins->values()->map(fn (array $plugin) => [...$plugin, '__key' => $plugin['slug']]);
+
+        return new LengthAwarePaginator($plugins->forPage($page, $recordsPerPage)->values(), $plugins->count(), $recordsPerPage, $page);
+    }
+
+    /** @param  array<string, mixed>  $record */
     private function installState(array $record): string
     {
         $plugin = Plugin::find($record['slug'] ?? null);
@@ -288,10 +325,10 @@ class BrowsePlugins extends Page implements HasTable
                 ->hiddenLabel()
                 ->markdown()
                 ->state($plugin['description'] ?? null),
-            ImageEntry::make('screenshots')
+            ViewEntry::make('screenshots')
                 ->hiddenLabel()
+                ->view('filament.components.plugin-screenshots')
                 ->state($screenshots)
-                ->imageHeight(180)
                 ->visible($screenshots !== []),
             TextEntry::make('latest_version')
                 ->label(trans('admin/plugin.version'))

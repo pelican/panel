@@ -37,6 +37,9 @@ class ReportPluginIssueAction extends Action
 
         $this->authorize(fn () => user()?->can('viewList plugin'));
 
+        // Only offer reporting for plugins present on disk (downloaded or installed).
+        $this->visible(fn (Plugin|array $record) => $record instanceof Plugin || Plugin::find($this->resolveSlug($record)) !== null);
+
         $this->modalHeading(fn (Plugin|array $record) => trans('admin/plugin.hub.report_issue_heading', ['name' => $this->resolvePluginName($record)]));
 
         $this->modalDescription(trans('admin/plugin.hub.report_issue_description'));

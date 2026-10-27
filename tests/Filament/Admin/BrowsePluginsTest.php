@@ -162,9 +162,39 @@ it('refuses a download that does not match the hub checksum', function () {
     Http::assertSent(fn ($request) => str_contains($request->url(), '/download/'));
 });
 
+it('filters to installed plugins', function () {
+    fakeHub(hubPlugin('hub-free-plugin'));
+    actingAsRootAdmin();
+
+    livewire(BrowsePlugins::class)
+        ->filterTable('installed')
+        ->assertDontSee('Hub Free Plugin');
+
+    File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
+    File::put(plugin_path('hub-free-plugin', 'plugin.json'), json_encode(['id' => 'hub-free-plugin', 'name' => 'Hub Free Plugin', 'version' => '1.0.0']));
+    Plugin::refreshRows();
+
+    livewire(BrowsePlugins::class)
+        ->filterTable('installed')
+        ->assertSee('Hub Free Plugin')
+        ->assertSee(trans('admin/plugin.hub.installed'));
+});
+
+it('hides report issue for plugins that are not downloaded', function () {
+    fakeHub(hubPlugin('hub-free-plugin'));
+    actingAsRootAdmin();
+
+    livewire(BrowsePlugins::class)
+        ->assertActionHidden(TestAction::make('exclude_report_issue')->table('hub-free-plugin'));
+});
+
 it('opens a prefilled github issue when reporting a plugin', function () {
     fakeHub(hubPlugin('hub-free-plugin'));
     actingAsRootAdmin();
+
+    File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
+    File::put(plugin_path('hub-free-plugin', 'plugin.json'), json_encode(['id' => 'hub-free-plugin', 'name' => 'Hub Free Plugin', 'version' => '1.0.0']));
+    Plugin::refreshRows();
 
     livewire(BrowsePlugins::class)
         ->callAction(TestAction::make('exclude_report_issue')->table('hub-free-plugin'), [
