@@ -1,7 +1,6 @@
 <?php
 
 use App\Filament\Admin\Resources\Plugins\Pages\BrowsePlugins;
-use App\Filament\Admin\Resources\Plugins\Pages\ListPlugins;
 use App\Jobs\Plugin\InstallPlugin;
 use App\Models\Plugin;
 use App\Models\Role;
@@ -270,19 +269,4 @@ it('reverses the hub order across pages when sorting ascending', function () {
         ->call('gotoPage', 2)
         ->assertSeeInOrder(['Listed Plugin 02', 'Listed Plugin 01', 'Listed Plugin 00'])
         ->assertDontSee('Listed Plugin 03');
-});
-
-it('opens the hub page when reporting an installed plugin', function () {
-    fakeHub(hubPlugin('hub-free-plugin'));
-    actingAsRootAdmin();
-
-    File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
-    File::put(plugin_path('hub-free-plugin', 'plugin.json'), json_encode(['id' => 'hub-free-plugin', 'name' => 'Hub Free Plugin', 'version' => '1.0.0']));
-    Plugin::refreshRows();
-
-    livewire(ListPlugins::class)
-        ->callAction(TestAction::make('exclude_report_issue')->table(Plugin::find('hub-free-plugin')))
-        ->assertNotNotified(trans('admin/plugin.hub.report_issue_unavailable'))
-        ->tap(fn ($test) => expect($test->effects['xjs'][0]['expression'] ?? '')
-            ->toBe("window.open('https:\/\/hub.example.test\/plugins\/hub-free-plugin', '_blank', 'noopener')"));
 });

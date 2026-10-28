@@ -10,7 +10,6 @@ use App\Jobs\Plugin\InstallPlugin;
 use App\Jobs\Plugin\UninstallPlugin;
 use App\Jobs\Plugin\UpdatePlugin;
 use App\Models\Plugin;
-use App\Services\Helpers\PluginHubService;
 use App\Services\Helpers\PluginService;
 use BackedEnum;
 use Exception;
@@ -24,8 +23,6 @@ use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Js;
-use Livewire\Component;
 
 class PluginResource extends Resource
 {
@@ -243,26 +240,6 @@ class PluginResource extends Resource
                                     ->body($exception->getMessage())
                                     ->send();
                             }
-                        }),
-                    // Looked up on click so listing plugins doesn't hit the Hub once per row.
-                    Action::make('exclude_report_issue')
-                        ->label(trans('admin/plugin.hub.report_issue'))
-                        ->icon(TablerIcon::Bug)
-                        ->color('gray')
-                        ->authorize(fn () => user()?->can('viewList plugin'))
-                        ->action(function (Plugin $plugin, Component $livewire, PluginHubService $hub) {
-                            $url = $hub->find($plugin->id)['url'] ?? null;
-
-                            if (!is_string($url) || !str_starts_with($url, 'https://')) {
-                                Notification::make()
-                                    ->danger()
-                                    ->title(trans('admin/plugin.hub.report_issue_unavailable'))
-                                    ->send();
-
-                                return;
-                            }
-
-                            $livewire->js('window.open(' . Js::from($url) . ", '_blank', 'noopener')");
                         }),
                 ]),
             ])

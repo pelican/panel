@@ -86,7 +86,6 @@ return [
         'homepage' => 'Homepage',
         'discord_support' => 'Discord Support',
         'report_issue' => 'Report Issue',
-        'report_issue_unavailable' => 'This plugin isn\'t on the Plugin Hub, so there\'s nowhere to report issues.',
     ],
 
     'notifications' => [
