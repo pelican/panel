@@ -27,6 +27,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -368,10 +369,18 @@ class BrowsePlugins extends Page implements HasTable
      */
     private function canInstall(string $slug): bool
     {
+        if (!user()?->can('create', Plugin::class)) {
+            return false;
+        }
+
         $existing = Plugin::find($slug);
 
-        return (bool) user()?->can('create', Plugin::class)
-            && ($existing === null || user()->can('update', $existing));
+        if ($existing !== null) {
+            return user()->can('update', $existing);
+        }
+
+        // A folder with an unreadable plugin.json has no Plugin row, but installing still replaces it.
+        return !File::isDirectory(plugin_path($slug)) || user()->can('update plugin');
     }
 
     /**

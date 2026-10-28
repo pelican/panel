@@ -253,6 +253,29 @@ it('only lets admins who can update a plugin replace it', function () {
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/download/'));
 });
 
+it('does not let admins who cannot update plugins replace an unreadable plugin folder', function () {
+    Queue::fake();
+    fakeHub(hubPlugin('hub-free-plugin'));
+
+    [$admin] = generateTestAccount([]);
+    $role = Role::factory()->create(['name' => 'Plugin Adder', 'guard_name' => 'web']);
+    $role->givePermissionTo(Permission::findOrCreate('viewList plugin', 'web'), Permission::findOrCreate('create plugin', 'web'));
+    $this->actingAs($admin->syncRoles($role));
+
+    File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
+    File::put(plugin_path('hub-free-plugin', 'plugin.json'), '{not json');
+    Plugin::refreshRows();
+
+    livewire(BrowsePlugins::class)
+        ->assertActionHidden(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->call('installFromHub', 'hub-free-plugin')
+        ->assertNotified(trans('admin/plugin.notifications.install_error'));
+
+    expect(File::get(plugin_path('hub-free-plugin', 'plugin.json')))->toBe('{not json');
+    Queue::assertNothingPushed();
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/download/'));
+});
+
 it('does not report an outage for installed plugins the hub does not list', function () {
     Http::fake([
         HUB . '/api/plugins/hub-free-plugin' => Http::response(['message' => 'Not found'], 404),
