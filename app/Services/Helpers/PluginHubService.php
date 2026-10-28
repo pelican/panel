@@ -6,6 +6,7 @@ use Closure;
 use DateInterval;
 use DateTimeInterface;
 use Exception;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
@@ -73,13 +74,34 @@ class PluginHubService
     /** @return array<string, mixed>|null */
     public function find(string $slug): ?array
     {
-        if (!$this->isValidSlug($slug)) {
-            return null;
+        return $this->lookup($slug) ?: null;
+    }
+
+    /**
+     * The Hub listings for the given slugs, skipping any the Hub doesn't list,
+     * or null when the Hub couldn't be reached.
+     *
+     * @param  string[]  $slugs
+     * @return array<int, array<string, mixed>>|null
+     */
+    public function findMany(array $slugs): ?array
+    {
+        $plugins = [];
+
+        foreach ($slugs as $slug) {
+            $plugin = $this->lookup($slug);
+
+            // Stop at the first failure so an outage isn't hit once per plugin.
+            if ($plugin === null) {
+                return null;
+            }
+
+            if ($plugin !== false) {
+                $plugins[] = $plugin;
+            }
         }
 
-        $plugin = $this->remember("plugins.hub.plugin.$slug", now()->addMinutes(10), fn () => $this->get('/plugins/' . rawurlencode($slug)));
-
-        return is_array($plugin) && ($plugin['slug'] ?? null) === $slug ? $plugin : null;
+        return $plugins;
     }
 
     /**
@@ -113,7 +135,8 @@ class PluginHubService
         return [
             'version' => (string) $release['version'],
             'download_url' => (string) $release['download_url'],
-            'sha256' => filled($release['sha256'] ?? null) ? (string) $release['sha256'] : null,
+            // Null only when the feed has no checksum; an empty or invalid one is kept so it gets rejected.
+            'sha256' => array_key_exists('sha256', $release) ? (string) $release['sha256'] : null,
         ];
     }
 
@@ -131,6 +154,27 @@ class PluginHubService
     private function isValidSlug(string $slug): bool
     {
         return preg_match('/^[a-z0-9][a-z0-9._-]*$/', $slug) === 1;
+    }
+
+    /**
+     * A plugin's Hub listing, false when the Hub doesn't list it, or null when
+     * the Hub couldn't be reached.
+     *
+     * @return array<string, mixed>|false|null
+     */
+    private function lookup(string $slug): array|false|null
+    {
+        if (!$this->isValidSlug($slug)) {
+            return false;
+        }
+
+        $plugin = $this->remember("plugins.hub.plugin.$slug", now()->addMinutes(10), fn () => $this->get('/plugins/' . rawurlencode($slug)), cacheNotFound: true);
+
+        if ($plugin === null) {
+            return null;
+        }
+
+        return is_array($plugin) && ($plugin['slug'] ?? null) === $slug ? $plugin : false;
     }
 
     /** @return array<string, string> */
@@ -163,17 +207,26 @@ class PluginHubService
 
     /**
      * Caches the callback's result, but only briefly remembers a failure so a
-     * Hub outage doesn't stick around for the full cache time.
+     * Hub outage doesn't stick around for the full cache time. With
+     * `$cacheNotFound`, a 404 is cached as an answer rather than a failure.
      */
-    private function remember(string $key, DateTimeInterface|DateInterval|int $ttl, Closure $callback): mixed
+    private function remember(string $key, DateTimeInterface|DateInterval|int $ttl, Closure $callback, bool $cacheNotFound = false): mixed
     {
         if (cache()->get($key) === 'error') {
             cache()->forget($key);
         }
 
-        $value = cache()->remember($key, $ttl, function () use ($callback) {
+        $value = cache()->remember($key, $ttl, function () use ($callback, $cacheNotFound) {
             try {
                 return $callback();
+            } catch (RequestException $exception) {
+                if ($cacheNotFound && $exception->response->status() === 404) {
+                    return 'not_found';
+                }
+
+                report($exception);
+
+                return 'error';
             } catch (Exception $exception) {
                 report($exception);
 

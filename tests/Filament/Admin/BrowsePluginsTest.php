@@ -69,7 +69,8 @@ function hubPluginZip(string $id): string
     return $bytes;
 }
 
-function fakeHub(array $detail, ?string $zip = null, ?string $sha256 = null): void
+/** @param  array<string, mixed>  $release  overrides for the update feed entry; a null value leaves the key out */
+function fakeHub(array $detail, ?string $zip = null, ?string $sha256 = null, array $release = []): void
 {
     $slug = $detail['slug'];
     $zip ??= hubPluginZip($slug);
@@ -79,12 +80,13 @@ function fakeHub(array $detail, ?string $zip = null, ?string $sha256 = null): vo
         HUB . '/api/plugins/tags' => Http::response(['data' => []]),
         HUB . "/api/plugins/$slug" => Http::response($detail),
         HUB . '/api/plugins*' => Http::response(['current_page' => 1, 'data' => [hubPlugin($slug)], 'per_page' => 24, 'total' => 1]),
-        HUB . "/plugins/$slug/update.json" => Http::response(['*' => [
+        HUB . "/plugins/$slug/update.json" => Http::response(['*' => array_filter([
             'version' => '1.0.0',
             'download_url' => HUB . "/plugins/$slug/download/1/$slug.zip",
             'channel' => 'stable',
             'sha256' => $sha256 ?? hash('sha256', $zip),
-        ]]),
+            ...$release,
+        ], fn ($value) => $value !== null)]),
         HUB . "/plugins/$slug/download/*" => Http::response($zip),
     ]);
 }
@@ -162,6 +164,25 @@ it('refuses a download that does not match the hub checksum', function () {
     Http::assertSent(fn ($request) => str_contains($request->url(), '/download/'));
 });
 
+it('refuses a release it cannot verify', function (array $release) {
+    Queue::fake();
+    fakeHub(hubPlugin('hub-free-plugin'), release: $release);
+    actingAsRootAdmin();
+
+    livewire(BrowsePlugins::class)
+        ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->assertNotified(trans('admin/plugin.notifications.install_error'));
+
+    expect(File::exists(plugin_path('hub-free-plugin')))->toBeFalse();
+    Queue::assertNothingPushed();
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/download/'));
+})->with([
+    'missing checksum' => [['sha256' => null]],
+    'empty checksum' => [['sha256' => '']],
+    'malformed checksum' => [['sha256' => 'abc']],
+    'insecure download' => [['download_url' => 'http://hub.example.test/plugins/hub-free-plugin/download/1/hub-free-plugin.zip']],
+]);
+
 it('filters to installed plugins', function () {
     fakeHub(hubPlugin('hub-free-plugin'));
     actingAsRootAdmin();
@@ -180,17 +201,11 @@ it('filters to installed plugins', function () {
         ->assertSee(trans('admin/plugin.hub.installed'));
 });
 
-it('hides report issue for plugins that are not downloaded', function () {
-    fakeHub(hubPlugin('hub-free-plugin'));
-    actingAsRootAdmin();
-
-    livewire(BrowsePlugins::class)
-        ->assertActionHidden(TestAction::make('exclude_report_issue')->table('hub-free-plugin'));
-});
-
-it('links report issue to the plugin hub page', function () {
-    $plugin = hubPlugin('hub-free-plugin');
-    fakeHub($plugin);
+it('does not report an outage for installed plugins the hub does not list', function () {
+    Http::fake([
+        HUB . '/api/plugins/hub-free-plugin' => Http::response(['message' => 'Not found'], 404),
+        HUB . '/api/plugins*' => Http::response(['data' => []]),
+    ]);
     actingAsRootAdmin();
 
     File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
@@ -198,8 +213,22 @@ it('links report issue to the plugin hub page', function () {
     Plugin::refreshRows();
 
     livewire(BrowsePlugins::class)
-        ->assertActionVisible(TestAction::make('exclude_report_issue')->table('hub-free-plugin'))
-        ->assertActionHasUrl(TestAction::make('exclude_report_issue')->table('hub-free-plugin'), $plugin['url']);
+        ->filterTable('installed')
+        ->assertSee(trans('admin/plugin.hub.no_results'))
+        ->assertDontSee(trans('admin/plugin.hub.unreachable'));
+});
+
+it('reports an outage when installed plugins cannot be looked up', function () {
+    Http::fake(['*' => Http::response('down', 503)]);
+    actingAsRootAdmin();
+
+    File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
+    File::put(plugin_path('hub-free-plugin', 'plugin.json'), json_encode(['id' => 'hub-free-plugin', 'name' => 'Hub Free Plugin', 'version' => '1.0.0']));
+    Plugin::refreshRows();
+
+    livewire(BrowsePlugins::class)
+        ->filterTable('installed')
+        ->assertSee(trans('admin/plugin.hub.unreachable'));
 });
 
 /**

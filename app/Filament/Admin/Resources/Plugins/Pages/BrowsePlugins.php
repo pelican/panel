@@ -235,6 +235,11 @@ class BrowsePlugins extends Page implements HasTable
                 throw new RuntimeException(trans('admin/plugin.hub.no_release'));
             }
 
+            // Plugin code runs inside the panel, so never install a download that can't be verified.
+            if (!str_starts_with($release['download_url'], 'https://') || preg_match('/\A[a-f0-9]{64}\z/i', (string) $release['sha256']) !== 1) {
+                throw new RuntimeException(trans('admin/plugin.hub.unverified_release'));
+            }
+
             Plugin::refreshRows();
             $wasInstalled = Plugin::whereKey($slug)->exists() && $pluginService->isInstalled($slug);
 
@@ -271,12 +276,6 @@ class BrowsePlugins extends Page implements HasTable
     }
 
     /**
-     * Whether a Hub plugin is installed here, and if so whether the Hub has a newer version.
-     *
-     * @param  array<string, mixed>  $record
-     * @return 'not_installed'|'installed'|'update'
-     */
-    /**
      * Hub listings for plugins present on disk. The Hub search can't filter by
      * what's installed here, so look each one up and filter/paginate locally.
      *
@@ -291,9 +290,16 @@ class BrowsePlugins extends Page implements HasTable
             ->filter()
             ->all();
 
-        $plugins = Plugin::all()
-            ->map(fn (Plugin $plugin) => $hub->find($plugin->id))
-            ->filter(fn (?array $plugin) => $plugin !== null && $hub->isFree($plugin))
+        $plugins = $hub->findMany(Plugin::all()->pluck('id')->all());
+
+        $this->hubUnreachable = $plugins === null;
+
+        if ($plugins === null) {
+            return new LengthAwarePaginator([], 0, $recordsPerPage, $page);
+        }
+
+        $plugins = collect($plugins)
+            ->filter(fn (array $plugin) => $hub->isFree($plugin))
             ->filter(fn (array $plugin) => blank($search)
                 || Str::contains(($plugin['title'] ?? '') . ' ' . ($plugin['description'] ?? '') . ' ' . $plugin['slug'], trim($search), true))
             ->filter(fn (array $plugin) => blank($category) || in_array($category, $slugsOf($plugin['categories'] ?? null), true))
@@ -349,7 +355,12 @@ class BrowsePlugins extends Page implements HasTable
         return new LengthAwarePaginator($plugins, $first->total(), $perPage, $page);
     }
 
-    /** @param  array<string, mixed>  $record */
+    /**
+     * Whether a Hub plugin is installed here, and if so whether the Hub has a newer version.
+     *
+     * @param  array<string, mixed>  $record
+     * @return 'not_installed'|'installed'|'update'
+     */
     private function installState(array $record): string
     {
         $plugin = Plugin::find($record['slug'] ?? null);

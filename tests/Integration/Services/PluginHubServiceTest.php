@@ -128,6 +128,47 @@ class PluginHubServiceTest extends IntegrationTestCase
         $this->assertNull($this->service->find('other'));
     }
 
+    public function test_find_caches_plugins_the_hub_does_not_list(): void
+    {
+        Http::fake(['hub.example.test/api/plugins/missing' => Http::response(['message' => 'Not found'], 404)]);
+
+        $this->assertNull($this->service->find('missing'));
+        $this->assertNull($this->service->find('missing'));
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_find_many_skips_plugins_the_hub_does_not_list(): void
+    {
+        Http::fake([
+            'hub.example.test/api/plugins/good' => Http::response($this->plugin('good')),
+            'hub.example.test/api/plugins/missing' => Http::response(['message' => 'Not found'], 404),
+        ]);
+
+        $this->assertSame(['good'], array_column($this->service->findMany(['good', 'missing', 'Not A Slug']) ?? [], 'slug'));
+    }
+
+    public function test_find_many_is_null_when_the_hub_fails_and_retries_next_time(): void
+    {
+        Http::fakeSequence('hub.example.test/api/plugins/good')
+            ->push('oops', 500)
+            ->push($this->plugin('good'));
+
+        $this->assertNull($this->service->findMany(['good']));
+        $this->assertSame(['good'], array_column($this->service->findMany(['good']) ?? [], 'slug'));
+    }
+
+    public function test_latest_release_keeps_an_empty_checksum_so_it_gets_rejected(): void
+    {
+        Http::fake(['hub.example.test/plugins/good/update.json' => Http::response(['*' => [
+            'version' => '1.2.0',
+            'download_url' => 'https://hub.example.test/plugins/good/download/7/good.zip',
+            'sha256' => '',
+        ]])]);
+
+        $this->assertSame('', $this->service->latestRelease('good')['sha256'] ?? null);
+    }
+
     public function test_latest_release_reads_the_update_feed(): void
     {
         Http::fake(['hub.example.test/plugins/good/update.json' => Http::response(['*' => [
