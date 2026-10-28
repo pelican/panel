@@ -85,7 +85,6 @@ return [
         'documentation' => 'Documentation',
         'homepage' => 'Homepage',
         'discord_support' => 'Discord Support',
-        'report_issue' => 'Report Issue',
     ],
 
     'notifications' => [

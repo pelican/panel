@@ -213,14 +213,6 @@ class BrowsePlugins extends Page implements HasTable
                     ->modalHeading(fn (array $record) => trans('admin/plugin.hub.install_heading', ['name' => $record['title'] ?? $record['slug']]))
                     ->modalDescription(trans('admin/plugin.hub.install_description'))
                     ->action(fn (array $record, PluginService $pluginService) => $this->installFromHub($record['slug'], $hub, $pluginService)),
-                // The Hub API exposes no issue tracker url, so send reporters to the plugin's Hub page and its report form.
-                Action::make('exclude_report_issue')
-                    ->label(trans('admin/plugin.hub.report_issue'))
-                    ->icon(TablerIcon::Bug)
-                    ->color('gray')
-                    ->authorize(fn () => user()?->can('viewList plugin'))
-                    ->visible(fn (array $record) => is_string($record['url'] ?? null) && str_starts_with($record['url'], 'https://') && Plugin::find($record['slug']) !== null)
-                    ->url(fn (array $record) => $record['url'], true),
             ])
             ->emptyStateIcon(fn () => $this->hubUnreachable ? TablerIcon::CloudOff : TablerIcon::Packages)
             ->emptyStateHeading(fn () => $this->hubUnreachable ? trans('admin/plugin.hub.unreachable') : trans('admin/plugin.hub.no_results'))
