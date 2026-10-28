@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\Plugins\Pages;
 
+use App\Enums\PluginStatus;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Plugins\PluginResource;
 use App\Jobs\Plugin\InstallPlugin;
@@ -208,7 +209,7 @@ class BrowsePlugins extends Page implements HasTable
                     })
                     ->icon(TablerIcon::Download)
                     ->color(fn (array $record) => $this->installState($record) === 'installed' ? 'gray' : 'success')
-                    ->authorize(fn () => user()?->can('create', Plugin::class))
+                    ->authorize(fn (array $record) => $this->canInstall($record['slug']))
                     ->requiresConfirmation()
                     ->modalHeading(fn (array $record) => trans('admin/plugin.hub.install_heading', ['name' => $record['title'] ?? $record['slug']]))
                     ->modalDescription(trans('admin/plugin.hub.install_description'))
@@ -222,6 +223,13 @@ class BrowsePlugins extends Page implements HasTable
     public function installFromHub(string $slug, PluginHubService $hub, PluginService $pluginService): void
     {
         try {
+            Plugin::refreshRows();
+
+            // Re-check on the server too: replacing a plugin's files needs permission to update it.
+            if (!$this->canInstall($slug)) {
+                throw new RuntimeException(trans('admin/plugin.hub.no_permission'));
+            }
+
             $plugin = $hub->find($slug);
 
             // Re-check on the server: only free plugins may ever be installed from here.
@@ -240,7 +248,6 @@ class BrowsePlugins extends Page implements HasTable
                 throw new RuntimeException(trans('admin/plugin.hub.unverified_release'));
             }
 
-            Plugin::refreshRows();
             $wasInstalled = Plugin::whereKey($slug)->exists() && $pluginService->isInstalled($slug);
 
             $id = $pluginService->downloadPluginFromUrl($release['download_url'], $slug, $release['sha256']);
@@ -356,6 +363,18 @@ class BrowsePlugins extends Page implements HasTable
     }
 
     /**
+     * Adding a plugin needs create permission; replacing one already on disk
+     * also needs permission to update it, as on the installed plugins table.
+     */
+    private function canInstall(string $slug): bool
+    {
+        $existing = Plugin::find($slug);
+
+        return (bool) user()?->can('create', Plugin::class)
+            && ($existing === null || user()->can('update', $existing));
+    }
+
+    /**
      * Whether a Hub plugin is installed here, and if so whether the Hub has a newer version.
      *
      * @param  array<string, mixed>  $record
@@ -365,7 +384,8 @@ class BrowsePlugins extends Page implements HasTable
     {
         $plugin = Plugin::find($record['slug'] ?? null);
 
-        if ($plugin === null) {
+        // Downloaded but never installed (or a failed install) still needs installing.
+        if ($plugin === null || $plugin->status === PluginStatus::NotInstalled) {
             return 'not_installed';
         }
 

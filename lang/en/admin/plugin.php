@@ -77,6 +77,7 @@ return [
         'install_description' => 'The latest release will be downloaded from the Plugin Hub and installed in the background. Only install plugins from authors you trust.',
         'not_free' => 'Only free plugins can be installed from the panel.',
         'no_release' => 'This plugin has no downloadable release.',
+        'no_permission' => 'You don\'t have permission to replace this plugin.',
         'unverified_release' => 'This plugin\'s release has no valid checksum or secure download, so it can\'t be verified.',
         'screenshot' => 'Screenshot :number',
         'previous_screenshot' => 'Previous screenshot',

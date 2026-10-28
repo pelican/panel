@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\PluginStatus;
 use App\Filament\Admin\Resources\Plugins\Pages\BrowsePlugins;
 use App\Jobs\Plugin\InstallPlugin;
 use App\Models\Plugin;
@@ -9,6 +10,7 @@ use Filament\Facades\Filament;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
 
@@ -89,6 +91,23 @@ function fakeHub(array $detail, ?string $zip = null, ?string $sha256 = null, arr
         ], fn ($value) => $value !== null)]),
         HUB . "/plugins/$slug/download/*" => Http::response($zip),
     ]);
+}
+
+/** Puts hub-free-plugin on disk, installed with the given status or only downloaded. */
+function putLocalPlugin(?PluginStatus $status = null): void
+{
+    File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
+    File::put(plugin_path('hub-free-plugin', 'plugin.json'), json_encode(array_filter([
+        'id' => 'hub-free-plugin',
+        'name' => 'Hub Free Plugin',
+        'author' => 'Plugin Author',
+        'version' => '1.0.0',
+        'category' => 'plugin',
+        'namespace' => 'HubFreePlugin',
+        'class' => 'HubFreePlugin',
+        'meta' => $status ? ['status' => $status->value] : null,
+    ])));
+    Plugin::refreshRows();
 }
 
 function actingAsRootAdmin(): void
@@ -191,14 +210,47 @@ it('filters to installed plugins', function () {
         ->filterTable('installed')
         ->assertDontSee('Hub Free Plugin');
 
-    File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
-    File::put(plugin_path('hub-free-plugin', 'plugin.json'), json_encode(['id' => 'hub-free-plugin', 'name' => 'Hub Free Plugin', 'version' => '1.0.0']));
-    Plugin::refreshRows();
+    putLocalPlugin(PluginStatus::Disabled);
 
     livewire(BrowsePlugins::class)
         ->filterTable('installed')
         ->assertSee('Hub Free Plugin')
-        ->assertSee(trans('admin/plugin.hub.installed'));
+        ->assertSee(trans('admin/plugin.hub.installed'))
+        ->assertActionHasLabel(TestAction::make('exclude_install')->table('hub-free-plugin'), trans('admin/plugin.hub.reinstall'));
+});
+
+it('offers to install a plugin that is downloaded but not installed', function () {
+    fakeHub(hubPlugin('hub-free-plugin'));
+    actingAsRootAdmin();
+    putLocalPlugin();
+
+    livewire(BrowsePlugins::class)
+        ->assertActionHasLabel(TestAction::make('exclude_install')->table('hub-free-plugin'), trans('admin/plugin.install'));
+});
+
+it('only lets admins who can update a plugin replace it', function () {
+    Queue::fake();
+    fakeHub(hubPlugin('hub-free-plugin'));
+
+    [$admin] = generateTestAccount([]);
+    $role = Role::factory()->create(['name' => 'Plugin Adder', 'guard_name' => 'web']);
+    $role->givePermissionTo(Permission::findOrCreate('viewList plugin', 'web'), Permission::findOrCreate('create plugin', 'web'));
+    $this->actingAs($admin->syncRoles($role));
+
+    livewire(BrowsePlugins::class)
+        ->assertActionVisible(TestAction::make('exclude_install')->table('hub-free-plugin'));
+
+    putLocalPlugin(PluginStatus::Disabled);
+    $manifest = File::get(plugin_path('hub-free-plugin', 'plugin.json'));
+
+    livewire(BrowsePlugins::class)
+        ->assertActionHidden(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->call('installFromHub', 'hub-free-plugin')
+        ->assertNotified(trans('admin/plugin.notifications.install_error'));
+
+    expect(File::get(plugin_path('hub-free-plugin', 'plugin.json')))->toBe($manifest);
+    Queue::assertNothingPushed();
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/download/'));
 });
 
 it('does not report an outage for installed plugins the hub does not list', function () {
