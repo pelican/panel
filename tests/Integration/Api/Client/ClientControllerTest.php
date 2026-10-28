@@ -332,6 +332,33 @@ class ClientControllerTest extends ClientApiIntegrationTestCase
         $response->assertJsonPath('data.0.attributes.relationships.allocations.data.0.attributes.notes', null);
     }
 
+    /**
+     * Test that a subuser without the allocation.read permission can still view a server
+     * that has no primary allocation assigned.
+     */
+    public function test_subuser_can_view_server_without_allocation(): void
+    {
+        /** @var Server $server */
+        [$user, $server] = $this->generateTestAccount([SubuserPermission::WebsocketConnect]);
+        $server->allocation->update(['server_id' => null]);
+        $server->update(['allocation_id' => null]);
+
+        $server->refresh();
+
+        $response = $this->actingAs($user)->getJson('/api/client');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.attributes.uuid', $server->uuid);
+        $response->assertJsonCount(0, 'data.0.attributes.relationships.allocations.data');
+
+        $response = $this->actingAs($user)->getJson("/api/client/servers/$server->uuid_short");
+
+        $response->assertOk();
+        $response->assertJsonPath('attributes.uuid', $server->uuid);
+        $response->assertJsonCount(0, 'attributes.relationships.allocations.data');
+    }
+
     public static function filterTypeDataProvider(): array
     {
         return [['admin'], ['admin-all']];
