@@ -86,16 +86,7 @@ return [
         'homepage' => 'Homepage',
         'discord_support' => 'Discord Support',
         'report_issue' => 'Report Issue',
-        'report_issue_heading' => 'Report an issue with :name',
-        'report_issue_description' => 'This opens a pre-filled issue on the plugin\'s GitHub repository, or its Plugin Hub page if it has no public repository.',
-        'report_issue_submit' => 'Continue',
-        'report_issue_unavailable' => 'This plugin doesn\'t have a public place to report issues.',
-        'issue_title' => 'Title',
-        'issue_description' => 'What went wrong?',
-        'issue_description_help' => 'Include steps to reproduce the problem and any errors you saw. Don\'t include passwords or other secrets.',
-        'plugin_version' => 'Plugin Version',
-        'panel_version' => 'Panel Version',
-        'include_environment' => 'Include PHP version and plugin status',
+        'report_issue_unavailable' => 'This plugin isn\'t on the Plugin Hub, so there\'s nowhere to report issues.',
     ],
 
     'notifications' => [

@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Admin\Resources\Plugins\Pages\BrowsePlugins;
+use App\Filament\Admin\Resources\Plugins\Pages\ListPlugins;
 use App\Jobs\Plugin\InstallPlugin;
 use App\Models\Plugin;
 use App\Models\Role;
@@ -188,8 +189,9 @@ it('hides report issue for plugins that are not downloaded', function () {
         ->assertActionHidden(TestAction::make('exclude_report_issue')->table('hub-free-plugin'));
 });
 
-it('opens a prefilled github issue when reporting a plugin', function () {
-    fakeHub(hubPlugin('hub-free-plugin'));
+it('links report issue to the plugin hub page', function () {
+    $plugin = hubPlugin('hub-free-plugin');
+    fakeHub($plugin);
     actingAsRootAdmin();
 
     File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
@@ -197,12 +199,90 @@ it('opens a prefilled github issue when reporting a plugin', function () {
     Plugin::refreshRows();
 
     livewire(BrowsePlugins::class)
-        ->callAction(TestAction::make('exclude_report_issue')->table('hub-free-plugin'), [
-            'title' => 'Broken button',
-            'description' => 'It does nothing',
-        ])
-        ->assertHasNoFormErrors()
+        ->assertActionVisible(TestAction::make('exclude_report_issue')->table('hub-free-plugin'))
+        ->assertActionHasUrl(TestAction::make('exclude_report_issue')->table('hub-free-plugin'), $plugin['url']);
+});
+
+/**
+ * Fakes a Hub listing of `$count` plugins, ordered high to low by downloads,
+ * that honours `page` and `per_page`. Rating sorts list them the other way
+ * round, and any other sort lists only "Unsorted Plugin".
+ */
+function fakeHubListing(int $count): void
+{
+    Http::fake([
+        HUB . '/api/plugins/categories' => Http::response(['data' => []]),
+        HUB . '/api/plugins/tags' => Http::response(['data' => []]),
+        HUB . '/api/plugins*' => function ($request) use ($count) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            $page = (int) ($query['page'] ?? 1);
+            $perPage = (int) ($query['per_page'] ?? 24);
+            $sort = $query['sort'] ?? null;
+
+            $data = match ($sort) {
+                'popular' => collect(range(0, $count - 1)),
+                'rating' => collect(range($count - 1, 0)),
+                default => collect([-1]),
+            };
+
+            $data = $data
+                ->map(fn (int $i) => [...hubPlugin("hub-plugin-$i"), 'title' => $i < 0 ? 'Unsorted Plugin' : sprintf('Listed Plugin %02d', $i)])
+                ->forPage($page, $perPage)
+                ->values();
+
+            return Http::response(['current_page' => $page, 'data' => $data, 'per_page' => $perPage, 'total' => $sort === 'popular' || $sort === 'rating' ? $count : 1]);
+        },
+    ]);
+}
+
+it('sorts by downloads from the hub when the column is sorted', function () {
+    fakeHubListing(3);
+    actingAsRootAdmin();
+
+    livewire(BrowsePlugins::class)
+        ->filterTable('sort', 'name')
+        ->assertSee('Unsorted Plugin')
+        ->sortTable('downloads_count', 'desc')
+        ->assertDontSee('Unsorted Plugin')
+        ->assertSeeInOrder(['Listed Plugin 00', 'Listed Plugin 01', 'Listed Plugin 02']);
+});
+
+it('sorts by rating from the hub when the column is sorted', function () {
+    fakeHubListing(3);
+    actingAsRootAdmin();
+
+    livewire(BrowsePlugins::class)
+        ->filterTable('sort', 'name')
+        ->sortTable('review_percentage', 'desc')
+        ->assertDontSee('Unsorted Plugin')
+        ->assertSeeInOrder(['Listed Plugin 02', 'Listed Plugin 01', 'Listed Plugin 00']);
+});
+
+it('reverses the hub order across pages when sorting ascending', function () {
+    fakeHubListing(15);
+    actingAsRootAdmin();
+
+    livewire(BrowsePlugins::class)
+        ->set('tableRecordsPerPage', 12)
+        ->sortTable('downloads_count', 'asc')
+        ->assertSeeInOrder(['Listed Plugin 14', 'Listed Plugin 13', 'Listed Plugin 03'])
+        ->assertDontSee('Listed Plugin 02')
+        ->call('gotoPage', 2)
+        ->assertSeeInOrder(['Listed Plugin 02', 'Listed Plugin 01', 'Listed Plugin 00'])
+        ->assertDontSee('Listed Plugin 03');
+});
+
+it('opens the hub page when reporting an installed plugin', function () {
+    fakeHub(hubPlugin('hub-free-plugin'));
+    actingAsRootAdmin();
+
+    File::ensureDirectoryExists(plugin_path('hub-free-plugin'));
+    File::put(plugin_path('hub-free-plugin', 'plugin.json'), json_encode(['id' => 'hub-free-plugin', 'name' => 'Hub Free Plugin', 'version' => '1.0.0']));
+    Plugin::refreshRows();
+
+    livewire(ListPlugins::class)
+        ->callAction(TestAction::make('exclude_report_issue')->table(Plugin::find('hub-free-plugin')))
         ->assertNotNotified(trans('admin/plugin.hub.report_issue_unavailable'))
         ->tap(fn ($test) => expect($test->effects['xjs'][0]['expression'] ?? '')
-            ->toStartWith("window.open('https:\\/\\/github.com\\/example\\/hub-free-plugin\\/issues\\/new?title=Broken%20button"));
+            ->toBe("window.open('https:\/\/hub.example.test\/plugins\/hub-free-plugin', '_blank', 'noopener')"));
 });

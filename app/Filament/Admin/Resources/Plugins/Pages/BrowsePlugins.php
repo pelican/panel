@@ -4,12 +4,12 @@ namespace App\Filament\Admin\Resources\Plugins\Pages;
 
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Plugins\PluginResource;
-use App\Filament\Components\Actions\ReportPluginIssueAction;
 use App\Jobs\Plugin\InstallPlugin;
 use App\Models\Plugin;
 use App\Services\Helpers\PluginHubService;
 use App\Services\Helpers\PluginService;
 use Carbon\Carbon;
+use Closure;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\TextEntry;
@@ -35,6 +35,12 @@ use RuntimeException;
 class BrowsePlugins extends Page implements HasTable
 {
     use InteractsWithTable;
+
+    /** Sortable columns and the Hub sort that orders by them. */
+    private const COLUMN_SORTS = [
+        'downloads_count' => 'popular',
+        'review_percentage' => 'rating',
+    ];
 
     protected static string $resource = PluginResource::class;
 
@@ -90,19 +96,25 @@ class BrowsePlugins extends Page implements HasTable
         $hub = $this->hub;
 
         return $table
-            ->records(function (?string $search, array $filters, int $page, int $recordsPerPage) use ($hub) {
+            ->records(function (?string $search, array $filters, int $page, int $recordsPerPage, ?string $sortColumn, ?string $sortDirection) use ($hub) {
+                // A sorted column header takes priority over the sort filter.
+                $sort = self::COLUMN_SORTS[$sortColumn] ?? $filters['sort']['value'] ?? 'popular';
+                $ascending = isset(self::COLUMN_SORTS[$sortColumn]) && $sortDirection === 'asc';
+
                 if ($filters['installed']['isActive'] ?? false) {
-                    return $this->installedRecords($hub, $search, $filters, $page, $recordsPerPage);
+                    return $this->installedRecords($hub, $search, $filters, $sort, $ascending, $page, $recordsPerPage);
                 }
 
-                $results = $hub->search(
+                $fetch = fn (int $page) => $hub->search(
                     $search,
-                    $filters['sort']['value'] ?? 'popular',
+                    $sort,
                     $filters['category']['value'] ?? null,
                     $filters['tags']['values'] ?? [],
                     $page,
                     $recordsPerPage,
                 );
+
+                $results = $ascending ? $this->reversedPage($fetch, $page, $recordsPerPage) : $fetch($page);
 
                 $this->hubUnreachable = $results === null;
 
@@ -149,10 +161,12 @@ class BrowsePlugins extends Page implements HasTable
                     ->label(trans('admin/plugin.hub.downloads'))
                     ->icon(TablerIcon::Download)
                     ->numeric()
+                    ->sortable()
                     ->visibleFrom('md'),
                 TextColumn::make('review_percentage')
                     ->label(trans('admin/plugin.hub.rating'))
                     ->icon(TablerIcon::Star)
+                    ->sortable()
                     ->formatStateUsing(fn ($state) => is_numeric($state) ? round((float) $state) . '%' : null)
                     ->placeholder('-')
                     ->visibleFrom('md'),
@@ -199,7 +213,14 @@ class BrowsePlugins extends Page implements HasTable
                     ->modalHeading(fn (array $record) => trans('admin/plugin.hub.install_heading', ['name' => $record['title'] ?? $record['slug']]))
                     ->modalDescription(trans('admin/plugin.hub.install_description'))
                     ->action(fn (array $record, PluginService $pluginService) => $this->installFromHub($record['slug'], $hub, $pluginService)),
-                ReportPluginIssueAction::make(),
+                // The Hub API exposes no issue tracker url, so send reporters to the plugin's Hub page and its report form.
+                Action::make('exclude_report_issue')
+                    ->label(trans('admin/plugin.hub.report_issue'))
+                    ->icon(TablerIcon::Bug)
+                    ->color('gray')
+                    ->authorize(fn () => user()?->can('viewList plugin'))
+                    ->visible(fn (array $record) => is_string($record['url'] ?? null) && str_starts_with($record['url'], 'https://') && Plugin::find($record['slug']) !== null)
+                    ->url(fn (array $record) => $record['url'], true),
             ])
             ->emptyStateIcon(fn () => $this->hubUnreachable ? TablerIcon::CloudOff : TablerIcon::Packages)
             ->emptyStateHeading(fn () => $this->hubUnreachable ? trans('admin/plugin.hub.unreachable') : trans('admin/plugin.hub.no_results'))
@@ -269,7 +290,7 @@ class BrowsePlugins extends Page implements HasTable
      *
      * @param  array<string, mixed>  $filters
      */
-    private function installedRecords(PluginHubService $hub, ?string $search, array $filters, int $page, int $recordsPerPage): LengthAwarePaginator
+    private function installedRecords(PluginHubService $hub, ?string $search, array $filters, string $sort, bool $ascending, int $page, int $recordsPerPage): LengthAwarePaginator
     {
         $category = $filters['category']['value'] ?? null;
         $tags = array_filter($filters['tags']['values'] ?? [], 'filled');
@@ -286,16 +307,54 @@ class BrowsePlugins extends Page implements HasTable
             ->filter(fn (array $plugin) => blank($category) || in_array($category, $slugsOf($plugin['categories'] ?? null), true))
             ->filter(fn (array $plugin) => empty($tags) || array_diff($tags, $slugsOf($plugin['tags'] ?? null)) === []);
 
-        $plugins = match ($filters['sort']['value'] ?? 'popular') {
+        $plugins = match ($sort) {
             'name' => $plugins->sortBy(fn (array $plugin) => mb_strtolower($plugin['title'] ?? $plugin['slug'])),
             'rating' => $plugins->sortByDesc(fn (array $plugin) => (float) ($plugin['review_percentage'] ?? 0)),
             'updated', 'newest' => $plugins->sortByDesc(fn (array $plugin) => (string) ($plugin['last_version_at'] ?? '')),
             default => $plugins->sortByDesc(fn (array $plugin) => (int) ($plugin['downloads_count'] ?? 0)),
         };
 
-        $plugins = $plugins->values()->map(fn (array $plugin) => [...$plugin, '__key' => $plugin['slug']]);
+        $plugins = ($ascending ? $plugins->reverse() : $plugins)->values()->map(fn (array $plugin) => [...$plugin, '__key' => $plugin['slug']]);
 
         return new LengthAwarePaginator($plugins->forPage($page, $recordsPerPage)->values(), $plugins->count(), $recordsPerPage, $page);
+    }
+
+    /**
+     * The Hub only sorts high to low, so build an ascending page from the
+     * matching slice at the end of the descending results, reversed.
+     *
+     * @param  Closure(int): ?LengthAwarePaginator<int, array<string, mixed>>  $search
+     * @return LengthAwarePaginator<int, array<string, mixed>>|null
+     */
+    private function reversedPage(Closure $search, int $page, int $perPage): ?LengthAwarePaginator
+    {
+        $first = $search(1);
+
+        if ($first === null) {
+            return null;
+        }
+
+        $end = $first->total() - ($page - 1) * $perPage;
+        $start = max(0, $end - $perPage);
+        $plugins = collect();
+
+        for ($descPage = intdiv($start, $perPage) + 1; $end > 0 && ($descPage - 1) * $perPage < $end; $descPage++) {
+            $results = $descPage === 1 ? $first : $search($descPage);
+
+            if ($results === null) {
+                return null;
+            }
+
+            $plugins->push(...$results->getCollection()->map(fn (array $plugin, int $index) => [($descPage - 1) * $perPage + $index, $plugin]));
+        }
+
+        $plugins = $plugins
+            ->filter(fn (array $entry) => $entry[0] >= $start && $entry[0] < $end)
+            ->map(fn (array $entry) => $entry[1])
+            ->reverse()
+            ->values();
+
+        return new LengthAwarePaginator($plugins, $first->total(), $perPage, $page);
     }
 
     /** @param  array<string, mixed>  $record */
