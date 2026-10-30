@@ -58,13 +58,16 @@ class ClientController extends ClientApiController
         // than only servers they can see because they are an admin.
         if (in_array($type, ['admin', 'admin-all'])) {
             // If they aren't an admin but want all the admin servers don't fail the request, just
-            // make it a query that will never return any results back.
-            if (!$user->isRootAdmin()) {
+            // make it a query that will never return any results back. Admins only see servers on
+            // the nodes their roles allow.
+            if ($user->cannot('viewAny', Server::class)) {
                 $builder->whereRaw('1 = 2');
             } else {
-                $builder = $type === 'admin-all'
-                    ? $builder
-                    : $builder->whereNotIn('servers.id', $user->directAccessibleServers()->pluck('id')->all());
+                $builder = $builder->whereIn('servers.id', $user->accessibleServers()->pluck('id')->all());
+
+                if ($type === 'admin') {
+                    $builder = $builder->whereNotIn('servers.id', $user->directAccessibleServers()->pluck('id')->all());
+                }
             }
         } elseif ($type === 'owner') {
             $builder = $builder->where('servers.owner_id', $user->id);

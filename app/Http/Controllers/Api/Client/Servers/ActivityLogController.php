@@ -9,8 +9,8 @@ use App\Http\Requests\Api\Client\ClientApiRequest;
 use App\Models\ActivityLog;
 use App\Models\Server;
 use Dedoc\Scramble\Attributes\Group;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Gate;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -26,7 +26,7 @@ class ActivityLogController extends ClientApiController
      */
     public function __invoke(ClientApiRequest $request, Server $server): array
     {
-        Gate::authorize(SubuserPermission::ActivityRead, $server);
+        throw_unless($request->user()->can(SubuserPermission::ActivityRead, $server), new AuthorizationException());
 
         $query = ActivityLog::whereHas('subjects', fn (Builder $query) => $query->where('subject_id', $server->id)->where('subject_type', $server->getMorphClass()))
             ->whereNotIn('activity_logs.event', ActivityLog::DISABLED_EVENTS)

@@ -16,6 +16,19 @@ use Dedoc\Scramble\Attributes\BodyParameter;
 class UpdateUserRequest extends StoreUserRequest
 {
     /**
+     * Only root admins may edit another root admin, otherwise any key with user write access
+     * could take over a root account by changing its email or password.
+     */
+    public function authorize(): bool
+    {
+        if (!parent::authorize()) {
+            return false;
+        }
+
+        return !$this->parameter('user', User::class)->isRootAdmin() || $this->user()->isRootAdmin();
+    }
+
+    /**
      * @param  array<array-key, string|string[]> |null  $rules
      * @return array<array-key, string|string[]>
      */
