@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\UserSSHKey;
 use App\Services\Acl\Api\AdminAcl;
 use App\Tests\Integration\IntegrationTestCase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 
@@ -248,12 +249,23 @@ class PermissionVisibilityTest extends IntegrationTestCase
         $this->patchJson("/api/application/users/$root->id", [
             'email' => 'hijacked@example.com',
             'username' => $root->username,
-        ])->assertForbidden();
+        ])->assertForbidden()->assertJsonPath('errors.0.detail', 'Root admins cannot be edited via the application API.');
 
         $this->assertNotSame('hijacked@example.com', $root->fresh()->email, 'non-root admin changed the root admin\'s email through the application API');
+
+        $password = $root->fresh()->password;
+
+        $this->patchJson("/api/application/users/$root->id", [
+            'email' => $root->email,
+            'username' => $root->username,
+            'password' => 'hijacked-password',
+        ])->assertForbidden()->assertJsonPath('errors.0.detail', 'Root admins cannot be edited via the application API.');
+
+        $this->assertSame($password, $root->fresh()->password, 'non-root admin changed the root admin\'s password through the application API');
+        $this->assertFalse(Hash::check('hijacked-password', $root->fresh()->password));
     }
 
-    public function test_root_admin_can_still_edit_other_root_admins(): void
+    public function test_root_admin_cannot_edit_root_admins_via_application_api(): void
     {
         $target = User::factory()->create();
         $target->syncRoles(Role::getRootAdmin());
@@ -265,8 +277,29 @@ class PermissionVisibilityTest extends IntegrationTestCase
         $this->patchJson("/api/application/users/$target->id", [
             'email' => 'updated@example.com',
             'username' => $target->username,
-        ])->assertOk();
+        ])->assertForbidden()->assertJsonPath('errors.0.detail', 'Root admins cannot be edited via the application API.');
 
-        $this->assertSame('updated@example.com', $target->fresh()->email);
+        $this->patchJson("/api/application/users/$target->id/roles/remove", ['roles' => [Role::getRootAdmin()->id]])->assertForbidden();
+        $this->patchJson("/api/application/users/$target->id/roles/assign", ['roles' => [Role::getRootAdmin()->id]])->assertForbidden();
+        $this->deleteJson("/api/application/users/$target->id")->assertForbidden();
+
+        $target->refresh();
+        $this->assertNotSame('updated@example.com', $target->email);
+        $this->assertTrue($target->isRootAdmin());
+    }
+
+    public function test_root_admin_role_cannot_be_assigned_via_application_api(): void
+    {
+        $target = User::factory()->create();
+
+        $root = User::factory()->create();
+        $root->syncRoles(Role::getRootAdmin());
+        $this->useKey($root, ApiKey::TYPE_APPLICATION, [User::RESOURCE_NAME => AdminAcl::READ | AdminAcl::WRITE]);
+
+        $this->patchJson("/api/application/users/$target->id/roles/assign", ['roles' => [Role::getRootAdmin()->id]])
+            ->assertForbidden()
+            ->assertJsonPath('errors.0.detail', 'The root admin role cannot be assigned via the application API.');
+
+        $this->assertFalse($target->fresh()->isRootAdmin());
     }
 }

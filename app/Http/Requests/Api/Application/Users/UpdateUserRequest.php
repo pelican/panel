@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\Application\Users;
 
+use App\Http\Requests\Api\Application\Users\Concerns\ProtectsRootAdmins;
 use App\Models\User;
 use Dedoc\Scramble\Attributes\BodyParameter;
 
@@ -15,17 +16,17 @@ use Dedoc\Scramble\Attributes\BodyParameter;
 #[BodyParameter('timezone', description: self::FIELDS['timezone'])]
 class UpdateUserRequest extends StoreUserRequest
 {
-    /**
-     * Only root admins may edit another root admin, otherwise any key with user write access
-     * could take over a root account by changing its email or password.
-     */
+    use ProtectsRootAdmins;
+
     public function authorize(): bool
     {
         if (!parent::authorize()) {
             return false;
         }
 
-        return !$this->parameter('user', User::class)->isRootAdmin() || $this->user()->isRootAdmin();
+        $this->denyIfTargetIsRootAdmin();
+
+        return true;
     }
 
     /**
