@@ -2,6 +2,7 @@
 
 namespace App\Tests\Integration\Api\Client;
 
+use App\Enums\RolePermissionModels;
 use App\Enums\SubuserPermission;
 use App\Models\Allocation;
 use App\Models\Role;
@@ -9,6 +10,7 @@ use App\Models\Server;
 use App\Models\Subuser;
 use App\Models\User;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Spatie\Permission\Models\Permission;
 
 class ClientControllerTest extends ClientApiIntegrationTestCase
 {
@@ -330,6 +332,65 @@ class ClientControllerTest extends ClientApiIntegrationTestCase
         $response->assertJsonCount(1, 'data.0.attributes.relationships.allocations.data');
         $response->assertJsonPath('data.0.attributes.relationships.allocations.data.0.attributes.id', $server->allocation->id);
         $response->assertJsonPath('data.0.attributes.relationships.allocations.data.0.attributes.notes', null);
+    }
+
+    /**
+     * Test that a subuser without the allocation.read permission can still view a server
+     * that has no primary allocation assigned.
+     */
+    public function test_subuser_can_view_server_without_allocation(): void
+    {
+        /** @var Server $server */
+        [$user, $server] = $this->generateTestAccount([SubuserPermission::WebsocketConnect]);
+        $server->allocation->update(['server_id' => null]);
+        $server->update(['allocation_id' => null]);
+
+        $server->refresh();
+
+        $response = $this->actingAs($user)->getJson('/api/client');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.attributes.uuid', $server->uuid);
+        $response->assertJsonCount(0, 'data.0.attributes.relationships.allocations.data');
+
+        $response = $this->actingAs($user)->getJson("/api/client/servers/$server->uuid_short");
+
+        $response->assertOk();
+        $response->assertJsonPath('attributes.uuid', $server->uuid);
+        $response->assertJsonCount(0, 'attributes.relationships.allocations.data');
+    }
+
+    /**
+     * Test that a non-root admin with the "update server" role permission receives the
+     * permission gated includes (variables, allocations) when viewing a server they do not own.
+     */
+    public function test_admin_with_update_permission_can_view_server_variables(): void
+    {
+        /** @var Server $server */
+        [, $server] = $this->generateTestAccount();
+        Allocation::factory()->create([
+            'node_id' => $server->node_id,
+            'server_id' => $server->id,
+        ]);
+
+        $role = Role::factory()->create(['name' => 'Server Manager', 'guard_name' => 'web']);
+        $role->givePermissionTo([
+            Permission::findOrCreate(RolePermissionModels::Server->viewAny(), 'web'),
+            Permission::findOrCreate(RolePermissionModels::Server->view(), 'web'),
+            Permission::findOrCreate(RolePermissionModels::Server->update(), 'web'),
+        ]);
+
+        /** @var User $admin */
+        $admin = User::factory()->create();
+        $admin->syncRoles($role);
+
+        $response = $this->actingAs($admin)->getJson("/api/client/servers/$server->uuid_short");
+
+        $response->assertOk();
+        $response->assertJsonPath('attributes.server_owner', false);
+        $response->assertJsonPath('attributes.relationships.variables.object', 'list');
+        $response->assertJsonCount(2, 'attributes.relationships.allocations.data');
     }
 
     public static function filterTypeDataProvider(): array
