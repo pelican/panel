@@ -14,6 +14,8 @@ use Filament\Forms\Components\CheckboxList;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\HtmlString;
 
 class Mounts extends ServerFormPage
@@ -34,16 +36,19 @@ class Mounts extends ServerFormPage
 
     protected function fillForm(): void
     {
+        $allowedMountIds = $this->getAllowedMounts()->pluck('id');
+
         $this->form->fill([
-            'mounts' => $this->getRecord()->mounts->pluck('id')->toArray(),
+            'mounts' => $this->getRecord()->mounts->pluck('id')->intersect($allowedMountIds)->values()->toArray(),
         ]);
     }
 
-    public function form(Schema $schema): Schema
+    /** @return Collection<int, Mount> */
+    protected function getAllowedMounts(): Collection
     {
         $server = $this->getRecord();
 
-        $allowedMounts = Mount::query()
+        return Mount::query()
             ->where('user_mountable', true)
             ->where(function ($query) use ($server) {
                 $query->whereDoesntHave('nodes')
@@ -54,13 +59,19 @@ class Mounts extends ServerFormPage
                     ->orWhereHas('eggs', fn ($q) => $q->where('eggs.id', $server->egg_id));
             })
             ->get();
+    }
+
+    public function form(Schema $schema): Schema
+    {
+        $allowedMounts = $this->getAllowedMounts();
 
         return parent::form($schema)
             ->components([
                 Section::make([
                     CheckboxList::make('mounts')
                         ->label(trans('server/mount.description'))
-                        ->relationship('mounts')
+                        // Only sync mounts the user can see, so mounts attached by an admin stay attached
+                        ->relationship('mounts', modifyQueryUsing: fn (Builder $query) => $query->whereIn('mounts.id', $allowedMounts->pluck('id')))
                         ->options(fn () => $allowedMounts->mapWithKeys(fn (Mount $mount) => [$mount->id => $mount->name]))
                         ->descriptions(fn () => $allowedMounts->mapWithKeys(fn (Mount $mount) => [$mount->id => new HtmlString(str("$mount->source -> $mount->target")->stripTags() . ($mount->description ? '<br>' . str($mount->description)->stripTags() : ''))]))
                         ->helperText(fn () => $allowedMounts->isEmpty() ? trans('server/mount.no_mounts') : null)
