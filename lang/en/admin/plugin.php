@@ -1,13 +1,17 @@
 <?php
 
 return [
+    'node' => 'Node',
+    'tabs_wings' => 'Wings',
+    'tabs_panel' => 'Panel',
+    'wings_unreachable' => 'This node did not answer. It may be offline, or running a version of Wings without plugin support.',
+    'api_version_missing' => '⚠ plugin.json does not declare an api_version, assuming 1',
     'nav_title' => 'Plugins',
     'model_label' => 'Plugin',
     'model_label_plural' => 'Plugins',
 
     'name' => 'Name',
     'update_available' => 'An update for this plugin is available',
-    'api_version_missing' => '⚠ plugin.json does not declare an api_version, assuming 1',
     'author' => 'Author',
     'version' => 'Version',
     'category' => 'Category',
@@ -68,7 +72,9 @@ return [
         'crashed' => 'A plugin crashed and has been disabled',
 
         'enabled' => 'Plugin enabled',
+        'enable_error' => 'Could not enable plugin',
         'disabled' => 'Plugin disabled',
+        'disable_error' => 'Could not disable plugin',
         'deleted' => 'Plugin deleted',
 
         'imported' => 'Plugin imported',
