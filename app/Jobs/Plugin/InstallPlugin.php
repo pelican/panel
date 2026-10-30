@@ -29,7 +29,9 @@ class InstallPlugin implements ShouldBeUnique, ShouldQueue
             $plugin = Plugin::findOrFail($this->pluginId);
 
             // A reinstall keeps the plugin enabled or disabled as it was.
-            $pluginService->installPlugin($plugin, !$this->reinstall && (!$plugin->isTheme() || !$pluginService->hasThemePluginEnabled()));
+            $pluginService->installPlugin($plugin, !$this->reinstall && (!$plugin->isTheme() || ($plugin->isSwitchableTheme()
+                ? !$pluginService->hasExclusiveThemeEnabled()
+                : !$pluginService->hasAnyThemeEnabled())));
 
             Notification::make()
                 ->success()
