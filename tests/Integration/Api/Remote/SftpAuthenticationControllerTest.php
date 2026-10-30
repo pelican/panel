@@ -229,6 +229,30 @@ class SftpAuthenticationControllerTest extends IntegrationTestCase
         $this->assertContains(SubuserPermission::FileRead->value, $permissions);
     }
 
+    public function test_admin_restricted_to_other_node_cannot_use_sftp(): void
+    {
+        $admin = User::factory()->create(['password' => password_hash('foobar', PASSWORD_DEFAULT)]);
+
+        $role = Role::findOrCreate('server-admin-test', 'web');
+        $role->givePermissionTo(Permission::findOrCreate('update server', 'web'));
+        $admin->syncRoles($role);
+
+        $data = [
+            'username' => $admin->username . '.' . $this->server->uuid_short,
+            'password' => 'foobar',
+        ];
+
+        // Unrestricted "update server" admins get full access
+        $this->postJson('/api/remote/sftp/auth', $data)
+            ->assertOk()
+            ->assertJsonPath('permissions.0', '*');
+
+        // Once the role is restricted to another node, the server is out of reach
+        $role->nodes()->sync([Node::factory()->create()->id]);
+
+        $this->postJson('/api/remote/sftp/auth', $data)->assertForbidden();
+    }
+
     public static function authorizationTypeDataProvider(): array
     {
         return [

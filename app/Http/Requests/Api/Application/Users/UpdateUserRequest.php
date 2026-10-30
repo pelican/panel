@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\Application\Users;
 
+use App\Http\Requests\Api\Application\Users\Concerns\ProtectsRootAdmins;
 use App\Models\User;
 use Dedoc\Scramble\Attributes\BodyParameter;
 
@@ -15,6 +16,19 @@ use Dedoc\Scramble\Attributes\BodyParameter;
 #[BodyParameter('timezone', description: self::FIELDS['timezone'])]
 class UpdateUserRequest extends StoreUserRequest
 {
+    use ProtectsRootAdmins;
+
+    public function authorize(): bool
+    {
+        if (!parent::authorize()) {
+            return false;
+        }
+
+        $this->denyIfTargetIsRootAdmin();
+
+        return true;
+    }
+
     /**
      * @param  array<array-key, string|string[]> |null  $rules
      * @return array<array-key, string|string[]>
