@@ -137,6 +137,7 @@ class RoleResource extends Resource
                 TextInput::make('name')
                     ->label(trans('admin/role.name'))
                     ->required()
+                    ->unique()
                     ->disabled(fn (Get $get) => $get('name') === Role::ROOT_ADMIN),
                 TextInput::make('guard_name')
                     ->default(Role::DEFAULT_GUARD_NAME)
