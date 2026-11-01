@@ -45,5 +45,15 @@ class EggChangerService
                 'variable_value' => $oldVariables[$eggVariable->env_variable] ?? $eggVariable->default_value,
             ]);
         }
+
+        if ($server->mounts->isNotEmpty()) {
+            $invalidMountIds = $server->mounts()
+                ->whereNotIn('mounts.id', $newEgg->mounts->pluck('id'))
+                ->pluck('mounts.id');
+
+            if ($invalidMountIds->isNotEmpty()) {
+                $server->mounts()->detach($invalidMountIds);
+            }
+        }
     }
 }
