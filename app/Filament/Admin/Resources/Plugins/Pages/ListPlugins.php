@@ -9,6 +9,7 @@ use App\Livewire\AlertBanner;
 use App\Models\Plugin;
 use App\Models\WingsPlugin;
 use App\Services\Helpers\PluginService;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Schemas\Components\Tabs\Tab;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,14 +25,7 @@ class ListPlugins extends ListRecords
         return $this->activeTab === 'wings';
     }
 
-    /**
-     * The Wings tab lists plugins that live on the nodes rather than in this
-     * installation, so the table reads a different model for it.
-     *
-     * Both are Sushi models over data that is not in the Panel's database, the
-     * Panel's own from the plugins directory and these from each node's API, so
-     * the table itself does not have to know the difference.
-     */
+    // The Wings tab lists the plugins on the nodes
     protected function getTableQuery(): Builder|Relation|null
     {
         if ($this->isWingsTab()) {
@@ -42,9 +36,7 @@ class ListPlugins extends ListRecords
     }
 
     /**
-     * Reordering sets load order, which decides the order plugins load and
-     * therefore which one gets to act on something first. Wings keeps its own
-     * order per node, so the change is sent to the node the plugins came from.
+     * Wings keeps a load order per node, so it is sent to each plugin's node.
      *
      * @param  array<int, string>  $order
      */
@@ -61,9 +53,7 @@ class ListPlugins extends ListRecords
             return;
         }
 
-        // Rows are keyed "<node id>:<plugin id>" because one page lists every
-        // node. Group them back by node so each node is told the order of its
-        // own plugins and nothing else.
+        // Rows are keyed "<node id>:<plugin id>", group them back by node
         $byNode = [];
         foreach ($order as $key) {
             [$nodeId, $pluginId] = array_pad(explode(':', $key, 2), 2, null);
@@ -72,6 +62,8 @@ class ListPlugins extends ListRecords
             }
             $byNode[$nodeId][] = $pluginId;
         }
+
+        $failed = [];
 
         foreach ($byNode as $nodeId => $plugins) {
             $plugin = WingsPlugin::query()->where('node_id', $nodeId)->first();
@@ -83,10 +75,20 @@ class ListPlugins extends ListRecords
                 $plugin->repository()->setLoadOrder($plugins);
             } catch (Throwable $exception) {
                 report($exception);
+
+                $failed[] = $plugin->node_name;
             }
         }
 
         WingsPlugin::flush();
+
+        if ($failed !== []) {
+            Notification::make()
+                ->danger()
+                ->title(trans('admin/plugin.notifications.reorder_error'))
+                ->body(trans('admin/plugin.notifications.reorder_error_nodes', ['nodes' => implode(', ', $failed)]))
+                ->send();
+        }
     }
 
     public function mount(): void
@@ -118,9 +120,6 @@ class ListPlugins extends ListRecords
                 ->modifyQueryUsing(fn () => $query);
         }
 
-        // Plugins on the nodes rather than in the Panel. The count is left off
-        // when the nodes cannot be reached, because a zero there would read as
-        // "no plugins installed" when the truth is "we could not ask".
         $tabs['wings'] = Tab::make('wings')
             ->label(trans('admin/plugin.tabs_wings'))
             ->icon(TablerIcon::Server2)
@@ -129,14 +128,26 @@ class ListPlugins extends ListRecords
         return $tabs;
     }
 
+    // Don't ask the nodes just for a badge on the other tabs
     private function wingsBadge(): ?string
     {
+        if (!$this->isWingsTab() && !cache()->has(WingsPlugin::CACHE_KEY)) {
+            return null;
+        }
+
         try {
-            return (string) WingsPlugin::count() ?: null;
+            $plugins = WingsPlugin::query()->get();
         } catch (Throwable $exception) {
             report($exception);
 
             return null;
         }
+
+        // An unreachable node means the count is incomplete
+        if ($plugins->contains(fn (WingsPlugin $plugin) => $plugin->error !== null)) {
+            return null;
+        }
+
+        return $plugins->isNotEmpty() ? (string) $plugins->count() : null;
     }
 }

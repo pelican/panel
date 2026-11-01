@@ -1,12 +1,15 @@
 <?php
 
+use App\Enums\PluginStatus;
 use App\Filament\Admin\Resources\Plugins\Pages\ListPlugins;
 use App\Models\Node;
 use App\Models\Role;
 use App\Models\WingsPlugin;
 use App\Repositories\Daemon\DaemonPluginRepository;
 use Filament\Facades\Filament;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
 
@@ -27,16 +30,8 @@ afterEach(function () {
     WingsPlugin::flush();
 });
 
-/**
- * Render every tab on the plugin list.
- *
- * The table's columns and actions are closures that Filament evaluates against
- * each row, and it resolves their parameters by name and then by the record's
- * exact class. A parameter that does not resolve is a runtime failure that
- * nothing else catches: the page compiles, static analysis passes, and the page
- * then 500s when somebody opens it. Rendering each tab here is what turns that
- * into a test failure.
- */
+// Closure parameters are resolved by the record's exact class, which only fails once a tab renders
+
 it('renders every tab on the plugin list', function () {
     $tabs = array_keys(livewire(ListPlugins::class)->instance()->getTabs());
 
@@ -138,4 +133,115 @@ it('keeps panel plugins working while wings plugins are listed', function () {
     // query failed outright.
     livewire(ListPlugins::class)->set('activeTab', 'wings')->assertSuccessful();
     livewire(ListPlugins::class)->set('activeTab', 'all')->assertSuccessful();
+});
+
+it('does not treat a 404 that did not come from wings as an unsupported node', function () {
+    $node = Node::factory()->create();
+
+    Http::fake([
+        '*/api/plugins' => Http::response('not found', 404, ['User-Agent' => 'nginx']),
+    ]);
+
+    (new DaemonPluginRepository())->setNode($node)->getPlugins();
+})->throws(Exception::class);
+
+it('lists every node and keeps unreachable ones as error rows', function () {
+    $reachable = Node::factory()->create(['name' => 'up-node']);
+    $unreachable = Node::factory()->create(['name' => 'down-node']);
+
+    Http::fake([
+        "*{$reachable->fqdn}*/api/plugins" => Http::response(['enabled' => true, 'data' => []]),
+        "*{$unreachable->fqdn}*/api/plugins" => Http::response('unavailable', 500),
+    ]);
+
+    $plugins = WingsPlugin::query()->get();
+
+    expect($plugins->firstWhere('node_name', 'down-node')->error)->not->toBeNull()
+        ->and($plugins->firstWhere('node_name', 'up-node'))->toBeNull();
+});
+
+it('authorizes wings plugins through their own policy', function () {
+    [$user] = generateTestAccount();
+
+    $plugin = new WingsPlugin();
+
+    expect($user->can('update', $plugin))->toBeFalse();
+
+    $role = Role::factory()->create(['name' => 'Plugin Manager', 'guard_name' => 'web']);
+    $role->givePermissionTo(Permission::findOrCreate('update plugin', 'web'));
+    $user->syncRoles($role);
+
+    expect($user->fresh()->can('update', $plugin))->toBeTrue();
+});
+
+it('lists a wings plugin that omits its optional fields', function () {
+    Node::factory()->create(['name' => 'sparse-node']);
+
+    Http::fake([
+        '*/api/plugins' => Http::response(['enabled' => true, 'data' => [['id' => 'sparse', 'name' => 'Sparse']]]),
+    ]);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->assertSuccessful()
+        ->assertSee('Sparse');
+});
+
+it('shows an offline node as an error row', function () {
+    $node = Node::factory()->create(['name' => 'offline-node']);
+
+    Http::fake([
+        "*{$node->fqdn}*/api/plugins" => fn () => throw new ConnectionException('Connection refused'),
+    ]);
+
+    $row = WingsPlugin::query()->get()->firstWhere('node_name', 'offline-node');
+
+    expect($row)->not->toBeNull()
+        ->and($row->error)->toContain('Connection refused');
+});
+
+it('reports a wings 404 as unsupported when the node is fetched asynchronously', function () {
+    $node = Node::factory()->create(['name' => 'old-node']);
+
+    Http::fake([
+        "*{$node->fqdn}*/api/plugins" => Http::response('404 page not found', 404, [
+            'User-Agent' => "Pelican Wings/vdevelop (id:{$node->daemon_token_id})",
+        ]),
+    ]);
+
+    expect(WingsPlugin::query()->get()->firstWhere('node_name', 'old-node'))->toBeNull();
+});
+
+it('lists a wings plugin with a status the panel does not know as errored', function () {
+    Node::factory()->create(['name' => 'new-node']);
+
+    Http::fake([
+        '*/api/plugins' => Http::response(['enabled' => true, 'data' => [[
+            'id' => 'odd',
+            'name' => 'Odd',
+            'meta' => ['status' => 'quarantined'],
+        ], [
+            'id' => 'malformed',
+            'name' => 'Malformed',
+            'meta' => ['status' => ['enabled']],
+        ]]]),
+    ]);
+
+    expect(WingsPlugin::query()->where('plugin_id', 'odd')->first()->status)->toBe(PluginStatus::Errored)
+        ->and(WingsPlugin::query()->where('plugin_id', 'malformed')->first()->status)->toBe(PluginStatus::Errored);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->assertSuccessful()
+        ->assertSee('Odd');
+});
+
+it('only offers the panel import actions outside the wings tab', function () {
+    Http::fake(['*/api/plugins' => Http::response(['enabled' => true, 'data' => []])]);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'all')
+        ->assertTableActionVisible('import_from_url')
+        ->set('activeTab', 'wings')
+        ->assertTableActionHidden('import_from_url');
 });

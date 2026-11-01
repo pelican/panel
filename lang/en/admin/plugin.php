@@ -76,6 +76,9 @@ return [
         'disabled' => 'Plugin disabled',
         'disable_error' => 'Could not disable plugin',
         'deleted' => 'Plugin deleted',
+        'settings_error' => 'Could not save plugin settings',
+        'reorder_error' => 'Could not save the load order',
+        'reorder_error_nodes' => 'The load order was not saved on: :nodes',
 
         'imported' => 'Plugin imported',
         'import_exists' => 'A plugin with that id already exists',

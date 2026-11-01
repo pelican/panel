@@ -53,15 +53,9 @@ class PluginResource extends Resource
     }
 
     /**
-     * Run an action against the node a Wings plugin lives on and report what
-     * came back.
-     *
-     * Every Wings action is a call to another machine, which can fail for
-     * reasons the Panel cannot see, so nothing here reports a success the node
-     * did not confirm. The cached rows are dropped either way, so the table
-     * shows the node's real state rather than what it said beforehand.
+     * Run an action on a node and only report success if the node confirmed it.
      */
-    private static function runOnNode(WingsPlugin $record, callable $callback, string $errorKey, string $successKey): void
+    private static function runOnNode(callable $callback, string $errorKey, string $successKey): void
     {
         try {
             $callback();
@@ -156,7 +150,19 @@ class PluginResource extends Resource
                     ->visible(fn (Plugin $record) => $record->status === PluginStatus::Enabled && $record->hasSettings())
                     ->schema(fn (Plugin $record) => $record->getSettingsForm())
                     ->fillForm(fn (Plugin $record) => $record->getSettingsFormData())
-                    ->action(fn (array $data, Plugin $record) => $record->saveSettings($data))
+                    ->action(function (array $data, Plugin $record) {
+                        try {
+                            $record->saveSettings($data);
+                        } catch (Exception $exception) {
+                            report($exception);
+
+                            Notification::make()
+                                ->danger()
+                                ->title(trans('admin/plugin.notifications.settings_error'))
+                                ->body($exception->getMessage())
+                                ->send();
+                        }
+                    })
                     ->slideOver(),
                 ActionGroup::make([
                     Action::make('exclude_install')
@@ -166,11 +172,8 @@ class PluginResource extends Resource
                         ->color('success')
                         ->hidden(fn (Plugin $record) => $record->status !== PluginStatus::NotInstalled)
                         ->action(function (Plugin $record) {
-                            // A Wings plugin is installed by the node, not by a
-                            // job here: the files are already there and it is
-                            // the daemon that has to prove they load.
                             if ($record instanceof WingsPlugin) {
-                                self::runOnNode($record, fn () => $record->repository()->install($record->plugin_id), 'install_error', 'enabled');
+                                self::runOnNode(fn () => $record->repository()->install($record->plugin_id), 'install_error', 'installed');
 
                                 return;
                             }
@@ -225,7 +228,7 @@ class PluginResource extends Resource
                         ->modalDescription(fn (Plugin $record, PluginService $pluginService) => $record->isTheme() && $pluginService->hasThemePluginEnabled() ? trans('admin/plugin.enable_theme_modal.description') : null)
                         ->action(function (Plugin $record, $livewire, PluginService $pluginService) {
                             if ($record instanceof WingsPlugin) {
-                                self::runOnNode($record, fn () => $record->repository()->enable($record->plugin_id), 'enable_error', 'enabled');
+                                self::runOnNode(fn () => $record->repository()->enable($record->plugin_id), 'enable_error', 'enabled');
 
                                 return;
                             }
@@ -247,7 +250,7 @@ class PluginResource extends Resource
                         ->visible(fn (Plugin $record) => $record->canDisable())
                         ->action(function (Plugin $record, $livewire, PluginService $pluginService) {
                             if ($record instanceof WingsPlugin) {
-                                self::runOnNode($record, fn () => $record->repository()->disable($record->plugin_id), 'disable_error', 'disabled');
+                                self::runOnNode(fn () => $record->repository()->disable($record->plugin_id), 'disable_error', 'disabled');
 
                                 return;
                             }
@@ -267,10 +270,10 @@ class PluginResource extends Resource
                         ->icon(TablerIcon::Trash)
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->visible(fn (Plugin $record) => $record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored)
+                        ->visible(fn (Plugin $record) => ($record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored) && !($record instanceof WingsPlugin && $record->plugin_id === ''))
                         ->action(function (Plugin $record, $livewire, PluginService $pluginService) {
                             if ($record instanceof WingsPlugin) {
-                                self::runOnNode($record, fn () => $record->repository()->uninstall($record->plugin_id, true), 'uninstall_error', 'deleted');
+                                self::runOnNode(fn () => $record->repository()->uninstall($record->plugin_id, true), 'uninstall_error', 'deleted');
 
                                 return;
                             }
@@ -293,7 +296,7 @@ class PluginResource extends Resource
                         ->hidden(fn (Plugin $record) => $record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored)
                         ->action(function (Plugin $record) {
                             if ($record instanceof WingsPlugin) {
-                                self::runOnNode($record, fn () => $record->repository()->uninstall($record->plugin_id), 'uninstall_error', 'uninstalled');
+                                self::runOnNode(fn () => $record->repository()->uninstall($record->plugin_id), 'uninstall_error', 'uninstalled');
 
                                 return;
                             }
@@ -323,6 +326,7 @@ class PluginResource extends Resource
                     ->hiddenLabel()
                     ->tooltip(trans('admin/plugin.import_from_file'))
                     ->authorize(fn () => user()?->can('create', Plugin::class))
+                    ->visible(fn ($livewire) => $livewire->activeTab !== 'wings')
                     ->icon(TablerIcon::FileDownload)
                     ->schema([
                         // TODO: switch to new file upload
@@ -368,6 +372,7 @@ class PluginResource extends Resource
                     ->hiddenLabel()
                     ->tooltip(trans('admin/plugin.import_from_url'))
                     ->authorize(fn () => user()?->can('create', Plugin::class))
+                    ->visible(fn ($livewire) => $livewire->activeTab !== 'wings')
                     ->icon(TablerIcon::WorldDownload)
                     ->schema([
                         TextInput::make('url')

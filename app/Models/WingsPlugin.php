@@ -9,24 +9,15 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Component;
+use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Promise\Utils;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Arr;
+use RuntimeException;
 use Throwable;
 
 /**
- * A plugin installed on a node's Wings daemon.
- *
- * Wings plugins are a separate population from the Panel's own. They are Go
- * source living on a node, they hook things only the daemon can see, such as
- * SFTP deletes and container creation, and they are enabled per node rather
- * than per installation.
- *
- * This extends {@see Plugin} so that the existing plugin table can render both
- * without a second set of columns: every column the table reads exists here
- * too, with the same meaning. What differs is where the rows come from, which
- * is an HTTP call to each node rather than the plugins directory on disk, and
- * what the actions do, which is talk to the daemon rather than the Panel's own
- * plugin service.
+ * A plugin installed on a node's Wings daemon, listed next to the Panel's own plugins.
  *
  * @property int $node_id
  * @property string $node_name
@@ -47,28 +38,16 @@ class WingsPlugin extends Plugin
 {
     public const RESOURCE_NAME = 'wings_plugin';
 
+    public const CACHE_KEY = 'wings_plugins.rows';
+
+    private const CACHE_SECONDS = 10;
+
     /**
-     * Sushi keeps its SQLite connection in a static property, and a static
-     * declared on Plugin is shared with everything extending it. Sharing one
-     * connection would mean whichever model booted first created its table and
-     * the other's query hit a database that has never heard of it.
-     *
-     * Redeclaring the property here gives this model its own storage for it,
-     * so each has its own in-memory database and its own table.
+     * Needs its own connection, Plugin's static one is shared with subclasses.
      *
      * @var Connection|null
      */
     protected static $sushiConnection;
-
-    /**
-     * How long a node's plugin list is reused for.
-     *
-     * Listing plugins means one request per node, and the page re-reads rows
-     * several times while rendering. A short window keeps a page load to one
-     * request per node while still reflecting an action within seconds of it
-     * being taken; every action clears this anyway.
-     */
-    private const CacheSeconds = 10;
 
     /** @return string[] */
     public function getSchema(): array
@@ -104,39 +83,43 @@ class WingsPlugin extends Plugin
     }
 
     /**
-     * Read every reachable node's plugin list.
-     *
-     * A node that cannot be reached contributes one row describing the failure
-     * rather than being skipped. Skipping it would make a broken node look like
-     * a node with no plugins, which is exactly the wrong impression when
-     * something has gone wrong.
-     *
      * @return array<int, array<string, mixed>>
      */
     public function getRows(): array
     {
-        return cache()->remember('wings_plugins.rows', now()->addSeconds(self::CacheSeconds), function (): array {
+        return cache()->remember(self::CACHE_KEY, now()->addSeconds(self::CACHE_SECONDS), function (): array {
+            $nodes = Node::all();
+
+            $promises = [];
+            foreach ($nodes as $node) {
+                $promises[$node->id] = (new DaemonPluginRepository())->setNode($node)->getPluginsAsync();
+            }
+
+            $results = Utils::settle($promises)->wait();
+
             $rows = [];
+            foreach ($nodes as $node) {
+                $result = $results[$node->id];
 
-            foreach (Node::all() as $node) {
-                try {
-                    $response = (new DaemonPluginRepository())->setNode($node)->getPlugins();
-                } catch (Throwable $exception) {
-                    report($exception);
+                // Unreachable nodes get an error row so they don't look empty
+                if ($result['state'] !== PromiseInterface::FULFILLED) {
+                    $reason = $result['reason'];
 
-                    $rows[] = self::errorRow($node, $exception->getMessage());
+                    if ($reason instanceof Throwable) {
+                        report($reason);
+                    }
+
+                    $rows[] = self::errorRow($node, $reason instanceof Throwable ? $reason->getMessage() : (string) $reason);
 
                     continue;
                 }
 
-                // Either the node's Wings predates plugins, or an operator has
-                // switched the subsystem off. Neither is something to show a
-                // row about; the node simply has no plugins to manage.
-                if (!$response['enabled']) {
+                // No plugin support, or the subsystem is turned off
+                if (!$result['value']['enabled']) {
                     continue;
                 }
 
-                foreach ($response['data'] as $plugin) {
+                foreach ($result['value']['data'] as $plugin) {
                     $rows[] = self::row($node, $plugin);
                 }
             }
@@ -146,8 +129,6 @@ class WingsPlugin extends Plugin
     }
 
     /**
-     * Build one row from a node's response.
-     *
      * @param  array<string, mixed>  $plugin
      * @return array<string, mixed>
      */
@@ -155,9 +136,12 @@ class WingsPlugin extends Plugin
     {
         $meta = $plugin['meta'] ?? [];
 
+        // An unknown status would throw in the enum cast
+        $rawStatus = $meta['status'] ?? PluginStatus::NotInstalled->value;
+        $status = (is_string($rawStatus) ? PluginStatus::tryFrom($rawStatus) : null) ?? PluginStatus::Errored;
+
         return [
-            // The id has to be unique across every node, since one page lists
-            // them all and the same plugin is commonly installed on several.
+            // Unique across nodes, as the same plugin is often installed on several
             'id' => $node->id . ':' . $plugin['id'],
             'node_id' => $node->id,
             'node_name' => $node->name,
@@ -168,21 +152,19 @@ class WingsPlugin extends Plugin
             'version' => $plugin['version'] ?? '0.0.0',
             'description' => $plugin['description'] ?? null,
             'category' => $plugin['category'] ?? 'plugin',
-            'url' => $plugin['url'] ?: null,
-            'update_url' => $plugin['update_url'] ?: null,
+            'url' => Arr::get($plugin, 'url') ?: null,
+            'update_url' => Arr::get($plugin, 'update_url') ?: null,
 
-            'wings_version' => $plugin['wings_version'] ?: null,
-            'api_version' => $plugin['api_version'] ?? 1,
+            'wings_version' => Arr::get($plugin, 'wings_version') ?: null,
+            'api_version' => $plugin['api_version'] ?? null,
             'package' => $plugin['package'] ?? null,
 
-            'status' => $meta['status'] ?? PluginStatus::NotInstalled->value,
-            'status_message' => $meta['status_message'] ?: null,
+            'status' => $status->value,
+            'status_message' => Arr::get($meta, 'status_message') ?: null,
             'load_order' => Arr::integer($meta, 'load_order', 0),
 
             'hooks' => implode(',', Arr::get($meta, 'registered.hooks', []) ?? []),
 
-            // Kept as JSON so the settings form can be built from what the
-            // plugin's manifest declares without another round trip.
             'settings' => json_encode($plugin['settings'] ?? [], JSON_THROW_ON_ERROR),
             'values' => json_encode($meta['values'] ?? [], JSON_THROW_ON_ERROR),
 
@@ -235,9 +217,7 @@ class WingsPlugin extends Plugin
     }
 
     /**
-     * Only the status is cast. Category stays a string because Wings has
-     * categories the Panel's enum does not, such as backup and parser, and
-     * forcing them through it would either lose them or throw.
+     * Category stays a string, Wings has categories the Panel's enum doesn't
      *
      * @return array<string, string>
      */
@@ -255,7 +235,9 @@ class WingsPlugin extends Plugin
 
     public function repository(): DaemonPluginRepository
     {
-        return (new DaemonPluginRepository())->setNode($this->node());
+        $node = $this->node() ?? throw new RuntimeException('The node of this plugin no longer exists');
+
+        return (new DaemonPluginRepository())->setNode($node);
     }
 
     /** @return string[] */
@@ -281,21 +263,12 @@ class WingsPlugin extends Plugin
         return (bool) $this->subsystem_enabled;
     }
 
-    /**
-     * Forget the cached rows so the next read reflects an action that was just
-     * taken, rather than the state from before it.
-     */
     public static function flush(): void
     {
-        cache()->forget('wings_plugins.rows');
+        cache()->forget(self::CACHE_KEY);
 
         self::refreshRows();
     }
-
-    // The rest of this class turns off the parts of Plugin that only make sense
-    // for a plugin living in the Panel's own plugins directory. A Wings plugin
-    // is not on this filesystem and has no PHP class, so anything that would go
-    // looking for one answers for the remote plugin instead.
 
     public function canEnable(): bool
     {
@@ -314,16 +287,11 @@ class WingsPlugin extends Plugin
 
     public function isCompatible(): bool
     {
-        // Wings decides this, since it is the thing whose version matters, and
-        // it has already reported the answer as the plugin's status.
         return $this->status !== PluginStatus::Incompatible;
     }
 
     public function isUpdateAvailable(): bool
     {
-        // Checking would mean a request per plugin to its update url, from the
-        // Panel, for a plugin on another machine. The node checks this itself
-        // when an update is actually requested.
         return false;
     }
 
@@ -339,14 +307,7 @@ class WingsPlugin extends Plugin
     }
 
     /**
-     * Build the settings form from what the plugin's manifest declares.
-     *
-     * A Panel plugin hands over Filament components directly, because it is
-     * loaded into this process. A Wings plugin cannot: it runs on another
-     * machine and may not be running at all. So it declares its settings in
-     * plugin.json instead, and this turns that declaration into a form, which
-     * is what lets an admin configure a plugin that is disabled or has never
-     * been enabled.
+     * Built from the settings declared in the plugin's plugin.json.
      *
      * @return Component[]
      */
@@ -374,7 +335,7 @@ class WingsPlugin extends Plugin
             };
 
             $fields[] = $field
-                ->label($setting['label'] ?: $key)
+                ->label(($setting['label'] ?? null) ?: $key)
                 ->helperText($setting['description'] ?? null)
                 ->required((bool) ($setting['required'] ?? false));
         }
@@ -383,12 +344,6 @@ class WingsPlugin extends Plugin
     }
 
     /**
-     * Save settings on the node.
-     *
-     * Wings rejects any key its manifest does not declare, so a form that has
-     * drifted from the plugin fails loudly instead of writing values nothing
-     * will ever read.
-     *
      * @param  array<mixed, mixed>  $data
      */
     public function saveSettings(array $data): void

@@ -2,27 +2,17 @@
 
 namespace App\Repositories\Daemon;
 
+use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
+use Throwable;
 
-/**
- * Manages the plugins installed on a node's Wings daemon.
- *
- * Wings plugins are a separate population from the Panel's own: they are Go
- * source living on the node, they hook things only the daemon can see, and they
- * are enabled per node rather than per installation. What they share is the
- * shape of a plugin, so the responses this reads back use the same field names
- * as the Panel's plugin resource and the admin UI can present both the same way.
- */
 class DaemonPluginRepository extends DaemonRepository
 {
     /**
      * List every plugin on the node.
-     *
-     * A node whose Wings has the plugin subsystem switched off answers with
-     * `enabled: false` rather than an error, so the UI can tell "this node runs
-     * no plugins" apart from "this node could not be reached".
      *
      * @return array{enabled: bool, directory: ?string, data: array<int, array<string, mixed>>, supported: bool}
      *
@@ -30,40 +20,41 @@ class DaemonPluginRepository extends DaemonRepository
      */
     public function getPlugins(): array
     {
-        try {
-            $response = $this->getHttpClient()
-                ->connectTimeout(3)
-                ->timeout(15)
-                ->get('/api/plugins');
-        } catch (RequestException $exception) {
-            // A node running a Wings from before plugins existed has no such
-            // route and answers 404. That is not a failure worth reporting as
-            // one: the node is healthy, it just has nothing to say here.
-            // Everything else is a real problem and keeps propagating.
-            //
-            // The check has to happen here rather than with throwUnlessStatus,
-            // because the shared daemon client already throws on any non-2xx
-            // in order to verify the node token.
-            if ($exception->response->notFound()) {
-                return ['enabled' => false, 'directory' => null, 'data' => [], 'supported' => false];
-            }
-
-            throw $exception;
-        }
-
-        $body = $response->json();
-
-        return [
-            'enabled' => (bool) ($body['enabled'] ?? false),
-            'directory' => $body['directory'] ?? null,
-            'data' => $body['data'] ?? [],
-            'supported' => true,
-        ];
+        return $this->getPluginsAsync()->wait();
     }
 
     /**
-     * Return a single plugin.
-     *
+     * Same as getPlugins() but doesn't wait, so several nodes can be asked at once.
+     */
+    public function getPluginsAsync(): PromiseInterface
+    {
+        return $this->getHttpClient()
+            ->connectTimeout(3)
+            ->timeout(15)
+            ->async()
+            ->get('/api/plugins')
+            ->then(function (Response|Throwable $response) {
+                // Older Wings versions have no plugin route, but only a 404 from Wings itself counts
+                if ($response instanceof RequestException && $response->response->notFound() && str_starts_with((string) $response->response->header('User-Agent'), 'Pelican Wings/')) {
+                    return ['enabled' => false, 'directory' => null, 'data' => [], 'supported' => false];
+                }
+
+                if ($response instanceof Throwable) {
+                    throw $response;
+                }
+
+                $body = $response->json();
+
+                return [
+                    'enabled' => (bool) ($body['enabled'] ?? false),
+                    'directory' => $body['directory'] ?? null,
+                    'data' => $body['data'] ?? [],
+                    'supported' => true,
+                ];
+            });
+    }
+
+    /**
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -72,31 +63,24 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(15)
-            ->get("/api/plugins/$plugin")
+            ->get($this->path($plugin))
             ->json();
     }
 
     /**
-     * Install a plugin whose files are on the node but which has never been set
-     * up. Wings proves the plugin loads before accepting it, so a failure here
-     * means the plugin does not work rather than that the request was malformed.
-     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
      */
-    public function install(string $plugin, bool $enable = true): array
+    public function install(string $plugin): array
     {
         return $this->getHttpClient()
             ->timeout(60)
-            ->post("/api/plugins/$plugin/install", [])
+            ->post($this->path($plugin, 'install'), [])
             ->json() ?? [];
     }
 
     /**
-     * Enable a plugin. This takes effect immediately on the node; Wings is not
-     * restarted.
-     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -105,14 +89,11 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(60)
-            ->post("/api/plugins/$plugin/enable")
+            ->post($this->path($plugin, 'enable'))
             ->json() ?? [];
     }
 
     /**
-     * Disable a plugin, unloading it and withdrawing its routes, jobs, parsers
-     * and backup adapter.
-     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -121,16 +102,11 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(60)
-            ->post("/api/plugins/$plugin/disable")
+            ->post($this->path($plugin, 'disable'))
             ->json() ?? [];
     }
 
     /**
-     * Uninstall a plugin, optionally deleting its files from the node.
-     *
-     * Keeping the files is the default, matching the Panel's own uninstall, so
-     * that an operator can put a plugin back without fetching it again.
-     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -139,13 +115,11 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(60)
-            ->post("/api/plugins/$plugin/uninstall?delete=" . ($deleteFiles ? 'true' : 'false'))
+            ->post($this->path($plugin, 'uninstall') . '?delete=' . ($deleteFiles ? 'true' : 'false'))
             ->json() ?? [];
     }
 
     /**
-     * Download and install a plugin's newest version from its update url.
-     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -154,16 +128,11 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(300)
-            ->post("/api/plugins/$plugin/update")
+            ->post($this->path($plugin, 'update'))
             ->json() ?? [];
     }
 
     /**
-     * Save an operator's settings for a plugin.
-     *
-     * Only keys the plugin's manifest declares are accepted; Wings rejects
-     * anything else rather than writing a value nothing reads.
-     *
      * @param  array<string, mixed>  $values
      * @return array<string, mixed>
      *
@@ -173,14 +142,11 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(30)
-            ->put("/api/plugins/$plugin/settings", $values)
+            ->put($this->path($plugin, 'settings'), $values)
             ->json() ?? [];
     }
 
     /**
-     * Set the order plugins load in, which is the order their hooks run and
-     * therefore which plugin gets to refuse an action first.
-     *
      * @param  string[]  $order
      *
      * @throws ConnectionException
@@ -193,8 +159,6 @@ class DaemonPluginRepository extends DaemonRepository
     }
 
     /**
-     * Import a plugin onto the node from a url.
-     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -208,8 +172,6 @@ class DaemonPluginRepository extends DaemonRepository
     }
 
     /**
-     * Import a plugin onto the node from an uploaded archive.
-     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -224,12 +186,6 @@ class DaemonPluginRepository extends DaemonRepository
     }
 
     /**
-     * List the files making up a plugin, or read one of them.
-     *
-     * A Wings plugin ships as readable source so that an operator can see what
-     * it does before enabling it. Reading it through the Panel is what makes
-     * that practical, rather than requiring shell access to every node.
-     *
      * @return array{files?: string[], file?: string, content?: string}
      *
      * @throws ConnectionException
@@ -238,7 +194,15 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(15)
-            ->get("/api/plugins/$plugin/source", $file ? ['file' => $file] : [])
+            ->get($this->path($plugin, 'source'), $file ? ['file' => $file] : [])
             ->json() ?? [];
+    }
+
+    /**
+     * Plugin ids come from the node, so they are encoded before going into a path.
+     */
+    private function path(string $plugin, ?string $action = null): string
+    {
+        return '/api/plugins/' . rawurlencode($plugin) . ($action ? "/$action" : '');
     }
 }
