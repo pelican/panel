@@ -5,6 +5,7 @@ namespace App\Services\Eggs;
 use App\Models\Egg;
 use App\Models\Server;
 use App\Models\ServerVariable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 
 class EggChangerService
@@ -48,7 +49,8 @@ class EggChangerService
 
         if ($server->mounts->isNotEmpty()) {
             $invalidMountIds = $server->mounts()
-                ->whereNotIn('mounts.id', $newEgg->mounts->pluck('id'))
+                ->whereHas('eggs')
+                ->whereDoesntHave('eggs', fn (Builder $query) => $query->where('eggs.id', $newEgg->id))
                 ->pluck('mounts.id');
 
             if ($invalidMountIds->isNotEmpty()) {
