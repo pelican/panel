@@ -47,8 +47,11 @@ class EggChangerService
         }
 
         if ($server->mounts->isNotEmpty()) {
+            // Mounts without any egg relationship are globally allowed and must be kept.
+            // Only detach mounts that are restricted to eggs which do not include the new egg.
             $invalidMountIds = $server->mounts()
-                ->whereNotIn('mounts.id', $newEgg->mounts->pluck('id'))
+                ->whereHas('eggs')
+                ->whereDoesntHave('eggs', fn ($query) => $query->where('eggs.id', $newEgg->id))
                 ->pluck('mounts.id');
 
             if ($invalidMountIds->isNotEmpty()) {
