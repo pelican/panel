@@ -16,7 +16,7 @@ class EmailSettingsCommand extends Command
                             {--driver= : The mail driver to use.}
                             {--email= : Email address that messages from the Panel will originate from.}
                             {--from= : The name emails from the Panel will appear to be from.}
-                            {--encryption=}
+                            {--scheme=}
                             {--host=}
                             {--port=}
                             {--endpoint=}
@@ -93,10 +93,10 @@ class EmailSettingsCommand extends Command
             trans('command/messages.environment.mail.ask_smtp_password')
         );
 
-        $this->variables['MAIL_SCHEME'] = $this->option('encryption') ?? $this->choice(
-            trans('command/messages.environment.mail.ask_encryption'),
-            ['tls' => 'TLS', 'ssl' => 'SSL', '' => 'None'],
-            config('mail.mailers.smtp.encryption', 'tls')
+        $this->variables['MAIL_SCHEME'] = $this->option('scheme') ?? $this->choice(
+            trans('command/messages.environment.mail.ask_scheme'),
+            ['smtp' => 'SMTP', 'smtps' => 'SMTPS'],
+            config('mail.mailers.smtp.scheme')
         );
     }
 

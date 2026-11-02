@@ -129,6 +129,7 @@ class MountResource extends Resource
                     TextInput::make('name')
                         ->label(trans('admin/mount.name'))
                         ->required()
+                        ->unique()
                         ->helperText(trans('admin/mount.name_help'))
                         ->maxLength(64)
                         ->columnSpanFull(),

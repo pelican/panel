@@ -270,6 +270,7 @@
                         $wire.dispatch('refresh-sidebar');
                         $wire.dispatch('refresh-topbar');
                         $wire.dispatch('removeAlertBanner', { id: 'server_conflict' });
+                        $wire.dispatch('console-status');
                         break;
                     case 'feature match':
                         Livewire.dispatch('mount-feature', { data: args[0] });

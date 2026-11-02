@@ -4,6 +4,7 @@ namespace App\Extensions\Tasks;
 
 use App\Models\Schedule;
 use App\Models\Task;
+use App\Models\User;
 use Filament\Schemas\Components\Component;
 
 interface TaskSchemaInterface
@@ -14,7 +15,11 @@ interface TaskSchemaInterface
 
     public function runTask(Task $task): void;
 
-    public function canCreate(Schedule $schedule): bool;
+    /**
+     * Whether a task with this action may be created on the schedule. When a user is given their
+     * subuser permissions are checked as well, and when a payload is given it is checked too.
+     */
+    public function canCreate(Schedule $schedule, ?User $user = null, ?string $payload = null): bool;
 
     public function getDefaultPayload(): ?string;
 

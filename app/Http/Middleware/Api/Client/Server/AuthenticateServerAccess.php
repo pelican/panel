@@ -39,8 +39,9 @@ class AuthenticateServerAccess
 
         // At the very least, ensure that the user trying to make this request is the
         // server owner, a subuser, or an admin. We'll leave it up to the controllers
-        // to authenticate more detailed permissions if needed.
-        if ($user->id !== $server->owner_id && $user->cannot('update server', $server)) {
+        // to authenticate more detailed permissions if needed. The policy abilities are
+        // used (rather than the raw "view server" permission names) so node restrictions apply.
+        if ($user->id !== $server->owner_id && $user->cannot('view', $server) && $user->cannot('update', $server)) {
             // Check for subuser status.
             throw_unless($server->subusers->contains('user_id', $user->id), new NotFoundHttpException(trans('exceptions.api.resource_not_found')));
         }
@@ -51,7 +52,7 @@ class AuthenticateServerAccess
             // Still allow users to get information about their server if it is installing or
             // being transferred.
             if (!$request->routeIs('api:client:server.view')) {
-                throw_unless($user->can('update server', $server) && $request->routeIs($this->except), $exception);
+                throw_unless($user->can('update', $server) && $request->routeIs($this->except), $exception);
             }
         }
 

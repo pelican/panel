@@ -4,6 +4,7 @@ namespace App\Extensions\Tasks\Schemas;
 
 use App\Extensions\Tasks\TaskSchemaInterface;
 use App\Models\Schedule;
+use App\Models\User;
 use Filament\Forms\Components\Textarea;
 use Filament\Schemas\Components\Component;
 
@@ -14,7 +15,7 @@ abstract class TaskSchema implements TaskSchemaInterface
         return trans('server/schedule.tasks.actions.' . $this->getId() . '.title');
     }
 
-    public function canCreate(Schedule $schedule): bool
+    public function canCreate(Schedule $schedule, ?User $user = null, ?string $payload = null): bool
     {
         return true;
     }

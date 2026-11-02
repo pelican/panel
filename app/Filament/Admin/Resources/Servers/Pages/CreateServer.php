@@ -934,7 +934,7 @@ class CreateServer extends CreateRecord
 
             foreach ($range as $i) {
                 // Invalid port number
-                if ($i <= $portFloor || $i > $portCeil) {
+                if ($i < $portFloor || $i > $portCeil) {
                     Notification::make()
                         ->title(trans('admin/server.notifications.invalid_port'))
                         ->danger()

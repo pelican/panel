@@ -3,13 +3,15 @@
 namespace App\Http\Requests\Api\Client\Servers\Schedules;
 
 use App\Enums\SubuserPermission;
+use App\Extensions\Tasks\TaskService;
+use Illuminate\Validation\Rule;
 
 class StoreTaskRequest extends ViewScheduleRequest
 {
     /**
-     * Determine if the user is allowed to create a new task for this schedule. We simply
-     * check if they can modify a schedule to determine if they're able to do this. There
-     * are no task specific permissions.
+     * Determine if the user is allowed to create a new task for this schedule. We check if they
+     * can modify a schedule here, the permissions required by the specific task action are
+     * checked by the controller.
      */
     public function permission(): SubuserPermission
     {
@@ -20,7 +22,7 @@ class StoreTaskRequest extends ViewScheduleRequest
     {
         return [
             /** What the task does when it runs. */
-            'action' => 'required|in:command,power,backup,delete_files',
+            'action' => ['required', Rule::in(array_keys(app(TaskService::class)->getAll()))], // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
             /** Argument for the action: the console command, the power signal, or the paths to skip or delete. */
             'payload' => 'required_unless:action,backup|string|nullable',
             /** Seconds to wait after the previous task finishes before this one runs. */

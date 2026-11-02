@@ -25,6 +25,15 @@
                             reject(new Error('ws_error'));
                         };
 
+                        // Wings closes a suspended server's socket with 4409 before auth,
+                        // which still proves the websocket reached Wings
+                        ws.onclose = (event) => {
+                            if (event.code === 4409) {
+                                clearTimeout(timeout);
+                                resolve();
+                            }
+                        };
+
                         ws.onopen = () => {
                             ws.send(JSON.stringify({ event: 'auth', args: ['{{ $wsToken }}'] }));
                         };

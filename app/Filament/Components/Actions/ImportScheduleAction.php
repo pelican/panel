@@ -4,6 +4,7 @@ namespace App\Filament\Components\Actions;
 
 use App\Enums\SubuserPermission;
 use App\Enums\TablerIcon;
+use App\Exceptions\Http\HttpForbiddenException;
 use App\Models\Server;
 use App\Services\Schedules\Sharing\ScheduleImporterService;
 use Exception;
@@ -97,10 +98,10 @@ class ImportScheduleAction extends Action
                     $method = 'fromUrl';
                 }
                 try {
-                    $service->$method($schedule, $server);
+                    $service->$method($schedule, $server, user());
                     $success->push($name);
                 } catch (Exception $exception) {
-                    $failed->push($name);
+                    $failed->push($exception instanceof HttpForbiddenException ? "$name: {$exception->getMessage()}" : $name);
                     report($exception);
                 }
             }

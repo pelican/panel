@@ -151,7 +151,6 @@ class EggResource extends Resource
                         ->label(trans('admin/egg.author'))
                         ->required()
                         ->maxLength(255)
-                        ->email()
                         ->disabled()
                         ->columnSpan(['default' => 1, 'sm' => 1, 'md' => 1, 'lg' => 2])
                         ->helperText(trans('admin/egg.author_help_edit')),

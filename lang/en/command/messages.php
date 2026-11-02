@@ -48,7 +48,7 @@ return [
             'ask_driver' => 'Which driver should be used for sending emails?',
             'ask_mail_from' => 'Email address emails should originate from',
             'ask_mail_name' => 'Name that emails should appear from',
-            'ask_encryption' => 'Encryption method to use',
+            'ask_scheme' => 'Mail scheme',
         ],
     ],
 ];

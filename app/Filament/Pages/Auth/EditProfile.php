@@ -48,9 +48,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Socialite\Facades\Socialite;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use SocialiteProviders\Steam\Provider as SteamProvider;
 
 /**
  * @method User getUser()
@@ -224,7 +226,17 @@ class EditProfile extends BaseEditProfile
                                         ->success()
                                         ->send();
                                 } else {
-                                    redirect(Socialite::with($id)->redirect()->getTargetUrl());
+                                    $nonce = Str::random(40);
+                                    session()->put('oauth_link', ['id' => $id, 'at' => now()->timestamp, 'nonce' => $nonce]);
+
+                                    $provider = Socialite::with($id);
+
+                                    // Steam has no OAuth state, so carry a nonce through its return URL instead.
+                                    if ($provider instanceof SteamProvider) {
+                                        $provider->redirectUrl(url("/auth/oauth/callback/$id?link=$nonce"));
+                                    }
+
+                                    redirect($provider->redirect()->getTargetUrl());
                                 }
                             });
                     }

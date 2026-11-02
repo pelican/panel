@@ -90,7 +90,6 @@ class CreateEgg extends CreateRecord
                         ->label(trans('admin/egg.author'))
                         ->maxLength(255)
                         ->required()
-                        ->email()
                         ->columnSpan(['default' => 1, 'sm' => 1, 'md' => 2, 'lg' => 2])
                         ->helperText(trans('admin/egg.author_help')),
                     Textarea::make('description')

@@ -11,7 +11,7 @@ use Filament\Support\Exceptions\Halt;
 
 class RequirementsStep
 {
-    public const MIN_PHP_VERSION = '8.3';
+    public const MIN_PHP_VERSION = '8.4';
 
     public static function make(): Step
     {
