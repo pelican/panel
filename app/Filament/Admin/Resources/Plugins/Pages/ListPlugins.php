@@ -25,7 +25,11 @@ class ListPlugins extends ListRecords
         return $this->activeTab === 'wings';
     }
 
-    // The rows are cached for everyone, so each user's nodes are filtered here
+    /**
+     * The rows are cached for everyone, so each user's nodes are filtered here.
+     *
+     * @return Builder<WingsPlugin>
+     */
     private function wingsPlugins(): Builder
     {
         return WingsPlugin::query()->whereIn('node_id', user()?->accessibleNodes()->pluck('id'));
