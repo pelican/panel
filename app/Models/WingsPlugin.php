@@ -119,12 +119,15 @@ class WingsPlugin extends Plugin
                     continue;
                 }
 
-                foreach ($result['value']['data'] as $plugin) {
+                foreach ($result['value']['data'] as $index => $plugin) {
                     try {
                         $rows[] = self::row($node, $plugin);
                     } catch (Throwable $exception) {
-                        // One malformed plugin shouldn't hide the others
+                        // One malformed plugin shouldn't hide the others, but it is still reported
                         report($exception);
+
+                        $name = is_array($plugin) && is_string($plugin['name'] ?? null) ? $plugin['name'] : null;
+                        $rows[] = self::errorRow($node, $exception->getMessage(), "invalid-$index", $name);
                     }
                 }
             }
@@ -184,15 +187,15 @@ class WingsPlugin extends Plugin
     }
 
     /** @return array<string, mixed> */
-    private static function errorRow(Node $node, string $message): array
+    private static function errorRow(Node $node, string $message, string $key = 'unreachable', ?string $name = null): array
     {
         return [
-            'id' => $node->id . ':unreachable',
+            'id' => $node->id . ':' . $key,
             'node_id' => $node->id,
             'node_name' => $node->name,
             'plugin_id' => '',
 
-            'name' => $node->name,
+            'name' => $name ?? $node->name,
             'author' => '',
             'version' => '',
             'description' => $message,

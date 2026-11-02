@@ -215,8 +215,12 @@ it('keeps listing wings plugins when one of them is malformed', function () {
         ]]),
     ]);
 
-    expect(WingsPlugin::query()->where('plugin_id', 'fine')->exists())->toBeTrue()
-        ->and(WingsPlugin::query()->where('plugin_id', 'broken')->exists())->toBeFalse();
+    $plugins = WingsPlugin::query()->get();
+
+    // The broken one is shown as an error row, so a count never hides that something is missing
+    expect($plugins->firstWhere('plugin_id', 'fine'))->not->toBeNull()
+        ->and($plugins->firstWhere('name', 'Broken')->error)->not->toBeNull()
+        ->and($plugins->pluck('id')->unique())->toHaveCount($plugins->count());
 });
 
 it('fills wings plugin settings with their declared defaults', function () {
