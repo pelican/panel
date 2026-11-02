@@ -69,7 +69,8 @@ class StoreNodeRequest extends ApplicationApiRequest
     public function rules(?array $rules = null): array
     {
         return collect($rules ?? Node::getRules())->mapWithKeys(function ($value, $key) {
-            return [snake_case($key) => $value];
+            // Nested daemon_config paths mirror Wings config keys (such as IPv6), so they keep their case.
+            return [str_contains($key, '.') ? $key : snake_case($key) => $value];
         })->toArray();
     }
 

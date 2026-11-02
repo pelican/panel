@@ -94,6 +94,31 @@ class NodeControllerTest extends ApplicationApiIntegrationTestCase
         $this->assertDatabaseHas('nodes', ['id' => $node->id, 'name' => 'renamed-node']);
     }
 
+    public function test_update_node_validates_daemon_config_types(): void
+    {
+        Http::fake();
+
+        $node = Node::factory()->create();
+
+        $this->patchJson('/api/application/nodes/' . $node->id, array_merge($this->storePayload, [
+            'daemon_config' => [
+                'docker' => ['container_pid_limit' => 'invalid', 'network' => ['IPv6' => 'maybe']],
+                'api' => ['ssl' => ['cert' => 'relative/path.pem']],
+            ],
+        ]))
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('errors.0.meta.source_field', fn ($field) => str_starts_with($field, 'daemon_config.'));
+
+        $this->patchJson('/api/application/nodes/' . $node->id, array_merge($this->storePayload, [
+            'daemon_config' => ['docker' => ['container_pid_limit' => 1024, 'network' => ['IPv6' => false]]],
+        ]))->assertStatus(Response::HTTP_OK);
+
+        $this->assertSame(
+            ['docker' => ['network' => ['IPv6' => 0], 'container_pid_limit' => 1024]],
+            $node->refresh()->daemon_config,
+        );
+    }
+
     public function test_delete_node(): void
     {
         $node = Node::factory()->create();

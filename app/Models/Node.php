@@ -7,6 +7,7 @@ use App\Exceptions\Service\HasActiveServersException;
 use App\Repositories\Daemon\DaemonSystemRepository;
 use App\Traits\HasValidation;
 use Exception;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -216,6 +217,36 @@ class Node extends Model implements Validatable
     ];
 
     /**
+     * Adds a rule for each optional Wings config key, so values sent through the API are
+     * rejected when they can't be cast to the type Wings expects.
+     *
+     * @return array<array-key, string[]>
+     */
+    public static function getRules(): array
+    {
+        $rules = static::$validationRules;
+
+        foreach (self::DAEMON_CONFIG_KEYS as $path => $type) {
+            $rules["daemon_config.$path"] = match ($type) {
+                'bool' => ['nullable', 'boolean'],
+                'int' => ['nullable', 'integer', 'min:0'],
+                'float' => ['nullable', 'numeric', 'min:0'],
+                'string' => ['nullable', 'string'],
+                'list' => ['nullable', 'array'],
+            };
+
+            if ($type === 'list') {
+                $rules["daemon_config.$path.*"] = ['nullable', 'string'];
+            }
+        }
+
+        $rules['daemon_config.api.ssl.cert'][] = 'regex:/^\/[^\s]+$/';
+        $rules['daemon_config.api.ssl.key'][] = 'regex:/^\/[^\s]+$/';
+
+        return $rules;
+    }
+
+    /**
      * Default values for specific columns that are generally not changed on base installs.
      */
     protected $attributes = [
@@ -235,6 +266,21 @@ class Node extends Model implements Validatable
         'tags' => '[]',
     ];
 
+    /**
+     * Normalizes the optional Wings overrides on every read and write, so unknown or empty keys are
+     * never stored and booleans are always 1/0. A stored `false` would otherwise be cast to an empty
+     * string by the form's option fields and dropped the next time the node is saved.
+     *
+     * @return Attribute<array<string, mixed>|null, array<string, mixed>|null>
+     */
+    protected function daemonConfig(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value) => self::normalizeDaemonConfig($value ? json_decode($value, true) : null),
+            set: fn (?array $value) => ($normalized = self::normalizeDaemonConfig($value)) === null ? null : json_encode($normalized),
+        );
+    }
+
     protected function casts(): array
     {
         return [
@@ -249,7 +295,6 @@ class Node extends Model implements Validatable
             'public' => 'boolean',
             'maintenance_mode' => 'boolean',
             'tags' => 'array',
-            'daemon_config' => 'array',
         ];
     }
 
@@ -261,10 +306,6 @@ class Node extends Model implements Validatable
             $node->daemon_token_id = Str::random(self::DAEMON_TOKEN_ID_LENGTH);
 
             return true;
-        });
-
-        static::saving(function (self $node) {
-            $node->daemon_config = self::normalizeDaemonConfig($node->daemon_config);
         });
 
         static::deleting(function (self $node) {
@@ -287,7 +328,7 @@ class Node extends Model implements Validatable
      * config without granting the credential wings authenticates with.
      *
      * @return array{
-     *     debug: bool,
+     *     debug?: bool,
      *     uuid: string|null,
      *     token_id: string|null,
      *     token: string,
@@ -313,7 +354,6 @@ class Node extends Model implements Validatable
         $sslKey = Arr::pull($extras, 'api.ssl.key') ?? '/etc/letsencrypt/live/' . Str::lower($this->fqdn) . '/privkey.pem';
 
         $base = [
-            'debug' => (bool) ($extras['debug'] ?? false),
             'uuid' => $this->uuid,
             'token_id' => $redacted ? self::REDACTED : $this->daemon_token_id,
             'token' => $redacted ? self::REDACTED : $this->daemon_token,
@@ -388,12 +428,24 @@ class Node extends Model implements Validatable
     {
         $normalized = [];
 
-        foreach (array_keys(self::DAEMON_CONFIG_KEYS) as $path) {
+        foreach (self::DAEMON_CONFIG_KEYS as $path => $type) {
             $value = Arr::get($config ?? [], $path);
 
-            if (!self::isEmptyDaemonConfigValue($value)) {
-                Arr::set($normalized, $path, $value);
+            if (self::isEmptyDaemonConfigValue($value)) {
+                continue;
             }
+
+            if ($type === 'bool') {
+                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+                if ($value === null) {
+                    continue;
+                }
+
+                $value = (int) $value;
+            }
+
+            Arr::set($normalized, $path, $value);
         }
 
         return $normalized ?: null;

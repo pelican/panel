@@ -28,7 +28,7 @@ class NodeDaemonConfigTest extends TestCase
     {
         $config = $this->makeNode(null)->getConfiguration();
 
-        $this->assertFalse($config['debug']);
+        $this->assertArrayNotHasKey('debug', $config);
         $this->assertArrayNotHasKey('docker', $config);
         $this->assertArrayNotHasKey('throttles', $config);
         $this->assertSame(['data', 'sftp'], array_keys($config['system']));
@@ -109,6 +109,18 @@ class NodeDaemonConfigTest extends TestCase
         $this->assertSame(
             ['docker' => ['container_pid_limit' => '512']],
             Node::normalizeDaemonConfig(['docker' => ['container_pid_limit' => '512', 'tmpfs_size' => null]]),
+        );
+    }
+
+    public function test_normalize_stores_booleans_as_integers(): void
+    {
+        $this->assertSame(
+            ['debug' => 1, 'throttles' => ['enabled' => 0]],
+            Node::normalizeDaemonConfig(['debug' => true, 'throttles' => ['enabled' => false]]),
+        );
+        $this->assertSame(
+            ['throttles' => ['enabled' => 0]],
+            Node::normalizeDaemonConfig(['throttles' => ['enabled' => 'false'], 'debug' => 'not-a-bool']),
         );
     }
 

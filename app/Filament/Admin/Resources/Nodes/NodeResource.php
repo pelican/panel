@@ -672,6 +672,8 @@ class NodeResource extends Resource
                                 ->columnSpanFull()
                                 ->columns(['default' => 1, 'md' => 2])
                                 ->visible(fn (Get $get) => $get('scheme') === 'https' && !$get('behind_proxy'))
+                                // Hidden containers drop their children's state on save, so keep the paths when SSL is off.
+                                ->dehydratedWhenHidden()
                                 ->schema([
                                     TextInput::make('daemon_config.api.ssl.cert')
                                         ->label(trans('admin/node.wings_config.fields.api_ssl_cert'))

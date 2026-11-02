@@ -229,7 +229,7 @@ return [
             'system_user_rootless_enabled' => 'Enable when Docker runs in rootless mode.',
             'system_user_passwd_enable' => 'Mount a passwd/group file into containers to fix missing user errors.',
             'system_machine_id_enable' => 'Generate and mount a machine-id file into containers. Some games, such as Hytale, need it.',
-            'docker_network_name' => 'Set to "host" for host networking. Changing the network requires removing the old Docker network and restarting Wings.',
+            'docker_network_name' => 'Set to "host" for host networking. Also set docker.network.network_mode in config.yml to the same value, since containers use that, then remove the old Docker network and restart Wings.',
             'docker_network_dns' => 'DNS servers used by containers.',
             'docker_container_pid_limit' => 'Maximum number of processes in a container. 0 disables the limit, which is not recommended.',
             'docker_tmpfs_size' => 'Size of the /tmp mount in containers. Uses host memory.',
