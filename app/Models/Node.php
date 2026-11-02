@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
+use App\Casts\DaemonConfigCast;
 use App\Contracts\Validatable;
 use App\Exceptions\Service\HasActiveServersException;
 use App\Repositories\Daemon\DaemonSystemRepository;
 use App\Traits\HasValidation;
 use Exception;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -266,21 +266,6 @@ class Node extends Model implements Validatable
         'tags' => '[]',
     ];
 
-    /**
-     * Normalizes the optional Wings overrides on every read and write, so unknown or empty keys are
-     * never stored and booleans are always 1/0. A stored `false` would otherwise be cast to an empty
-     * string by the form's option fields and dropped the next time the node is saved.
-     *
-     * @return Attribute<array<string, mixed>|null, array<string, mixed>|null>
-     */
-    protected function daemonConfig(): Attribute
-    {
-        return Attribute::make(
-            get: fn (?string $value) => self::normalizeDaemonConfig($value ? json_decode($value, true) : null),
-            set: fn (?array $value) => ($normalized = self::normalizeDaemonConfig($value)) === null ? null : json_encode($normalized),
-        );
-    }
-
     protected function casts(): array
     {
         return [
@@ -295,6 +280,7 @@ class Node extends Model implements Validatable
             'public' => 'boolean',
             'maintenance_mode' => 'boolean',
             'tags' => 'array',
+            'daemon_config' => DaemonConfigCast::class,
         ];
     }
 

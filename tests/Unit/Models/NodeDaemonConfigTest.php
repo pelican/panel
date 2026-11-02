@@ -5,6 +5,7 @@ namespace App\Tests\Unit\Models;
 use App\Models\Node;
 use App\Tests\TestCase;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\ValidationException;
 
 class NodeDaemonConfigTest extends TestCase
 {
@@ -122,6 +123,22 @@ class NodeDaemonConfigTest extends TestCase
             ['throttles' => ['enabled' => 0]],
             Node::normalizeDaemonConfig(['throttles' => ['enabled' => 'false'], 'debug' => 'not-a-bool']),
         );
+    }
+
+    public function test_model_validation_sees_the_decoded_overrides(): void
+    {
+        $node = Node::factory()->make([
+            'daemon_config' => ['docker' => ['container_pid_limit' => 1024], 'throttles' => ['enabled' => false]],
+        ]);
+
+        $node->validate();
+
+        $this->assertSame(['docker' => ['container_pid_limit' => 1024], 'throttles' => ['enabled' => 0]], $node->daemon_config);
+
+        $node->daemon_config = ['api' => ['ssl' => ['cert' => 'relative.pem']]];
+
+        $this->expectException(ValidationException::class);
+        $node->validate();
     }
 
     public function test_yaml_renders_nested_overrides_as_blocks(): void
