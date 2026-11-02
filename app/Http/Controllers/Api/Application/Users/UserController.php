@@ -18,6 +18,7 @@ use Dedoc\Scramble\Attributes\Group;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Spatie\QueryBuilder\QueryBuilder;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 #[Group('User', weight: 0)]
 class UserController extends ApplicationApiController
@@ -102,15 +103,13 @@ class UserController extends ApplicationApiController
      */
     public function assignRoles(AssignUserRolesRequest $request, User $user): array
     {
-        if (!$user->isRootAdmin()) {
-            $rootAdminId = Role::getRootAdmin()->id;
-            foreach ($request->input('roles') as $role) {
-                if ($role === $rootAdminId) {
-                    continue;
-                }
+        throw_if(
+            collect($request->input('roles'))->map(fn ($role) => (int) $role)->contains(Role::getRootAdmin()->id),
+            new AccessDeniedHttpException('The root admin role cannot be assigned via the application API.')
+        );
 
-                $user->assignRole($role);
-            }
+        foreach ($request->input('roles') as $role) {
+            $user->assignRole($role);
         }
 
         $response = $this->response->item($user)
@@ -128,15 +127,8 @@ class UserController extends ApplicationApiController
      */
     public function removeRoles(AssignUserRolesRequest $request, User $user): array
     {
-        if (!$user->isRootAdmin()) {
-            $rootAdminId = Role::getRootAdmin()->id;
-            foreach ($request->input('roles') as $role) {
-                if ($role === $rootAdminId) {
-                    continue;
-                }
-
-                $user->removeRole($role);
-            }
+        foreach ($request->input('roles') as $role) {
+            $user->removeRole($role);
         }
 
         $response = $this->response->item($user)
@@ -175,12 +167,8 @@ class UserController extends ApplicationApiController
      */
     public function delete(DeleteUserRequest $request, User $user): JsonResponse
     {
-        if (!$user->isRootAdmin()) {
-            $user->delete();
+        $user->delete();
 
-            return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
-        }
-
-        return new JsonResponse([], JsonResponse::HTTP_FORBIDDEN);
+        return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
     }
 }

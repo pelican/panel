@@ -14,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Laravel\Socialite\Contracts\User as OAuthUser;
 use Laravel\Socialite\Facades\Socialite;
+use SocialiteProviders\Steam\Provider as SteamProvider;
 use Symfony\Component\HttpFoundation\RedirectResponse as SymfonyRedirectResponse;
 
 class OAuthController extends Controller
@@ -56,6 +57,21 @@ class OAuthController extends Controller
         $oauthUser = Socialite::driver($driver->getId())->user();
 
         if ($request->user()) {
+            // The callback is a plain GET request and stateless providers (like Steam) have no state
+            // check, so only link accounts when this session started linking the provider from the profile
+            // in the last few minutes.
+            $link = $request->session()->pull('oauth_link');
+            $nonceMismatch = Socialite::driver($driver->getId()) instanceof SteamProvider
+                && !hash_equals($link['nonce'] ?? '', (string) $request->query('link'));
+            if (($link['id'] ?? null) !== $driver->getId() || now()->timestamp - ($link['at'] ?? 0) > 300 || $nonceMismatch) {
+                Notification::make()
+                    ->title(trans('profile.link_failed', ['name' => $driver->getName()]))
+                    ->danger()
+                    ->send();
+
+                return redirect(EditProfile::getUrl(['tab' => 'oauth::data::tab'], panel: 'app'));
+            }
+
             $this->oauthService->linkUser($request->user(), $driver, $oauthUser);
 
             return redirect(EditProfile::getUrl(['tab' => 'oauth::data::tab'], panel: 'app'));

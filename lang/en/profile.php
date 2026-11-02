@@ -27,6 +27,7 @@ return [
     'link' => 'Link :name',
     'unlink' => 'Unlink :name',
     'unlinked' => ':name unlinked',
+    'link_failed' => ':name could not be linked, please try again from your profile',
     'scan_qr' => 'Scan QR Code',
     'code' => 'Code',
     'setup_key' => 'Setup Key: :secret',

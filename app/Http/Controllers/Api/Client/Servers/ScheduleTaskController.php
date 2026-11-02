@@ -7,6 +7,7 @@ use App\Enums\SubuserPermission;
 use App\Exceptions\Http\HttpForbiddenException;
 use App\Exceptions\Model\DataValidationException;
 use App\Exceptions\Service\ServiceLimitExceededException;
+use App\Extensions\Tasks\TaskService;
 use App\Facades\Activity;
 use App\Http\Controllers\Api\Client\ClientApiController;
 use App\Http\Requests\Api\Client\ClientApiRequest;
@@ -29,6 +30,7 @@ class ScheduleTaskController extends ClientApiController
      */
     public function __construct(
         private ConnectionInterface $connection,
+        private TaskService $taskService,
     ) {
         parent::__construct();
     }
@@ -49,6 +51,8 @@ class ScheduleTaskController extends ClientApiController
         throw_if($schedule->tasks()->count() >= $limit, new ServiceLimitExceededException("Schedules may not have more than $limit tasks associated with them. Creating this task would put this schedule over the limit."));
 
         throw_if($server->backup_limit === 0 && $request->action === 'backup', new HttpForbiddenException("A backup task cannot be created when the server's backup limit is set to 0."));
+
+        $this->authorizeTask($request, $schedule);
 
         /** @var Task|null $lastTask */
         $lastTask = $schedule->tasks()->orderByDesc('sequence_id')->first();
@@ -108,6 +112,8 @@ class ScheduleTaskController extends ClientApiController
         throw_if($schedule->id !== $task->schedule_id || $server->id !== $schedule->server_id, new NotFoundHttpException());
 
         throw_if($server->backup_limit === 0 && $request->action === 'backup', new HttpForbiddenException("A backup task cannot be created when the server's backup limit is set to 0."));
+
+        $this->authorizeTask($request, $schedule);
 
         $this->connection->transaction(function () use ($request, $schedule, $task) {
             $sequenceId = $request->integer('sequence_id', $task->sequence_id);
@@ -170,5 +176,15 @@ class ScheduleTaskController extends ClientApiController
         Activity::event('server:task.delete')->subject($schedule, $task)->property('name', $schedule->name)->log();
 
         return new JsonResponse(null, Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Ensure the user has the permissions required by the task action they are trying to save.
+     */
+    private function authorizeTask(StoreTaskRequest $request, Schedule $schedule): void
+    {
+        $taskSchema = $this->taskService->get($request->input('action'));
+
+        throw_unless($taskSchema?->canCreate($schedule, $request->user(), $request->input('payload')), new HttpForbiddenException(trans('server/schedule.tasks.no_permission')));
     }
 }

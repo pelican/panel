@@ -26,6 +26,7 @@ use Dedoc\Scramble\Attributes\BodyParameter;
 #[BodyParameter('maintenance_mode', description: self::FIELDS['maintenance_mode'])]
 #[BodyParameter('upload_size', description: self::FIELDS['upload_size'])]
 #[BodyParameter('tags', description: self::FIELDS['tags'])]
+#[BodyParameter('daemon_config', description: self::FIELDS['daemon_config'])]
 class UpdateNodeRequest extends StoreNodeRequest
 {
     /**

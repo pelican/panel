@@ -12,18 +12,8 @@ class SendPowerRequest extends ClientApiRequest
      */
     public function permission(): SubuserPermission
     {
-        switch ($this->input('signal')) {
-            case 'start':
-                return SubuserPermission::ControlStart;
-            case 'stop':
-            case 'kill':
-                return SubuserPermission::ControlStop;
-            case 'restart':
-                return SubuserPermission::ControlRestart;
-        }
-
         // Fallback for invalid signals
-        return SubuserPermission::WebsocketConnect;
+        return SubuserPermission::fromPowerSignal((string) $this->input('signal')) ?? SubuserPermission::WebsocketConnect;
     }
 
     /**

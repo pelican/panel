@@ -106,6 +106,10 @@ final class ServerData extends ApiResource
             // needs to make sense when browsing or searching results.
             'allocations' => function (Server $server, IncludeContext $context): array {
                 if (!$context->allowsClient(SubuserPermission::AllocationRead->value, $server)) {
+                    if (!$server->allocation) {
+                        return $context->collection([], AllocationData::class);
+                    }
+
                     $primary = clone $server->allocation;
                     $primary->notes = null;
 

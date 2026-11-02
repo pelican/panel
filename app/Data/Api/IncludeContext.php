@@ -51,10 +51,14 @@ class IncludeContext
     /**
      * Whether the requesting user holds the given ability on the server, mirroring
      * BaseClientTransformer::authorize for client API includes.
+     *
+     * The server must be passed directly (not wrapped in an array) so User::can()
+     * resolves subuser permissions through User::hasPermission(), which also grants
+     * access to admins holding the "update server" role permission.
      */
     public function allowsClient(string $ability, ?Server $server = null): bool
     {
-        return (bool) $this->user()?->can($ability, [$server]);
+        return (bool) $this->user()?->can($ability, $server ?? []);
     }
 
     public function isRequested(string $include): bool

@@ -14,7 +14,7 @@
             @enderror
         </div>
 
-        <x-filament::button type="button" x-on:click="window.onClickCreatePasskey()" class="mt-1">
+        <x-filament::button type="button" x-on:click="window.onClickCreatePasskey()" x-bind:disabled="! $wire.name?.trim()" class="mt-1">
             {{ trans('passkeys.create') }}
         </x-filament::button>
     </div>
