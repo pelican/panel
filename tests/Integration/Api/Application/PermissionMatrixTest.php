@@ -18,6 +18,7 @@ use App\Models\WebhookConfiguration;
 use App\Services\Acl\Api\AdminAcl;
 use App\Tests\Integration\IntegrationTestCase;
 use App\Tests\Traits\Integration\CreatesTestModels;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -51,6 +52,8 @@ class PermissionMatrixTest extends IntegrationTestCase
         foreach (self::ACTORS as $actor) {
             $this->flushHeaders();
             $this->app['auth']->forgetGuards();
+            // Fixtures fire the audit observer, which would otherwise resolve the guard from the previous request's token.
+            $this->app->instance('request', Request::create('/'));
             $this->buildFixtures();
 
             $expected = $this->expectationFor($actor, $level, $roleModel);
