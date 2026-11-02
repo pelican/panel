@@ -9,17 +9,17 @@ use App\Data\Api\Application\ServerData;
 use App\Exceptions\Model\DataValidationException;
 use App\Exceptions\Service\HasActiveServersException;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
-use App\Http\Requests\Api\Application\Eggs\GetEggsRequest;
 use App\Http\Requests\Api\Application\Mounts\DeleteMountRelationRequest;
 use App\Http\Requests\Api\Application\Mounts\DeleteMountRequest;
+use App\Http\Requests\Api\Application\Mounts\GetMountEggsRequest;
+use App\Http\Requests\Api\Application\Mounts\GetMountNodesRequest;
 use App\Http\Requests\Api\Application\Mounts\GetMountRequest;
+use App\Http\Requests\Api\Application\Mounts\GetMountServersRequest;
 use App\Http\Requests\Api\Application\Mounts\StoreMountRequest;
 use App\Http\Requests\Api\Application\Mounts\UpdateMountEggsRequest;
 use App\Http\Requests\Api\Application\Mounts\UpdateMountNodesRequest;
 use App\Http\Requests\Api\Application\Mounts\UpdateMountRequest;
 use App\Http\Requests\Api\Application\Mounts\UpdateMountServersRequest;
-use App\Http\Requests\Api\Application\Nodes\GetNodesRequest;
-use App\Http\Requests\Api\Application\Servers\GetServerRequest;
 use App\Models\Mount;
 use Illuminate\Http\JsonResponse;
 use Ramsey\Uuid\Uuid;
@@ -130,7 +130,7 @@ class MountController extends ApplicationApiController
      *
      * @return array<array-key, mixed>
      */
-    public function getEggs(GetEggsRequest $request, Mount $mount): array
+    public function getEggs(GetMountEggsRequest $request, Mount $mount): array
     {
         return $this->response->collection($mount->eggs)
             ->transformWith(EggData::class)
@@ -145,7 +145,7 @@ class MountController extends ApplicationApiController
      *
      * @return array<array-key, mixed>
      */
-    public function getNodes(GetNodesRequest $request, Mount $mount): array
+    public function getNodes(GetMountNodesRequest $request, Mount $mount): array
     {
         return $this->response->collection($mount->nodes)
             ->transformWith(NodeData::class)
@@ -159,7 +159,7 @@ class MountController extends ApplicationApiController
      *
      * @return array<array-key, mixed>
      */
-    public function getServers(GetServerRequest $request, Mount $mount): array
+    public function getServers(GetMountServersRequest $request, Mount $mount): array
     {
         return $this->response->collection($mount->servers)
             ->transformWith(ServerData::class)

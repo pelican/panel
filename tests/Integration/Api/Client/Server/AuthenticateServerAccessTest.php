@@ -41,7 +41,8 @@ class AuthenticateServerAccessTest extends ClientApiIntegrationTestCase
 
     /**
      * Test that an admin without permission to update the server cannot access files
-     * on a suspended server they have no direct access to.
+     * on a suspended server they have no direct access to. They can view the server, so
+     * they are told it is suspended rather than that it doesn't exist.
      */
     public function test_admin_without_update_permission_cannot_access_files_on_suspended_server(): void
     {
@@ -55,7 +56,7 @@ class AuthenticateServerAccessTest extends ClientApiIntegrationTestCase
 
         $this->actingAs($user)
             ->getJson("/api/client/servers/$server->uuid/files/list")
-            ->assertStatus(Response::HTTP_NOT_FOUND);
+            ->assertStatus(Response::HTTP_CONFLICT);
     }
 
     /**
