@@ -123,6 +123,11 @@ document.addEventListener('alpine:init', () => {
             return this.queue.filter((entry) => entry.status === 'error');
         },
 
+        /** Failures worth another attempt: an oversized file is refused again on every try. */
+        get retryable() {
+            return this.failed.filter((entry) => !entry.tooLarge);
+        },
+
         get busy() {
             return this.activeWorkers > 0 || this.pendingCount > 0;
         },
@@ -175,6 +180,7 @@ document.addEventListener('alpine:init', () => {
                     progress: 0,
                     speed: 0,
                     status: tooLarge ? 'error' : 'pending',
+                    tooLarge,
                     error: tooLarge
                         ? config.tooLarge.replace(':name', item.file.name).replace(':limit', formatBytes(limit))
                         : null,
@@ -373,13 +379,29 @@ document.addEventListener('alpine:init', () => {
         },
 
         retry(entry) {
+            this.requeue([entry]);
+        },
+
+        /** A dropped connection tends to fail a whole run of files, so they can be retried in one go. */
+        retryFailed() {
+            this.requeue(this.retryable);
+        },
+
+        requeue(entries) {
+            if (!entries.length) {
+                return;
+            }
+
             this.stopped = false;
             this.stopReason = null;
-            entry.reported = false;
-            entry.status = 'pending';
-            entry.error = null;
-            entry.progress = 0;
-            entry.speed = 0;
+
+            for (const entry of entries) {
+                entry.reported = false;
+                entry.status = 'pending';
+                entry.error = null;
+                entry.progress = 0;
+                entry.speed = 0;
+            }
 
             clearTimeout(this.closeTimer);
             this.guardUnload();

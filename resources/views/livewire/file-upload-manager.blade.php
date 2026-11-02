@@ -61,6 +61,13 @@
                 <div class="flex items-center gap-2">
                     <button
                         type="button"
+                        x-show="retryable.length"
+                        @click="retryFailed()"
+                        class="text-sm font-medium text-primary-600 dark:text-primary-400"
+                        x-text="@js(trans('server/file.actions.upload.retry_failed')).replace(':count', retryable.length)"
+                    ></button>
+                    <button
+                        type="button"
                         x-show="busy"
                         @click="cancelAll()"
                         class="text-sm font-medium text-danger-600 dark:text-danger-400"
