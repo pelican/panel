@@ -29,7 +29,7 @@ class ActivityLogController extends ClientApiController
         throw_unless($request->user()->can(SubuserPermission::ActivityRead, $server), new AuthorizationException());
 
         $query = ActivityLog::whereHas('subjects', fn (Builder $query) => $query->where('subject_id', $server->id)->where('subject_type', $server->getMorphClass()))
-            ->whereNotIn('activity_logs.event', ActivityLog::DISABLED_EVENTS)
+            ->visibleEvents()
             ->when(config('activity.hide_admin_activity'), fn (Builder $builder) => $builder->hideAdminActivity($server));
 
         $activity = QueryBuilder::for($query)

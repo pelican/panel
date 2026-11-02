@@ -346,6 +346,10 @@ trait BuildsTestFixture
             'name' => 'Fixture SSH Key',
         ]);
 
+        // Building the models above is audited like any other write outside a
+        // request, so drop those rows; the fixtures only expect the ones below.
+        ActivityLog::query()->delete();
+
         $this->fixtureActivityLog = ActivityLog::query()->forceCreate([
             'id' => 100,
             'event' => 'server:power.start',
