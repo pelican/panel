@@ -274,6 +274,9 @@ document.addEventListener('alpine:init', () => {
                     } else {
                         entry.status = 'error';
                         entry.error = this.daemonError(xhr);
+                        // Refused for its size by the daemon (its limit can be lower than the cached one) or by a
+                        // proxy in front of it, so another attempt would fail the same way.
+                        entry.tooLarge = xhr.status === 413 || /maximum file upload size/i.test(entry.error);
                     }
 
                     resolve();
