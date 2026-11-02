@@ -196,13 +196,16 @@ class PluginHubService
     {
         $url = $this->hubUrl() . '/api' . $path;
 
-        return HubCredentials::request($url)
+        $json = HubCredentials::request($url)
             ->acceptJson()
             ->timeout(5)
             ->connectTimeout(1)
             ->get($url, $query)
             ->throw()
-            ->json() ?? [];
+            ->json();
+
+        // A misbehaving Hub can return any JSON value, like `true` or a bare string.
+        return is_array($json) ? $json : [];
     }
 
     /**

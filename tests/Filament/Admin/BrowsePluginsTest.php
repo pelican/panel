@@ -142,6 +142,15 @@ it('shows a notice when the hub cannot be reached', function () {
         ->assertSee(trans('admin/plugin.hub.unreachable'));
 });
 
+it('shows a notice when the hub returns json that is not an object', function () {
+    Http::fake(['*' => Http::response('true')]);
+    actingAsRootAdmin();
+
+    livewire(BrowsePlugins::class)
+        ->assertSuccessful()
+        ->assertSee(trans('admin/plugin.hub.unreachable'));
+});
+
 it('installs a free plugin from the hub', function () {
     Queue::fake();
     fakeHub(hubPlugin('hub-free-plugin'));
