@@ -21,6 +21,7 @@ use BackedEnum;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Slider;
 use Filament\Forms\Components\Slider\Enums\PipsMode;
 use Filament\Forms\Components\TagsInput;
@@ -609,6 +610,282 @@ class NodeResource extends Resource
                                 ->minValue(-1)
                                 ->maxValue(100)
                                 ->suffix('%'),
+                        ]),
+                    Section::make(trans('admin/node.wings_config.title'))
+                        ->icon(TablerIcon::SettingsCog)
+                        ->collapsible()
+                        ->collapsed()
+                        ->columnSpanFull()
+                        ->hidden(fn (string $operation) => $operation === 'create')
+                        ->schema([
+                            TextEntry::make('wings_config_help')
+                                ->hiddenLabel()
+                                ->columnSpanFull()
+                                ->color('danger')
+                                ->state(new HtmlString(trans('admin/node.wings_config.help'))),
+                            Section::make(trans('admin/node.wings_config.sections.general'))
+                                ->collapsible()
+                                ->columnSpanFull()
+                                ->columns(['default' => 1, 'md' => 3])
+                                ->schema([
+                                    Select::make('daemon_config.debug')
+                                        ->label(trans('admin/node.wings_config.fields.debug'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.debug'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.disabled')])),
+                                    TextInput::make('daemon_config.app_name')
+                                        ->label(trans('admin/node.wings_config.fields.app_name'))
+                                        ->placeholder('pelican'),
+                                    Select::make('daemon_config.allow_cors_private_network')
+                                        ->label(trans('admin/node.wings_config.fields.allow_cors_private_network'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.allow_cors_private_network'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.disabled')])),
+                                    TagsInput::make('daemon_config.api.trusted_proxies')
+                                        ->label(trans('admin/node.wings_config.fields.api_trusted_proxies'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.api_trusted_proxies'))
+                                        ->splitKeys(['Tab', ',', ' ']),
+                                    TagsInput::make('daemon_config.allowed_origins')
+                                        ->label(trans('admin/node.wings_config.fields.allowed_origins'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.allowed_origins'))
+                                        ->splitKeys(['Tab', ',', ' ']),
+                                    TextInput::make('daemon_config.api.remote_download.max_redirects')
+                                        ->label(trans('admin/node.wings_config.fields.api_remote_download_max_redirects'))
+                                        ->integer()
+                                        ->minValue(0)
+                                        ->placeholder('10'),
+                                    TextInput::make('daemon_config.remote_query.timeout')
+                                        ->label(trans('admin/node.wings_config.fields.remote_query_timeout'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.remote_query_timeout'))
+                                        ->integer()
+                                        ->minValue(0)
+                                        ->placeholder('30')
+                                        ->suffix('s'),
+                                ]),
+                            Section::make(trans('admin/node.wings_config.sections.ssl'))
+                                ->collapsible()
+                                ->collapsed()
+                                ->columnSpanFull()
+                                ->columns(['default' => 1, 'md' => 2])
+                                ->visible(fn (Get $get) => $get('scheme') === 'https' && !$get('behind_proxy'))
+                                // Hidden containers drop their children's state on save, so keep the paths when SSL is off.
+                                ->dehydratedWhenHidden()
+                                ->schema([
+                                    TextInput::make('daemon_config.api.ssl.cert')
+                                        ->label(trans('admin/node.wings_config.fields.api_ssl_cert'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.api_ssl_cert'))
+                                        ->placeholder(fn (Get $get) => '/etc/letsencrypt/live/' . str($get('fqdn'))->lower() . '/fullchain.pem')
+                                        ->rule('regex:/^\/[^\s]+$/')
+                                        ->requiredWith('daemon_config.api.ssl.key')
+                                        ->dehydratedWhenHidden(),
+                                    TextInput::make('daemon_config.api.ssl.key')
+                                        ->label(trans('admin/node.wings_config.fields.api_ssl_key'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.api_ssl_key'))
+                                        ->placeholder(fn (Get $get) => '/etc/letsencrypt/live/' . str($get('fqdn'))->lower() . '/privkey.pem')
+                                        ->rule('regex:/^\/[^\s]+$/')
+                                        ->requiredWith('daemon_config.api.ssl.cert')
+                                        ->dehydratedWhenHidden(),
+                                ]),
+                            Section::make(trans('admin/node.wings_config.sections.system'))
+                                ->collapsible()
+                                ->collapsed()
+                                ->columnSpanFull()
+                                ->columns(['default' => 1, 'md' => 3])
+                                ->schema([
+                                    TextInput::make('daemon_config.system.username')
+                                        ->label(trans('admin/node.wings_config.fields.system_username'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.system_username'))
+                                        ->placeholder('pelican'),
+                                    TextInput::make('daemon_config.system.timezone')
+                                        ->label(trans('admin/node.wings_config.fields.system_timezone'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.system_timezone'))
+                                        ->placeholder('UTC'),
+                                    TextInput::make('daemon_config.system.sftp.bind_address')
+                                        ->label(trans('admin/node.wings_config.fields.system_sftp_bind_address'))
+                                        ->placeholder('0.0.0.0'),
+                                    Select::make('daemon_config.system.quotas.enabled')
+                                        ->label(trans('admin/node.wings_config.fields.system_quotas_enabled'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.system_quotas_enabled'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.disabled')])),
+                                    Select::make('daemon_config.system.user.rootless.enabled')
+                                        ->label(trans('admin/node.wings_config.fields.system_user_rootless_enabled'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.system_user_rootless_enabled'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.disabled')])),
+                                    Select::make('daemon_config.system.user.passwd.enable')
+                                        ->label(trans('admin/node.wings_config.fields.system_user_passwd_enable'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.system_user_passwd_enable'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.enabled')])),
+                                    Select::make('daemon_config.system.machine_id.enable')
+                                        ->label(trans('admin/node.wings_config.fields.system_machine_id_enable'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.system_machine_id_enable'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.enabled')])),
+                                ]),
+                            Section::make(trans('admin/node.wings_config.sections.docker_network'))
+                                ->collapsible()
+                                ->collapsed()
+                                ->columnSpanFull()
+                                ->columns(['default' => 1, 'md' => 3])
+                                ->schema([
+                                    TextInput::make('daemon_config.docker.network.name')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_name'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_network_name'))
+                                        ->placeholder('pelican_nw'),
+                                    TextInput::make('daemon_config.docker.network.driver')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_driver'))
+                                        ->placeholder('bridge'),
+                                    TextInput::make('daemon_config.docker.network.interface')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_interface'))
+                                        ->placeholder('172.18.0.1'),
+                                    TagsInput::make('daemon_config.docker.network.dns')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_dns'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_network_dns'))
+                                        ->placeholder('1.1.1.1, 1.0.0.1')
+                                        ->splitKeys(['Tab', ',', ' ']),
+                                    Select::make('daemon_config.docker.network.ispn')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_ispn'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.disabled')])),
+                                    Select::make('daemon_config.docker.network.IPv6')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_ipv6'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.enabled')])),
+                                    TextInput::make('daemon_config.docker.network.interfaces.v4.subnet')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_interfaces_v4_subnet'))
+                                        ->placeholder('172.18.0.0/16'),
+                                    TextInput::make('daemon_config.docker.network.interfaces.v4.gateway')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_interfaces_v4_gateway'))
+                                        ->placeholder('172.18.0.1'),
+                                    TextInput::make('daemon_config.docker.domainname')
+                                        ->label(trans('admin/node.wings_config.fields.docker_domainname')),
+                                    TextInput::make('daemon_config.docker.network.interfaces.v6.subnet')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_interfaces_v6_subnet'))
+                                        ->placeholder('fdba:17c8:6c94::/64'),
+                                    TextInput::make('daemon_config.docker.network.interfaces.v6.gateway')
+                                        ->label(trans('admin/node.wings_config.fields.docker_network_interfaces_v6_gateway'))
+                                        ->placeholder('fdba:17c8:6c94::1011'),
+                                ]),
+                            Section::make(trans('admin/node.wings_config.sections.docker_containers'))
+                                ->collapsible()
+                                ->collapsed()
+                                ->columnSpanFull()
+                                ->columns(['default' => 1, 'md' => 3])
+                                ->schema([
+                                    TextInput::make('daemon_config.docker.container_pid_limit')
+                                        ->label(trans('admin/node.wings_config.fields.docker_container_pid_limit'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_container_pid_limit'))
+                                        ->integer()
+                                        ->minValue(0)
+                                        ->placeholder('512'),
+                                    TextInput::make('daemon_config.docker.tmpfs_size')
+                                        ->label(trans('admin/node.wings_config.fields.docker_tmpfs_size'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_tmpfs_size'))
+                                        ->integer()
+                                        ->minValue(0)
+                                        ->placeholder('100')
+                                        ->suffix(config('panel.use_binary_prefix') ? 'MiB' : 'MB'),
+                                    TextInput::make('daemon_config.docker.userns_mode')
+                                        ->label(trans('admin/node.wings_config.fields.docker_userns_mode'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_userns_mode')),
+                                    TextInput::make('daemon_config.docker.installer_limits.memory')
+                                        ->label(trans('admin/node.wings_config.fields.docker_installer_limits_memory'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_installer_limits_memory'))
+                                        ->integer()
+                                        ->minValue(0)
+                                        ->placeholder('1024')
+                                        ->suffix(config('panel.use_binary_prefix') ? 'MiB' : 'MB'),
+                                    TextInput::make('daemon_config.docker.installer_limits.cpu')
+                                        ->label(trans('admin/node.wings_config.fields.docker_installer_limits_cpu'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_installer_limits_cpu'))
+                                        ->integer()
+                                        ->minValue(0)
+                                        ->placeholder('100')
+                                        ->suffix('%'),
+                                    TextInput::make('daemon_config.docker.log_config.type')
+                                        ->label(trans('admin/node.wings_config.fields.docker_log_config_type'))
+                                        ->placeholder('local'),
+                                    Select::make('daemon_config.docker.overhead.override')
+                                        ->label(trans('admin/node.wings_config.fields.docker_overhead_override'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_overhead_override'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.disabled')])),
+                                    TextInput::make('daemon_config.docker.overhead.default_multiplier')
+                                        ->label(trans('admin/node.wings_config.fields.docker_overhead_default_multiplier'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_overhead_default_multiplier'))
+                                        ->numeric()
+                                        ->minValue(0)
+                                        ->maxValue(100)
+                                        ->placeholder('1.05'),
+                                    Select::make('daemon_config.docker.use_performant_inspect')
+                                        ->label(trans('admin/node.wings_config.fields.docker_use_performant_inspect'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.enabled')])),
+                                    TagsInput::make('daemon_config.docker.system_ips')
+                                        ->label(trans('admin/node.wings_config.fields.docker_system_ips'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_system_ips'))
+                                        ->splitKeys(['Tab', ',', ' ']),
+                                ]),
+                            Section::make(trans('admin/node.wings_config.sections.throttles'))
+                                ->collapsible()
+                                ->collapsed()
+                                ->columnSpanFull()
+                                ->columns(['default' => 1, 'md' => 3])
+                                ->schema([
+                                    Select::make('daemon_config.throttles.enabled')
+                                        ->label(trans('admin/node.wings_config.fields.throttles_enabled'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.throttles_enabled'))
+                                        ->options([
+                                            1 => trans('admin/node.enabled'),
+                                            0 => trans('admin/node.disabled'),
+                                        ])
+                                        ->placeholder(trans('admin/node.wings_config.default', ['value' => trans('admin/node.enabled')])),
+                                    TextInput::make('daemon_config.throttles.lines')
+                                        ->label(trans('admin/node.wings_config.fields.throttles_lines'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.throttles_lines'))
+                                        ->integer()
+                                        ->minValue(0)
+                                        ->placeholder('2000'),
+                                    TextInput::make('daemon_config.throttles.line_reset_interval')
+                                        ->label(trans('admin/node.wings_config.fields.throttles_line_reset_interval'))
+                                        ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.throttles_line_reset_interval'))
+                                        ->integer()
+                                        ->minValue(0)
+                                        ->placeholder('100')
+                                        ->suffix('ms'),
+                                ]),
                         ]),
                 ]),
             Tab::make('config_file')
