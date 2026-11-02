@@ -658,11 +658,13 @@ class NodeResource extends Resource
                                     TextInput::make('daemon_config.api.remote_download.max_redirects')
                                         ->label(trans('admin/node.wings_config.fields.api_remote_download_max_redirects'))
                                         ->integer()
+                                        ->minValue(0)
                                         ->placeholder('10'),
                                     TextInput::make('daemon_config.remote_query.timeout')
                                         ->label(trans('admin/node.wings_config.fields.remote_query_timeout'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.remote_query_timeout'))
                                         ->integer()
+                                        ->minValue(0)
                                         ->placeholder('30')
                                         ->suffix('s'),
                                 ]),
@@ -680,12 +682,14 @@ class NodeResource extends Resource
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.api_ssl_cert'))
                                         ->placeholder(fn (Get $get) => '/etc/letsencrypt/live/' . str($get('fqdn'))->lower() . '/fullchain.pem')
                                         ->rule('regex:/^\/[^\s]+$/')
+                                        ->requiredWith('daemon_config.api.ssl.key')
                                         ->dehydratedWhenHidden(),
                                     TextInput::make('daemon_config.api.ssl.key')
                                         ->label(trans('admin/node.wings_config.fields.api_ssl_key'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.api_ssl_key'))
                                         ->placeholder(fn (Get $get) => '/etc/letsencrypt/live/' . str($get('fqdn'))->lower() . '/privkey.pem')
                                         ->rule('regex:/^\/[^\s]+$/')
+                                        ->requiredWith('daemon_config.api.ssl.cert')
                                         ->dehydratedWhenHidden(),
                                 ]),
                             Section::make(trans('admin/node.wings_config.sections.system'))
@@ -798,11 +802,13 @@ class NodeResource extends Resource
                                         ->label(trans('admin/node.wings_config.fields.docker_container_pid_limit'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_container_pid_limit'))
                                         ->integer()
+                                        ->minValue(0)
                                         ->placeholder('512'),
                                     TextInput::make('daemon_config.docker.tmpfs_size')
                                         ->label(trans('admin/node.wings_config.fields.docker_tmpfs_size'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_tmpfs_size'))
                                         ->integer()
+                                        ->minValue(0)
                                         ->placeholder('100')
                                         ->suffix(config('panel.use_binary_prefix') ? 'MiB' : 'MB'),
                                     TextInput::make('daemon_config.docker.userns_mode')
@@ -812,12 +818,14 @@ class NodeResource extends Resource
                                         ->label(trans('admin/node.wings_config.fields.docker_installer_limits_memory'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_installer_limits_memory'))
                                         ->integer()
+                                        ->minValue(0)
                                         ->placeholder('1024')
                                         ->suffix(config('panel.use_binary_prefix') ? 'MiB' : 'MB'),
                                     TextInput::make('daemon_config.docker.installer_limits.cpu')
                                         ->label(trans('admin/node.wings_config.fields.docker_installer_limits_cpu'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_installer_limits_cpu'))
                                         ->integer()
+                                        ->minValue(0)
                                         ->placeholder('100')
                                         ->suffix('%'),
                                     TextInput::make('daemon_config.docker.log_config.type')
@@ -868,11 +876,13 @@ class NodeResource extends Resource
                                         ->label(trans('admin/node.wings_config.fields.throttles_lines'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.throttles_lines'))
                                         ->integer()
+                                        ->minValue(0)
                                         ->placeholder('2000'),
                                     TextInput::make('daemon_config.throttles.line_reset_interval')
                                         ->label(trans('admin/node.wings_config.fields.throttles_line_reset_interval'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.throttles_line_reset_interval'))
                                         ->integer()
+                                        ->minValue(0)
                                         ->placeholder('100')
                                         ->suffix('ms'),
                                 ]),

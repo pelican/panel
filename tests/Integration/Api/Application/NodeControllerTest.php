@@ -100,14 +100,25 @@ class NodeControllerTest extends ApplicationApiIntegrationTestCase
 
         $node = Node::factory()->create();
 
+        foreach ([
+            ['docker' => ['container_pid_limit' => 'invalid']],
+            ['docker' => ['network' => ['IPv6' => 'maybe']]],
+            ['api' => ['ssl' => ['cert' => 'relative/path.pem', 'key' => '/etc/ssl/key.pem']]],
+            ['api' => ['ssl' => ['cert' => '/etc/ssl/cert.pem']]],
+            ['api' => ['ssl' => ['key' => '/etc/ssl/key.pem']]],
+        ] as $daemonConfig) {
+            $this->patchJson('/api/application/nodes/' . $node->id, array_merge($this->storePayload, [
+                'daemon_config' => $daemonConfig,
+            ]))
+                ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+                ->assertJsonPath('errors.0.meta.source_field', fn ($field) => str_starts_with($field, 'daemon_config.'));
+        }
+
         $this->patchJson('/api/application/nodes/' . $node->id, array_merge($this->storePayload, [
-            'daemon_config' => [
-                'docker' => ['container_pid_limit' => 'invalid', 'network' => ['IPv6' => 'maybe']],
-                'api' => ['ssl' => ['cert' => 'relative/path.pem']],
-            ],
-        ]))
-            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('errors.0.meta.source_field', fn ($field) => str_starts_with($field, 'daemon_config.'));
+            'daemon_config' => ['allowed_origins' => [null], 'docker' => ['network' => ['dns' => [null, '']]]],
+        ]))->assertStatus(Response::HTTP_OK);
+
+        $this->assertNull($node->refresh()->daemon_config);
 
         $this->patchJson('/api/application/nodes/' . $node->id, array_merge($this->storePayload, [
             'daemon_config' => ['docker' => ['container_pid_limit' => 1024, 'network' => ['IPv6' => false]]],

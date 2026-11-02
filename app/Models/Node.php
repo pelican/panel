@@ -241,8 +241,11 @@ class Node extends Model implements Validatable
             }
         }
 
+        // A custom certificate needs its matching key (and vice versa), otherwise Wings pairs it with the default path.
         $rules['daemon_config.api.ssl.cert'][] = 'regex:/^\/[^\s]+$/';
+        $rules['daemon_config.api.ssl.cert'][] = 'required_with:daemon_config.api.ssl.key';
         $rules['daemon_config.api.ssl.key'][] = 'regex:/^\/[^\s]+$/';
+        $rules['daemon_config.api.ssl.key'][] = 'required_with:daemon_config.api.ssl.cert';
 
         return $rules;
     }
@@ -417,6 +420,10 @@ class Node extends Model implements Validatable
 
         foreach (self::DAEMON_CONFIG_KEYS as $path => $type) {
             $value = Arr::get($config ?? [], $path);
+
+            if ($type === 'list' && $value !== null) {
+                $value = array_values(array_filter(Arr::wrap($value), fn ($item) => $item !== null && $item !== ''));
+            }
 
             if (self::isEmptyDaemonConfigValue($value)) {
                 continue;
