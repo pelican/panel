@@ -6,6 +6,7 @@ use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
 use App\Models\Node;
 use App\Models\Role;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Http;
 use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
@@ -55,6 +56,43 @@ it('can edit a node', function () {
         ->assertHasNoFormErrors();
 
     $this->assertDatabaseHas('nodes', ['id' => $node->id, 'name' => 'renamed-node']);
+});
+
+it('does not store empty wings config fields when editing a node', function () {
+    $node = Node::factory()->create();
+
+    livewire(EditNode::class, ['record' => $node->getKey()])
+        ->fillForm(['name' => 'renamed-node'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($node->refresh()->daemon_config)->toBeNull();
+});
+
+it('can set wings config overrides on a node', function () {
+    Http::fake();
+    $node = Node::factory()->create();
+
+    livewire(EditNode::class, ['record' => $node->getKey()])
+        ->fillForm([
+            'daemon_config.docker.container_pid_limit' => '1024',
+            'daemon_config.docker.network.dns' => ['8.8.8.8'],
+            'daemon_config.throttles.enabled' => '0',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($node->refresh()->daemon_config)->toBe([
+        'docker' => [
+            'network' => ['dns' => ['8.8.8.8']],
+            'container_pid_limit' => 1024,
+        ],
+        'throttles' => ['enabled' => 0],
+    ]);
+
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api/update')
+        && $request['docker']['container_pid_limit'] === 1024
+        && $request['throttles']['enabled'] === false);
 });
 
 it('non root admin without permission cannot create nodes', function () {

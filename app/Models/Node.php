@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\DatabaseNotificationCollection;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -36,6 +37,7 @@ use Symfony\Component\Yaml\Yaml;
  * @property int $daemon_listen
  * @property int $daemon_sftp
  * @property string $daemon_base
+ * @property array<string, mixed>|null $daemon_config
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property int $upload_size
@@ -120,6 +122,57 @@ class Node extends Model implements Validatable
     public const DAEMON_TOKEN_LENGTH = 64;
 
     /**
+     * Optional Wings config.yml keys that can be managed from the panel, mapped to the
+     * type they must be sent as. Only keys whose YAML name also matches the Go JSON
+     * binding in Wings are listed here, since Wings applies panel config updates by
+     * JSON unmarshalling them onto its current configuration.
+     *
+     * @var array<string, 'bool'|'int'|'float'|'string'|'list'>
+     */
+    public const DAEMON_CONFIG_KEYS = [
+        'debug' => 'bool',
+        'app_name' => 'string',
+        'allowed_origins' => 'list',
+        'allow_cors_private_network' => 'bool',
+        'api.trusted_proxies' => 'list',
+        'api.ssl.cert' => 'string',
+        'api.ssl.key' => 'string',
+        'api.remote_download.max_redirects' => 'int',
+        'remote_query.timeout' => 'int',
+        'system.username' => 'string',
+        'system.timezone' => 'string',
+        'system.quotas.enabled' => 'bool',
+        'system.sftp.bind_address' => 'string',
+        'system.user.rootless.enabled' => 'bool',
+        'system.user.passwd.enable' => 'bool',
+        'system.machine_id.enable' => 'bool',
+        'docker.network.name' => 'string',
+        'docker.network.driver' => 'string',
+        'docker.network.interface' => 'string',
+        'docker.network.dns' => 'list',
+        'docker.network.ispn' => 'bool',
+        'docker.network.IPv6' => 'bool',
+        'docker.network.interfaces.v4.subnet' => 'string',
+        'docker.network.interfaces.v4.gateway' => 'string',
+        'docker.network.interfaces.v6.subnet' => 'string',
+        'docker.network.interfaces.v6.gateway' => 'string',
+        'docker.domainname' => 'string',
+        'docker.tmpfs_size' => 'int',
+        'docker.container_pid_limit' => 'int',
+        'docker.installer_limits.memory' => 'int',
+        'docker.installer_limits.cpu' => 'int',
+        'docker.overhead.override' => 'bool',
+        'docker.overhead.default_multiplier' => 'float',
+        'docker.use_performant_inspect' => 'bool',
+        'docker.userns_mode' => 'string',
+        'docker.system_ips' => 'list',
+        'docker.log_config.type' => 'string',
+        'throttles.enabled' => 'bool',
+        'throttles.lines' => 'int',
+        'throttles.line_reset_interval' => 'int',
+    ];
+
+    /**
      * The attributes excluded from the model's JSON form.
      */
     protected $hidden = ['daemon_token_id', 'daemon_token'];
@@ -132,7 +185,7 @@ class Node extends Model implements Validatable
         'fqdn', 'scheme', 'behind_proxy',
         'memory', 'memory_overallocate', 'disk',
         'disk_overallocate', 'cpu', 'cpu_overallocate',
-        'upload_size', 'daemon_base',
+        'upload_size', 'daemon_base', 'daemon_config',
         'daemon_sftp', 'daemon_sftp_alias', 'daemon_listen', 'daemon_connect',
         'description', 'maintenance_mode', 'tags',
     ];
@@ -159,6 +212,7 @@ class Node extends Model implements Validatable
         'maintenance_mode' => ['boolean'],
         'upload_size' => ['int', 'min:1'],
         'tags' => ['array'],
+        'daemon_config' => ['nullable', 'array'],
     ];
 
     /**
@@ -195,6 +249,7 @@ class Node extends Model implements Validatable
             'public' => 'boolean',
             'maintenance_mode' => 'boolean',
             'tags' => 'array',
+            'daemon_config' => 'array',
         ];
     }
 
@@ -206,6 +261,10 @@ class Node extends Model implements Validatable
             $node->daemon_token_id = Str::random(self::DAEMON_TOKEN_ID_LENGTH);
 
             return true;
+        });
+
+        static::saving(function (self $node) {
+            $node->daemon_config = self::normalizeDaemonConfig($node->daemon_config);
         });
 
         static::deleting(function (self $node) {
@@ -236,17 +295,25 @@ class Node extends Model implements Validatable
      *         host: string,
      *         port: int,
      *         ssl: array{enabled: bool, cert: string, key: string},
-     *         upload_limit: int
+     *         upload_limit: int,
+     *         ...
      *     },
-     *     system: array{data: string, sftp: array{bind_port: int}},
+     *     system: array{data: string, sftp: array{bind_port: int, ...}, ...},
      *     allowed_mounts: array<mixed>,
      *     remote: string,
+     *     ...
      * }
      */
     public function getConfiguration(bool $redacted = false): array
     {
-        return [
-            'debug' => false,
+        $extras = $this->getDaemonConfigOverrides();
+
+        // Custom certificate paths replace the default Let's Encrypt paths the panel sends.
+        $sslCert = Arr::pull($extras, 'api.ssl.cert') ?? '/etc/letsencrypt/live/' . Str::lower($this->fqdn) . '/fullchain.pem';
+        $sslKey = Arr::pull($extras, 'api.ssl.key') ?? '/etc/letsencrypt/live/' . Str::lower($this->fqdn) . '/privkey.pem';
+
+        $base = [
+            'debug' => (bool) ($extras['debug'] ?? false),
             'uuid' => $this->uuid,
             'token_id' => $redacted ? self::REDACTED : $this->daemon_token_id,
             'token' => $redacted ? self::REDACTED : $this->daemon_token,
@@ -255,8 +322,8 @@ class Node extends Model implements Validatable
                 'port' => $this->daemon_listen,
                 'ssl' => [
                     'enabled' => (!$this->behind_proxy && $this->scheme === 'https'),
-                    'cert' => '/etc/letsencrypt/live/' . Str::lower($this->fqdn) . '/fullchain.pem',
-                    'key' => '/etc/letsencrypt/live/' . Str::lower($this->fqdn) . '/privkey.pem',
+                    'cert' => $sslCert,
+                    'key' => $sslKey,
                 ],
                 'upload_limit' => $this->upload_size,
             ],
@@ -269,6 +336,72 @@ class Node extends Model implements Validatable
             'allowed_mounts' => $this->mounts->pluck('source')->toArray(),
             'remote' => (string) config('app.url'),
         ];
+
+        // The keys the panel manages directly always win over the optional overrides.
+        return array_replace_recursive($extras, $base);
+    }
+
+    /**
+     * Returns the optional Wings config.yml keys set for this node, cast to the types
+     * Wings expects. Keys that are not set are omitted so Wings keeps its own value.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDaemonConfigOverrides(): array
+    {
+        $config = $this->daemon_config ?? [];
+        $extras = [];
+
+        foreach (self::DAEMON_CONFIG_KEYS as $path => $type) {
+            $value = Arr::get($config, $path);
+
+            if (self::isEmptyDaemonConfigValue($value)) {
+                continue;
+            }
+
+            $value = match ($type) {
+                'bool' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
+                'int' => (int) $value,
+                'float' => (float) $value,
+                'string' => (string) $value,
+                'list' => array_values(array_filter(Arr::wrap($value), fn ($item) => $item !== null && $item !== '')),
+            };
+
+            if ($value === []) {
+                continue;
+            }
+
+            Arr::set($extras, $path, $value);
+        }
+
+        return $extras;
+    }
+
+    /**
+     * Drops unknown and empty keys from the stored Wings overrides, so a form that
+     * submits every field as null does not count as a change to the node.
+     *
+     * @param  array<string, mixed>|null  $config
+     * @return array<string, mixed>|null
+     */
+    public static function normalizeDaemonConfig(?array $config): ?array
+    {
+        $normalized = [];
+
+        foreach (array_keys(self::DAEMON_CONFIG_KEYS) as $path) {
+            $value = Arr::get($config ?? [], $path);
+
+            if (!self::isEmptyDaemonConfigValue($value)) {
+                Arr::set($normalized, $path, $value);
+            }
+        }
+
+        return $normalized ?: null;
+    }
+
+    private static function isEmptyDaemonConfigValue(mixed $value): bool
+    {
+        return $value === null || $value === '' || $value === [];
     }
 
     /**
@@ -276,7 +409,7 @@ class Node extends Model implements Validatable
      */
     public function getYamlConfiguration(bool $redacted = false): string
     {
-        return Yaml::dump($this->getConfiguration($redacted), 4, 2, Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE);
+        return Yaml::dump($this->getConfiguration($redacted), 8, 2, Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE);
     }
 
     /**

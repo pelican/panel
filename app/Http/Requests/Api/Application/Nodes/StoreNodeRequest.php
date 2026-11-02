@@ -30,6 +30,7 @@ use Dedoc\Scramble\Attributes\BodyParameter;
 #[BodyParameter('maintenance_mode', description: self::FIELDS['maintenance_mode'])]
 #[BodyParameter('upload_size', description: self::FIELDS['upload_size'])]
 #[BodyParameter('tags', description: self::FIELDS['tags'])]
+#[BodyParameter('daemon_config', description: self::FIELDS['daemon_config'])]
 class StoreNodeRequest extends ApplicationApiRequest
 {
     /** @var array<string, string> */
@@ -54,6 +55,7 @@ class StoreNodeRequest extends ApplicationApiRequest
         'maintenance_mode' => 'Whether the node is in maintenance mode, which stops its servers from being started.',
         'upload_size' => 'Largest file that may be uploaded through the file manager, in MiB.',
         'tags' => 'Tags used to steer automatic deployment towards or away from this node.',
+        'daemon_config' => 'Optional Wings `config.yml` overrides keyed by their nested path, such as `{"docker": {"container_pid_limit": 1024}}`. Only the keys listed in `Node::DAEMON_CONFIG_KEYS` are sent to Wings; omitted keys keep the Wings value.',
     ];
 
     protected ?string $resource = Node::RESOURCE_NAME;
