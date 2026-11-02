@@ -5,6 +5,7 @@ use App\Filament\Admin\Resources\Plugins\Pages\BrowsePlugins;
 use App\Jobs\Plugin\InstallPlugin;
 use App\Models\Plugin;
 use App\Models\Role;
+use App\Services\Helpers\PluginHubService;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\File;
@@ -121,6 +122,7 @@ it('lists free hub plugins for an admin', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->assertSuccessful()
         ->assertSee('Hub Free Plugin')
         ->assertSee('Plugin Author');
@@ -138,6 +140,7 @@ it('shows a notice when the hub cannot be reached', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->assertSuccessful()
         ->assertSee(trans('admin/plugin.hub.unreachable'));
 });
@@ -147,8 +150,30 @@ it('shows a notice when the hub returns json that is not an object', function ()
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->assertSuccessful()
         ->assertSee(trans('admin/plugin.hub.unreachable'));
+});
+
+it('caches categories and tags and retries a failed one next request', function () {
+    Http::fake([
+        'hub.example.test/api/plugins/categories' => Http::sequence()
+            ->push(['data' => [['name' => 'Minecraft', 'slug' => 'minecraft']]]),
+        'hub.example.test/api/plugins/tags' => Http::sequence()
+            ->push('down', 503)
+            ->push(['data' => [['name' => 'Fabric', 'slug' => 'fabric']]]),
+    ]);
+
+    $hub = app(PluginHubService::class);
+    expect($hub->categories())->toBe(['minecraft' => 'Minecraft'])
+        ->and($hub->tags())->toBe([]);
+    Http::assertSentCount(2);
+
+    // A new request only re-asks for what failed.
+    $hub = app(PluginHubService::class);
+    expect($hub->categories())->toBe(['minecraft' => 'Minecraft'])
+        ->and($hub->tags())->toBe(['fabric' => 'Fabric']);
+    Http::assertSentCount(3);
 });
 
 it('installs a free plugin from the hub', function () {
@@ -157,6 +182,7 @@ it('installs a free plugin from the hub', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
         ->assertNotified(trans('admin/plugin.notifications.install_started'));
 
@@ -170,6 +196,7 @@ it('refuses to install a plugin that is not free', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 
@@ -184,6 +211,7 @@ it('refuses a download that does not match the hub checksum', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 
@@ -198,6 +226,7 @@ it('refuses a release it cannot verify', function (array $release) {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 
@@ -216,12 +245,14 @@ it('filters to installed plugins', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->filterTable('installed')
         ->assertDontSee('Hub Free Plugin');
 
     putLocalPlugin(PluginStatus::Disabled);
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->filterTable('installed')
         ->assertSee('Hub Free Plugin')
         ->assertSee(trans('admin/plugin.hub.installed'))
@@ -234,6 +265,7 @@ it('offers to install a plugin that is downloaded but not installed', function (
     putLocalPlugin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->assertActionHasLabel(TestAction::make('exclude_install')->table('hub-free-plugin'), trans('admin/plugin.install'));
 });
 
@@ -247,12 +279,14 @@ it('only lets admins who can update a plugin replace it', function () {
     $this->actingAs($admin->syncRoles($role));
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->assertActionVisible(TestAction::make('exclude_install')->table('hub-free-plugin'));
 
     putLocalPlugin(PluginStatus::Disabled);
     $manifest = File::get(plugin_path('hub-free-plugin', 'plugin.json'));
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->assertActionHidden(TestAction::make('exclude_install')->table('hub-free-plugin'))
         ->call('installFromHub', 'hub-free-plugin')
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
@@ -276,6 +310,7 @@ it('does not let admins who cannot update plugins replace an unreadable plugin f
     Plugin::refreshRows();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->assertActionHidden(TestAction::make('exclude_install')->table('hub-free-plugin'))
         ->call('installFromHub', 'hub-free-plugin')
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
@@ -297,6 +332,7 @@ it('does not report an outage for installed plugins the hub does not list', func
     Plugin::refreshRows();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->filterTable('installed')
         ->assertSee(trans('admin/plugin.hub.no_results'))
         ->assertDontSee(trans('admin/plugin.hub.unreachable'));
@@ -311,6 +347,7 @@ it('reports an outage when installed plugins cannot be looked up', function () {
     Plugin::refreshRows();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->filterTable('installed')
         ->assertSee(trans('admin/plugin.hub.unreachable'));
 });
@@ -352,6 +389,7 @@ it('sorts by downloads from the hub when the column is sorted', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->filterTable('sort', 'name')
         ->assertSee('Unsorted Plugin')
         ->sortTable('downloads_count', 'desc')
@@ -364,6 +402,7 @@ it('sorts by rating from the hub when the column is sorted', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->filterTable('sort', 'name')
         ->sortTable('review_percentage', 'desc')
         ->assertDontSee('Unsorted Plugin')
@@ -375,6 +414,7 @@ it('reverses the hub order across pages when sorting ascending', function () {
     actingAsRootAdmin();
 
     livewire(BrowsePlugins::class)
+        ->loadTable()
         ->set('tableRecordsPerPage', 12)
         ->sortTable('downloads_count', 'asc')
         ->assertSeeInOrder(['Listed Plugin 14', 'Listed Plugin 13', 'Listed Plugin 03'])

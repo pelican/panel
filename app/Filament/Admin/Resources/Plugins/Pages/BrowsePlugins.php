@@ -132,6 +132,8 @@ class BrowsePlugins extends Page implements HasTable
                     $results->currentPage(),
                 );
             })
+            // Render the page right away and fetch the Hub results behind the table's loading state.
+            ->deferLoading()
             ->searchable()
             ->searchDebounce('750ms')
             ->paginated([12, 24, 48])
