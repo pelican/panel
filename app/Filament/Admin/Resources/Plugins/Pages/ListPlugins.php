@@ -25,11 +25,17 @@ class ListPlugins extends ListRecords
         return $this->activeTab === 'wings';
     }
 
+    // The rows are cached for everyone, so each user's nodes are filtered here
+    private function wingsPlugins(): Builder
+    {
+        return WingsPlugin::query()->whereIn('node_id', user()?->accessibleNodes()->pluck('id'));
+    }
+
     // The Wings tab lists the plugins on the nodes
     protected function getTableQuery(): Builder|Relation|null
     {
         if ($this->isWingsTab()) {
-            return WingsPlugin::query();
+            return $this->wingsPlugins();
         }
 
         return parent::getTableQuery();
@@ -66,8 +72,10 @@ class ListPlugins extends ListRecords
         $failed = [];
 
         foreach ($byNode as $nodeId => $plugins) {
-            $plugin = WingsPlugin::query()->where('node_id', $nodeId)->first();
+            $plugin = $this->wingsPlugins()->where('node_id', $nodeId)->first();
             if (!$plugin instanceof WingsPlugin) {
+                $failed[] = (string) $nodeId;
+
                 continue;
             }
 
@@ -136,7 +144,7 @@ class ListPlugins extends ListRecords
         }
 
         try {
-            $plugins = WingsPlugin::query()->get();
+            $plugins = $this->wingsPlugins()->get();
         } catch (Throwable $exception) {
             report($exception);
 

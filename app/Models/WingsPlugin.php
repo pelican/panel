@@ -120,7 +120,12 @@ class WingsPlugin extends Plugin
                 }
 
                 foreach ($result['value']['data'] as $plugin) {
-                    $rows[] = self::row($node, $plugin);
+                    try {
+                        $rows[] = self::row($node, $plugin);
+                    } catch (Throwable $exception) {
+                        // One malformed plugin shouldn't hide the others
+                        report($exception);
+                    }
                 }
             }
 
@@ -303,7 +308,14 @@ class WingsPlugin extends Plugin
     /** @return array<string, mixed> */
     public function getSettingsFormData(): array
     {
-        return $this->settingValues();
+        $defaults = [];
+        foreach ($this->declaredSettings() as $setting) {
+            if (isset($setting['key']) && array_key_exists('default', $setting)) {
+                $defaults[$setting['key']] = $setting['default'];
+            }
+        }
+
+        return array_replace($defaults, $this->settingValues());
     }
 
     /**

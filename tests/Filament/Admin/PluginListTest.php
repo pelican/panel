@@ -163,7 +163,9 @@ it('lists every node and keeps unreachable ones as error rows', function () {
 it('authorizes wings plugins through their own policy', function () {
     [$user] = generateTestAccount();
 
+    $node = Node::factory()->create();
     $plugin = new WingsPlugin();
+    $plugin->node_id = $node->id;
 
     expect($user->can('update', $plugin))->toBeFalse();
 
@@ -172,6 +174,68 @@ it('authorizes wings plugins through their own policy', function () {
     $user->syncRoles($role);
 
     expect($user->fresh()->can('update', $plugin))->toBeTrue();
+});
+
+it('only lets admins manage wings plugins on nodes they can access', function () {
+    [$user] = generateTestAccount();
+
+    $allowed = Node::factory()->create(['name' => 'allowed-node']);
+    $denied = Node::factory()->create(['name' => 'denied-node']);
+
+    $role = Role::factory()->create(['name' => 'Plugin Manager', 'guard_name' => 'web']);
+    $role->givePermissionTo([
+        Permission::findOrCreate('viewList plugin', 'web'),
+        Permission::findOrCreate('update plugin', 'web'),
+    ]);
+    $role->nodes()->sync([$allowed->id]);
+    $user->syncRoles($role);
+
+    Http::fake(['*/api/plugins' => Http::response(['enabled' => true, 'data' => [['id' => 'trash', 'name' => 'Trash']]])]);
+
+    $this->actingAs($user->fresh());
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->assertSee('allowed-node')
+        ->assertDontSee('denied-node');
+
+    $plugin = new WingsPlugin();
+    $plugin->node_id = $denied->id;
+
+    expect($user->fresh()->can('update', $plugin))->toBeFalse();
+});
+
+it('keeps listing wings plugins when one of them is malformed', function () {
+    Node::factory()->create();
+
+    Http::fake([
+        '*/api/plugins' => Http::response(['enabled' => true, 'data' => [
+            ['id' => 'broken', 'name' => 'Broken', 'meta' => ['registered' => ['hooks' => 'not-a-list']]],
+            ['id' => 'fine', 'name' => 'Fine'],
+        ]]),
+    ]);
+
+    expect(WingsPlugin::query()->where('plugin_id', 'fine')->exists())->toBeTrue()
+        ->and(WingsPlugin::query()->where('plugin_id', 'broken')->exists())->toBeFalse();
+});
+
+it('fills wings plugin settings with their declared defaults', function () {
+    Node::factory()->create();
+
+    Http::fake([
+        '*/api/plugins' => Http::response(['enabled' => true, 'data' => [[
+            'id' => 'trash',
+            'name' => 'Trash',
+            'settings' => [
+                ['key' => 'retention_days', 'type' => 'number', 'default' => 7],
+                ['key' => 'folder', 'type' => 'string', 'default' => '.trash'],
+            ],
+            'meta' => ['values' => ['folder' => 'bin']],
+        ]]]),
+    ]);
+
+    expect(WingsPlugin::query()->where('plugin_id', 'trash')->first()->getSettingsFormData())
+        ->toBe(['retention_days' => 7, 'folder' => 'bin']);
 });
 
 it('lists a wings plugin that omits its optional fields', function () {
