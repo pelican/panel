@@ -110,9 +110,9 @@ jobs:
             latest=false
           tags: |
             type=raw,value=latest,enable=${{ (github.event_name == 'release' && github.event.action == 'published' && github.event.release.prerelease == false) || github.event_name == 'schedule' }}
-            type=raw,value=${{ steps.release_info.outputs.version_tag }},enable=${{ github.event_name == 'schedule' }}
+            type=raw,value=${{ steps.release_info.outputs.schedule_tag }},enable=${{ github.event_name == 'schedule' }}
             type=ref,event=tag
-            type=ref,event=branch
+            type=ref,event=branch,enable=${{ github.event_name == 'push' }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
