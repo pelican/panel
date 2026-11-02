@@ -230,7 +230,8 @@ class Node extends Model implements Validatable
             $rules["daemon_config.$path"] = match ($type) {
                 'bool' => ['nullable', 'boolean'],
                 'int' => ['nullable', 'integer', 'min:0'],
-                'float' => ['nullable', 'numeric', 'min:0'],
+                // The upper bound also rejects values like 1e309, which PHP reads as INF and can't encode as JSON.
+                'float' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'string' => ['nullable', 'string'],
                 'list' => ['nullable', 'array'],
             };

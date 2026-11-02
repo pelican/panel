@@ -835,6 +835,8 @@ class NodeResource extends Resource
                                         ->label(trans('admin/node.wings_config.fields.docker_overhead_default_multiplier'))
                                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.wings_config.field_help.docker_overhead_default_multiplier'))
                                         ->numeric()
+                                        ->minValue(0)
+                                        ->maxValue(100)
                                         ->placeholder('1.05'),
                                     Select::make('daemon_config.docker.use_performant_inspect')
                                         ->label(trans('admin/node.wings_config.fields.docker_use_performant_inspect'))

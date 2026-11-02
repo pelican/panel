@@ -141,6 +141,16 @@ class NodeDaemonConfigTest extends TestCase
         $node->validate();
     }
 
+    public function test_float_overrides_must_be_finite_and_bounded(): void
+    {
+        $node = Node::factory()->make([
+            'daemon_config' => ['docker' => ['overhead' => ['default_multiplier' => '1e309']]],
+        ]);
+
+        $this->expectException(ValidationException::class);
+        $node->validate();
+    }
+
     public function test_yaml_renders_nested_overrides_as_blocks(): void
     {
         $yaml = $this->makeNode([
