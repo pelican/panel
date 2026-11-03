@@ -1,5 +1,26 @@
 @import url('@xterm/xterm/css/xterm.css');
 
+.console-wrapper {
+    position: relative;
+}
+
+/* Copy / download buttons over the top right corner, clear of the scrollbar. */
+.console-tools {
+    position: absolute;
+    top: 6px;
+    right: 22px;
+    z-index: 10;
+    display: flex;
+    gap: 2px;
+    opacity: 0.5;
+    transition: opacity 150ms;
+}
+
+.console-wrapper:hover .console-tools,
+.console-tools:focus-within {
+    opacity: 1;
+}
+
 #terminal {
     border-top-left-radius: 10px;
     border-top-right-radius: 10px;
