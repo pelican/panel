@@ -6,6 +6,10 @@ return [
     'command_blocked' => 'Server Offline...',
     'command_blocked_title' => 'Can\'t send command when the server is Offline',
     'open_in_admin' => 'Open in Admin',
+    'copy' => 'Copy console output',
+    'copied' => 'Console output copied to clipboard',
+    'copy_failed' => 'Could not copy the console output',
+    'download' => 'Download console output',
     'power_actions' => [
         'start' => 'Start',
         'stop' => 'Stop',
