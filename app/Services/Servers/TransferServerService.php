@@ -139,7 +139,7 @@ class TransferServerService
      * Whether a request that failed could still have been acted on: the connection worked but no full
      * answer came back, as opposed to the daemon having been refused, unresolvable or out of reach.
      */
-    public function mayHaveReachedDaemon(Throwable $exception): bool
+    private function mayHaveReachedDaemon(Throwable $exception): bool
     {
         $cause = $exception instanceof ConnectionException ? $exception->getPrevious() : null;
 

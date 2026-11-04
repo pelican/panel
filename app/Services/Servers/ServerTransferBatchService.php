@@ -45,6 +45,9 @@ class ServerTransferBatchService
 
     private const string IPV4_WILDCARD = '0.0.0.0';
 
+    /** How many batch timeouts to keep trying to reach a node to abort its transfer. */
+    private const int ABORT_GIVE_UP_AFTER_TIMEOUTS = 2;
+
     /** Longer than a step can take: the daemon requests in it time out well before this. */
     private const int LOCK_SECONDS = 120;
 
@@ -243,7 +246,8 @@ class ServerTransferBatchService
     /** @return int[] */
     private function portsOf(Server $server): array
     {
-        return $server->allocations->where('node_id', $server->node_id)->pluck('port')->all();
+        // A server can have the same port on several IPs of its node, but moves to a single one.
+        return $server->allocations->where('node_id', $server->node_id)->pluck('port')->unique()->values()->all();
     }
 
     /**
@@ -333,10 +337,10 @@ class ServerTransferBatchService
         // The application API "cancels" a transfer by marking it successful, so check that the server really moved.
         if ($transfer?->successful && $item->server->node_id === $transfer->new_node) {
             // The files went away with the server on the old node. Only now, so a failed transfer loses nothing.
-            // Backups newer than the transfer were made on the new node, by which time the server may be in use again.
+            // Backups newer than the end of the transfer were made on the new node, by which time the server may be in use again.
             if (!$item->move_backups) {
                 $this->localBackups($item->server)
-                    ->filter(fn (Backup $backup) => $backup->created_at->lte($transfer->created_at))
+                    ->filter(fn (Backup $backup) => $backup->created_at->lte($transfer->updated_at))
                     ->each(fn (Backup $backup) => $backup->delete());
             }
 
@@ -434,7 +438,7 @@ class ServerTransferBatchService
     private function stopServer(ServerTransferBatchItem $item, ContainerStatus $state): bool
     {
         // Kept once set: the stop may have worked even if the answer got lost, and the next look at the server would then find it offline.
-        $wasRunning = $item->was_running || $state->isStartingOrRunning();
+        $wasRunning = $item->was_running || $state->isStartingOrRunning() || $state === ContainerStatus::Restarting;
 
         try {
             $this->daemonRepository->setServer($item->server)->power('stop');
@@ -544,35 +548,46 @@ class ServerTransferBatchService
     {
         $transfer = $item->transfer;
 
-        // Too late to abort: it finished, and only the batch hadn't caught up yet.
-        if ($transfer?->successful && $item->server->node_id === $transfer->new_node) {
-            $this->checkTransfer($item);
-
-            return true;
-        }
-
         if ($transfer && $transfer->successful === null) {
             try {
                 $this->daemonRepository->setServer($item->server)->cancelTransfer();
             } catch (Throwable $exception) {
                 logger()->warning($exception, ['transfer_id' => $transfer->id]);
 
-                // Marking it failed would make the panel refuse the result if it does finish.
-                if ($this->transferService->mayHaveReachedDaemon($exception)) {
+                // The abort didn't arrive, so the nodes may well carry on between them. Marking
+                // it failed would make the panel refuse the result if the transfer does finish.
+                if ($exception instanceof ConnectionException && !$this->isPastGivingUp($item)) {
                     $item->update(['error' => trans('admin/node.transfer_batch.errors.abort_unconfirmed')]);
 
                     return false;
                 }
-
-                // A node that cannot be reached is usually why we are aborting in the first place.
             }
 
+            // Leaves a transfer alone that reported success in the meantime.
             $transfer->markFailed();
+            $item->load('server');
+        }
+
+        // Too late to abort: it finished, and at most the batch hadn't caught up yet.
+        if ($transfer?->successful && $item->server->node_id === $transfer->new_node) {
+            $this->checkTransfer($item);
+
+            return true;
         }
 
         $this->settle($item, $status, $error);
 
         return true;
+    }
+
+    /**
+     * Keeps a node that never comes back from holding up the batch forever.
+     */
+    private function isPastGivingUp(ServerTransferBatchItem $item): bool
+    {
+        $timeout = (int) config('panel.transfers.batch_timeout');
+
+        return $timeout > 0 && $item->started_at?->addMinutes($timeout * self::ABORT_GIVE_UP_AFTER_TIMEOUTS)->isPast();
     }
 
     private function settle(ServerTransferBatchItem $item, ItemStatus $status, ?string $error): void

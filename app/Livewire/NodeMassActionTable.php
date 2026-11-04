@@ -106,7 +106,7 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
     public function mount(Node $node, string $action, DaemonServerRepository $repository): void
     {
         abort_unless($action === self::TRANSFER || in_array($action, self::SIGNALS, true), 404);
-        abort_unless(user()?->can('update server') && user()->accessibleNodes()->whereKey($node->id)->exists(), 403);
+        $this->ensureCanManage($node);
 
         $this->node = $node;
         $this->action = $action;
@@ -124,6 +124,19 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
         }
 
         $this->form->fill(['move_all_backups' => true]);
+    }
+
+    /**
+     * Runs on every request after the first, as access can be taken away while the dialog is open.
+     */
+    public function hydrate(): void
+    {
+        $this->ensureCanManage($this->node);
+    }
+
+    private function ensureCanManage(Node $node): void
+    {
+        abort_unless(user()?->can('update server') && user()->accessibleNodes()->whereKey($node->id)->exists(), 403);
     }
 
     public function form(Schema $schema): Schema
@@ -240,8 +253,6 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
 
     public function submit(DaemonServerRepository $repository): void
     {
-        abort_unless(user()?->can('update server') && user()->accessibleNodes()->whereKey($this->node->id)->exists(), 403);
-
         $this->isTransfer() ? $this->submitTransfer() : $this->submitSignal($repository);
     }
 
@@ -308,7 +319,9 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
 
         $target = user()->accessibleNodes()->whereKey($this->targetId())->firstOrFail();
 
+        // May have changed since the table was opened. The state of the container doesn't matter for a transfer.
         $assignments = $this->selectedServers()
+            ->filter(fn (Server $server) => $this->isEligible($server, ContainerStatus::Missing))
             ->mapWithKeys(fn (Server $server) => [$server->id => [
                 'ip' => $this->ipFor($server->id),
                 'move_backups' => $this->movesBackups($server->id),
@@ -472,10 +485,13 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
             ->mapWithKeys(fn (Allocation $allocation) => ["$allocation->ip:$allocation->port" => true])
             ->all();
 
-        return $server->allocations->where('node_id', $this->node->id)->map(function (Allocation $allocation) use ($ip) {
+        $conflicts = $this->conflicts()[$server->id] ?? [];
+
+        return $server->allocations->where('node_id', $this->node->id)->map(function (Allocation $allocation) use ($ip, $conflicts) {
             $key = "$ip:$allocation->port";
 
             $status = match (true) {
+                in_array($key, $conflicts, true),
                 $this->batchService->isPortTaken($this->targetTakenPorts[$allocation->port] ?? [], $ip) => 'port_taken',
                 isset($this->targetAllocations[$key]) => 'port_free',
                 default => 'port_create',

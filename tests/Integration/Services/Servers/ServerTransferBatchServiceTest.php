@@ -309,6 +309,44 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         $this->assertTrue($item->refresh()->was_running);
     }
 
+    public function test_server_is_left_alone_when_the_node_reports_a_state_it_does_not_recognize(): void
+    {
+        $this->fakeDaemon('something-new');
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+
+        $this->assertFalse($this->service()->advance($batch));
+
+        $this->assertSame(0, ServerTransfer::query()->count());
+        $this->assertSame(ItemStatus::Queued, $batch->items()->sole()->status);
+    }
+
+    public function test_restarting_server_is_started_again_after_moving(): void
+    {
+        $this->fakeDaemon('restarting');
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+
+        $this->service()->advance($batch);
+
+        $item = $batch->items()->sole();
+        $this->assertSame(ItemStatus::Stopping, $item->status);
+        $this->assertTrue($item->was_running);
+    }
+
+    public function test_same_port_on_two_ips_of_the_source_moves_as_one_port(): void
+    {
+        $this->fakeDaemon();
+        $server = $this->serverOnPort(25565);
+        Allocation::factory()->create(['node_id' => $this->source->id, 'ip' => '192.0.2.10', 'port' => 25565, 'server_id' => $server->id]);
+
+        $batch = $this->batch([$server]);
+        $this->service()->advance($batch);
+
+        $transfer = ServerTransfer::query()->sole();
+        $this->assertSame(ItemStatus::Transferring, $batch->items()->sole()->status);
+        $this->assertSame([], $transfer->new_additional_allocations);
+        $this->assertSame(25565, Allocation::query()->findOrFail($transfer->new_allocation)->port);
+    }
+
     public function test_server_the_node_does_not_have_fails_instead_of_waiting_forever(): void
     {
         Http::fake([
@@ -465,7 +503,7 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         $this->assertModelExists($remote);
     }
 
-    public function test_not_moving_backups_keeps_those_made_after_the_transfer(): void
+    public function test_not_moving_backups_keeps_only_those_made_after_the_transfer(): void
     {
         $this->fakeDaemon();
         $server = $this->serverOnPort(25565);
@@ -473,13 +511,22 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         $batch = $this->batch([$server], moveBackups: false);
 
         $this->service()->advance($batch);
+
+        // Made on the old node while the transfer ran, so its files aren't coming along either.
+        $this->travel(1)->minutes();
+        $during = Backup::factory()->create(['server_id' => $server->id, 'backup_host_id' => $old->backup_host_id]);
+
         $this->travel(1)->minutes();
         $this->transferSucceeds($server);
-        $new = Backup::factory()->create(['server_id' => $server->id, 'backup_host_id' => $old->backup_host_id]);
+
+        $this->travel(1)->minutes();
+        $after = Backup::factory()->create(['server_id' => $server->id, 'backup_host_id' => $old->backup_host_id]);
+
         $this->service()->advance($batch);
 
         $this->assertModelMissing($old);
-        $this->assertModelExists($new);
+        $this->assertModelMissing($during);
+        $this->assertModelExists($after);
     }
 
     public function test_cancelling_a_transfer_that_already_finished_counts_as_moved(): void
@@ -689,18 +736,79 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         $this->assertFalse(ServerTransfer::query()->sole()->successful);
     }
 
-    public function test_cancel_gives_up_on_a_transfer_when_the_node_cannot_be_reached(): void
+    public function test_abort_that_does_not_reach_the_node_keeps_the_transfer_open_until_giving_up(): void
     {
         $this->fakeDaemon();
         $batch = $this->batch([$this->serverOnPort(25565)]);
+        $item = $batch->items()->sole();
         $this->service()->advance($batch);
 
+        // Only the panel may have lost the node, which can still be sending the server to the target.
         $this->transferFailure = new ConnectionException('refused', 0, new ConnectException('refused', new Request('DELETE', 'http://node')));
+
+        $this->assertFalse($this->service()->cancel($batch));
+        $this->assertSame(ItemStatus::Transferring, $item->refresh()->status);
+        $this->assertNull(ServerTransfer::query()->sole()->successful);
+
+        $this->travel(config('panel.transfers.batch_timeout') * 2 + 1)->minutes();
+
+        $this->assertTrue($this->service()->cancel($batch));
+        $this->assertSame(BatchStatus::Cancelled, $batch->refresh()->status);
+        $this->assertSame(ItemStatus::Cancelled, $item->refresh()->status);
+        $this->assertFalse(ServerTransfer::query()->sole()->successful);
+    }
+
+    public function test_batch_timeout_gives_up_on_a_node_that_never_answers_the_abort(): void
+    {
+        $this->fakeDaemon();
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+        $item = $batch->items()->sole();
+        $this->service()->advance($batch);
+        $this->transferFailure = $this->readTimeout();
+
+        $this->travel(config('panel.transfers.batch_timeout') + 1)->minutes();
+        $this->assertFalse($this->service()->advance($batch));
+
+        $this->travel(config('panel.transfers.batch_timeout'))->minutes();
+        $this->assertTrue($this->service()->advance($batch));
+
+        $this->assertSame(ItemStatus::Failed, $item->refresh()->status);
+        $this->assertFalse(ServerTransfer::query()->sole()->successful);
+    }
+
+    public function test_abort_keeps_trying_without_a_batch_timeout(): void
+    {
+        config()->set('panel.transfers.batch_timeout', 0);
+        $this->fakeDaemon();
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+        $this->service()->advance($batch);
+        $this->transferFailure = $this->readTimeout();
+
+        $this->travel(1)->years();
+
+        $this->assertFalse($this->service()->cancel($batch));
+        $this->assertNull(ServerTransfer::query()->sole()->successful);
+    }
+
+    public function test_transfer_that_succeeds_while_it_is_being_aborted_counts_as_moved(): void
+    {
+        $this->fakeDaemon();
+        $server = $this->serverOnPort(25565);
+        ['local' => $local] = $this->backupsOf($server);
+        $batch = $this->batch([$server], moveBackups: false);
+        $this->service()->advance($batch);
+
+        Http::fake(['*/transfer' => function () use ($server) {
+            $this->transferSucceeds($server);
+
+            return Http::response(status: 204);
+        }]);
 
         $this->assertTrue($this->service()->cancel($batch));
 
-        $this->assertSame(BatchStatus::Cancelled, $batch->refresh()->status);
-        $this->assertFalse(ServerTransfer::query()->sole()->successful);
+        $this->assertSame(ItemStatus::Successful, $batch->items()->sole()->status);
+        $this->assertTrue(ServerTransfer::query()->sole()->successful);
+        $this->assertModelMissing($local);
     }
 
     public function test_a_step_of_the_batch_holds_the_lock_while_it_starts_a_transfer(): void

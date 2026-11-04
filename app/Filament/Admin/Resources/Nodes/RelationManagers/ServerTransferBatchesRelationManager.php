@@ -90,7 +90,7 @@ class ServerTransferBatchesRelationManager extends RelationManager
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalDescription(trans('admin/node.transfer_batch.cancel_help'))
-                    ->authorize(fn () => user()?->can('update server'))
+                    ->authorize(fn () => user()?->can('update server') && user()->canTarget($this->getOwnerRecord()))
                     ->visible(fn (ServerTransferBatch $batch) => !$this->isReadOnly() && $batch->status === ServerTransferBatchStatus::Running)
                     ->action(function (ServerTransferBatch $batch, ServerTransferBatchService $service) {
                         try {

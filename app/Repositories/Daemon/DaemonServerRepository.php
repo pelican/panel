@@ -59,7 +59,7 @@ class DaemonServerRepository extends DaemonRepository
             return null;
         }
 
-        return ContainerStatus::tryFrom($response->json('state') ?? '') ?? ContainerStatus::Missing;
+        return ContainerStatus::tryFrom($response->json('state') ?? '');
     }
 
     /**

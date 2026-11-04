@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\RolePermissionModels;
+use App\Enums\ServerState;
 use App\Enums\ServerTransferBatchItemStatus;
 use App\Enums\ServerTransferBatchStatus;
 use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
@@ -105,6 +106,69 @@ it('refuses to act once access to the node is revoked', function (string $action
     Bus::assertNotDispatched(SendServerPowerAction::class);
     expect(ServerTransferBatch::query()->count())->toBe(0);
 })->with(['stop', 'transfer']);
+
+it('stops listing the servers of a node once access to it is revoked', function () {
+    $server = massActionServer($this->node, 'server', 25565);
+    fakeNodeStates([$server->uuid => 'running']);
+
+    $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'stop']);
+
+    $this->admin->roles->first()->nodes()->sync([Node::factory()->create()->id]);
+
+    $component->call('$refresh')->assertForbidden();
+});
+
+it('does not offer cancelling a batch once access to the node is revoked', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    fakeNodeStates([]);
+    $target = Node::factory()->create();
+    Allocation::factory()->create(['node_id' => $target->id, 'ip' => '10.0.0.5', 'port' => 1]);
+    $server = massActionServer($this->node, 'server', 25565);
+    $batch = app(ServerTransferBatchService::class)->create($this->node, $target, [$server->id => ['ip' => '10.0.0.5', 'move_backups' => true]]);
+
+    $component = livewire(ServerTransferBatchesRelationManager::class, ['ownerRecord' => $this->node, 'pageClass' => EditNode::class])
+        ->assertActionVisible(TestAction::make('cancel')->table($batch));
+
+    $this->admin->roles->first()->nodes()->sync([$target->id]);
+
+    $component->assertActionHidden(TestAction::make('cancel')->table($batch));
+    expect($batch->refresh()->status)->toBe(ServerTransferBatchStatus::Running);
+});
+
+it('does not queue a server that stopped being eligible while the dialog was open', function () {
+    $target = Node::factory()->create();
+    Allocation::factory()->create(['node_id' => $target->id, 'ip' => '10.0.0.5', 'port' => 1]);
+    $staying = massActionServer($this->node, 'staying', 25565);
+    $changed = massActionServer($this->node, 'changed', 25566);
+    fakeNodeStates([]);
+
+    $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'transfer'])
+        ->set('data.node_id', $target->id)
+        ->set('data.default_ip', '10.0.0.5')
+        ->set('selected', [(string) $staying->id, (string) $changed->id]);
+
+    $changed->update(['status' => ServerState::RestoringBackup]);
+
+    $component->call('submit')
+        ->assertDispatched('mass-action-close')
+        ->assertNotified(trans_choice('admin/node.transfer_batch.notifications.started', 1, ['node' => $target->name]));
+
+    expect(ServerTransferBatch::query()->sole()->items()->pluck('server_id')->all())->toBe([$staying->id]);
+});
+
+it('shows a port as in use when two selected servers need it', function () {
+    $target = Node::factory()->create();
+    Allocation::factory()->create(['node_id' => $target->id, 'ip' => '10.0.0.5', 'port' => 1]);
+    $first = massActionServer($this->node, 'first', 25565);
+    $second = massActionServer($this->node, 'second', 25565);
+    fakeNodeStates([]);
+
+    livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'transfer'])
+        ->set('data.node_id', $target->id)
+        ->set('data.default_ip', '10.0.0.5')
+        ->set('selected', [(string) $first->id, (string) $second->id])
+        ->assertSee('10.0.0.5:25565 (' . trans('admin/node.transfer_batch.port_taken') . ')');
+});
 
 it('does not show the IPs and ports of a target node the admin cannot access', function () {
     $hidden = Node::factory()->create();
