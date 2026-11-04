@@ -91,6 +91,21 @@ class AllocationControllerTest extends ApplicationApiIntegrationTestCase
             ->assertJsonPath('data.0.attributes.protocol', 'tcp');
     }
 
+    public function test_create_allocations_merges_a_different_protocol_into_both(): void
+    {
+        $url = "/api/application/nodes/{$this->node->id}/allocations";
+
+        $this->postJson($url, ['ip' => '10.0.0.1', 'ports' => ['25565'], 'protocol' => 'tcp'])->assertStatus(Response::HTTP_NO_CONTENT);
+        $this->postJson($url, ['ip' => '10.0.0.1', 'ports' => ['25565', '25566'], 'protocol' => 'udp'])->assertStatus(Response::HTTP_NO_CONTENT);
+
+        $this->assertSame(
+            [25565 => AllocationProtocol::Both, 25566 => AllocationProtocol::Udp],
+            Allocation::query()->where('node_id', $this->node->id)->orderBy('port')->get()->mapWithKeys(fn (Allocation $a) => [$a->port => $a->protocol])->all(),
+        );
+
+        $this->getJson($url)->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('data.0.attributes.protocol', 'both');
+    }
+
     public function test_delete_unassigned_allocation(): void
     {
         $allocation = Allocation::factory()->create(['node_id' => $this->node->id, 'server_id' => null]);

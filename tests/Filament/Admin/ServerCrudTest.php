@@ -158,8 +158,8 @@ it('creates a server allocation with the chosen protocol', function () {
     livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
         ->callAction(TestAction::make('create')->table(), [
             'allocation_ip' => '10.0.0.9',
-            'allocation_ports' => ['19132'],
             'protocol' => AllocationProtocol::Udp->value,
+            'allocation_ports' => ['19132'],
         ])
         ->assertHasNoFormErrors();
 
@@ -178,4 +178,24 @@ it('changes the protocol of a server allocation from the table', function () {
         ->call('updateTableColumnState', 'protocol', (string) $primary->getKey(), AllocationProtocol::Tcp->value);
 
     expect($primary->refresh()->protocol)->toBe(AllocationProtocol::Tcp);
+});
+
+it('merges a server allocation created with the other protocol into one that uses both', function () {
+    $server = createServerModel();
+    Allocation::factory()->create(['node_id' => $server->node_id, 'ip' => '10.0.0.9', 'port' => 25565, 'protocol' => AllocationProtocol::Tcp]);
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
+        ->callAction(TestAction::make('create')->table(), [
+            'allocation_ip' => '10.0.0.9',
+            'protocol' => AllocationProtocol::Udp->value,
+            'allocation_ports' => ['25565', '25566'],
+        ])
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $merged = Allocation::query()->where('node_id', $server->node_id)->where('port', 25565)->get();
+
+    expect($merged)->toHaveCount(1)
+        ->and($merged->first())->protocol->toBe(AllocationProtocol::Both)->server_id->toBe($server->id)
+        ->and(Allocation::query()->where('port', 25566)->firstOrFail()->protocol)->toBe(AllocationProtocol::Udp);
 });
