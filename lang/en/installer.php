@@ -63,6 +63,7 @@ return [
     ],
     'egg' => [
         'title' => 'Eggs',
+        'loading' => 'Loading available eggs...',
         'no_eggs' => 'No Eggs Available',
         'background_install_started' => 'Egg Install Started',
         'background_install_description' => 'Install of :count eggs has been queued and will continue in the background.',
@@ -71,6 +72,15 @@ return [
             'no_eggs' => 'No eggs are available to install at this time.',
             'installation_failed' => 'Failed to install selected eggs. Please import them after the installation via the egg list.',
         ],
+    ],
+    'plugin' => [
+        'title' => 'Plugins',
+        'loading' => 'Loading available plugins...',
+        'description' => 'Optional free community plugins from the Pelican Hub. They are made by third parties and run inside your panel, so only pick ones you trust. They install in the background after the installer finishes.',
+        'unavailable' => 'The Pelican Hub could not be reached, so no plugins can be selected right now. You can browse and install plugins from the Plugins page after the installation.',
+        'background_install_started' => 'Plugin Install Started',
+        'background_install_description' => 'Install of :count plugin has been queued and will continue in the background.|Install of :count plugins has been queued and will continue in the background.',
+        'installation_failed' => 'Failed to install selected plugins. Please install them after the installation from the Plugins page.',
     ],
     'session' => [
         'title' => 'Session',

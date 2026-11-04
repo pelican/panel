@@ -146,7 +146,7 @@ class BrowsePlugins extends Page implements HasTable
                 TextColumn::make('description')
                     ->label(trans('admin/plugin.hub.description'))
                     // Hub descriptions are markdown; show them as plain text in the table.
-                    ->state(fn (array $record) => $this->plainText($record['description'] ?? null))
+                    ->state(fn (array $record) => $hub->plainDescription($record['description'] ?? null))
                     ->limit(100)
                     ->wrap(),
                 TextColumn::make('latest_version')
@@ -233,27 +233,9 @@ class BrowsePlugins extends Page implements HasTable
                 throw new RuntimeException(trans('admin/plugin.hub.no_permission'));
             }
 
-            $plugin = $hub->find($slug);
-
-            // Re-check on the server: only free plugins may ever be installed from here.
-            if ($plugin === null || !$hub->isFree($plugin)) {
-                throw new RuntimeException(trans('admin/plugin.hub.not_free'));
-            }
-
-            $release = $hub->latestRelease($slug);
-
-            if ($release === null) {
-                throw new RuntimeException(trans('admin/plugin.hub.no_release'));
-            }
-
-            // Plugin code runs inside the panel, so never install a download that can't be verified.
-            if (!str_starts_with($release['download_url'], 'https://') || preg_match('/\A[a-f0-9]{64}\z/i', (string) $release['sha256']) !== 1) {
-                throw new RuntimeException(trans('admin/plugin.hub.unverified_release'));
-            }
-
             $wasInstalled = Plugin::whereKey($slug)->exists() && $pluginService->isInstalled($slug);
 
-            $id = $pluginService->downloadPluginFromUrl($release['download_url'], $slug, $release['sha256']);
+            $id = $pluginService->downloadPluginFromHub($slug, $hub);
 
             // Pick up the new plugin so the table shows it as installed.
             Plugin::refreshRows();
@@ -274,15 +256,6 @@ class BrowsePlugins extends Page implements HasTable
                 ->body($exception->getMessage())
                 ->send();
         }
-    }
-
-    private function plainText(mixed $markdown): ?string
-    {
-        if (!is_string($markdown) || blank($markdown)) {
-            return null;
-        }
-
-        return trim((string) preg_replace('/\s+/', ' ', html_entity_decode(strip_tags(Str::markdown($markdown, ['html_input' => 'strip'])))));
     }
 
     /**

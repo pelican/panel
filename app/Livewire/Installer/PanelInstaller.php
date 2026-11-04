@@ -4,15 +4,18 @@ namespace App\Livewire\Installer;
 
 use App\Enums\TablerIcon;
 use App\Jobs\InstallEgg;
+use App\Jobs\Plugin\InstallHubPlugin;
 use App\Livewire\Installer\Steps\CacheStep;
 use App\Livewire\Installer\Steps\DatabaseStep;
 use App\Livewire\Installer\Steps\EggSelectionStep;
 use App\Livewire\Installer\Steps\EnvironmentStep;
+use App\Livewire\Installer\Steps\PluginSelectionStep;
 use App\Livewire\Installer\Steps\QueueStep;
 use App\Livewire\Installer\Steps\RequirementsStep;
 use App\Livewire\Installer\Steps\SessionStep;
 use App\Models\User;
 use App\Services\Helpers\LanguageService;
+use App\Services\Helpers\PluginHubService;
 use App\Services\Users\UserCreationService;
 use App\Traits\CheckMigrationsTrait;
 use App\Traits\EnvironmentWriterTrait;
@@ -36,6 +39,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
+use Livewire\Attributes\Locked;
 
 /**
  * @property Schema $form
@@ -49,6 +53,22 @@ class PanelInstaller extends SimplePage implements HasForms
 
     /** @var array<string, mixed> */
     public array $data = [];
+
+    /**
+     * Null until loadCatalogs() has run.
+     *
+     * @var array<string, array<string, string>>|null
+     */
+    #[Locked]
+    public ?array $eggIndex = null;
+
+    /**
+     * Null until loadCatalogs() has run.
+     *
+     * @var array<int, array{slug: string, title: string, type: string, description: string}>|null
+     */
+    #[Locked]
+    public ?array $hubPlugins = null;
 
     protected string $view = 'filament.pages.installer';
 
@@ -72,6 +92,30 @@ class PanelInstaller extends SimplePage implements HasForms
         abort_if(self::isInstalled(), 404);
 
         $this->form->fill();
+    }
+
+    /**
+     * Fetches the egg and plugin lists once, right after the page has rendered, so
+     * neither the first load nor any later request has to wait on a remote server.
+     */
+    public function loadCatalogs(PluginHubService $hub): void
+    {
+        abort_if(self::isInstalled(), 404);
+
+        $this->eggIndex ??= EggSelectionStep::loadIndex();
+        $this->hubPlugins ??= PluginSelectionStep::loadPlugins($hub);
+
+        // These fields didn't exist when the form was filled, so give them their empty state.
+        foreach (array_keys($this->eggIndex) as $category) {
+            $this->data['eggs'][str_slug($category, '_')] ??= [];
+        }
+
+        foreach ($this->hubPlugins as $plugin) {
+            $this->data['plugins'][$plugin['type']] ??= [];
+        }
+
+        // Rebuild the form on this render so the loading indicators are replaced by the lists.
+        $this->cacheSchema('form', null);
     }
 
     /** @return Component[] */
@@ -109,7 +153,8 @@ class PanelInstaller extends SimplePage implements HasForms
             RequirementsStep::make(),
             EnvironmentStep::make($this),
             DatabaseStep::make($this),
-            EggSelectionStep::make(),
+            EggSelectionStep::make($this),
+            PluginSelectionStep::make($this),
             CacheStep::make($this),
             QueueStep::make($this),
             SessionStep::make(),
@@ -156,6 +201,10 @@ class PanelInstaller extends SimplePage implements HasForms
 
             // Disable installer
             $this->writeToEnvironment(['APP_INSTALLED' => 'true']);
+
+            // Install selected plugins. The sync queue driver runs this inline, and a composer
+            // and yarn build that outlasts the request must not leave the panel half installed.
+            $this->installPlugins($user);
 
             // Redirect to admin panel
             $this->redirect(Filament::getPanel('admin')->getUrl());
@@ -268,6 +317,40 @@ class PanelInstaller extends SimplePage implements HasForms
 
             Notification::make()
                 ->title(trans('installer.egg.exceptions.installation_failed'))
+                ->body($exception->getMessage())
+                ->danger()
+                ->persistent()
+                ->send();
+        }
+    }
+
+    public function installPlugins(User $user): void
+    {
+        abort_if(self::isInstalled(), 404);
+
+        try {
+            $slugs = collect(array_get($this->data, 'plugins', []))
+                ->flatten()
+                ->filter(fn ($slug) => is_string($slug))
+                ->unique();
+
+            if ($slugs->isEmpty()) {
+                return;
+            }
+
+            $slugs->each(fn (string $slug) => InstallHubPlugin::dispatch($user, $slug));
+
+            Notification::make()
+                ->title(trans('installer.plugin.background_install_started'))
+                ->body(trans_choice('installer.plugin.background_install_description', $slugs->count(), ['count' => $slugs->count()]))
+                ->success()
+                ->persistent()
+                ->send();
+        } catch (Exception $exception) {
+            report($exception);
+
+            Notification::make()
+                ->title(trans('installer.plugin.installation_failed'))
                 ->body($exception->getMessage())
                 ->danger()
                 ->persistent()

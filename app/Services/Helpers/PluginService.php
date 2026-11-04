@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use JsonException;
+use RuntimeException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\ErrorHandler\Error\FatalError;
 use Throwable;
@@ -531,6 +532,32 @@ class PluginService
         throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
 
         return $this->downloadPluginFromFile(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
+    }
+
+    /**
+     * Downloads the latest release of a free Hub plugin, refusing anything that isn't free
+     * or can't be verified, and returns the id it was stored under.
+     *
+     * @throws Exception
+     */
+    public function downloadPluginFromHub(string $slug, PluginHubService $hub): string
+    {
+        $plugin = $hub->find($slug);
+
+        // Re-check on the server: only free plugins may ever be installed from the Hub.
+        throw_if($plugin === null || !$hub->isFree($plugin), new RuntimeException(trans('admin/plugin.hub.not_free')));
+
+        $release = $hub->latestRelease($slug);
+
+        throw_if($release === null, new RuntimeException(trans('admin/plugin.hub.no_release')));
+
+        // Plugin code runs inside the panel, so never install a download that can't be verified.
+        throw_if(
+            !str_starts_with($release['download_url'], 'https://') || preg_match('/\A[a-f0-9]{64}\z/i', (string) $release['sha256']) !== 1,
+            new RuntimeException(trans('admin/plugin.hub.unverified_release'))
+        );
+
+        return $this->downloadPluginFromUrl($release['download_url'], $slug, $release['sha256']);
     }
 
     public function deletePlugin(Plugin $plugin): void

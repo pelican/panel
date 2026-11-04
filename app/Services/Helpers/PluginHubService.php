@@ -8,6 +8,7 @@ use DateTimeInterface;
 use Exception;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
 
 /**
  * Read-only client for the Pelican Hub's public plugin API. Only free plugins
@@ -144,6 +145,16 @@ class PluginHubService
     public function isFree(array $plugin): bool
     {
         return ($plugin['pricing_type'] ?? null) === 'free';
+    }
+
+    /** A Hub description, which is markdown, as a single line of plain text. */
+    public function plainDescription(mixed $markdown): ?string
+    {
+        if (!is_string($markdown) || blank($markdown)) {
+            return null;
+        }
+
+        return trim((string) preg_replace('/\s+/', ' ', html_entity_decode(strip_tags(Str::markdown($markdown, ['html_input' => 'strip'])))));
     }
 
     public function hubUrl(): string
