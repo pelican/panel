@@ -6,6 +6,7 @@ return [
     'delete' => 'Törlés',
     'error_something_went_wrong_generating_the_passkey' => 'Valami hiba történt a létrehozás során, kérlek próbáld újra később.',
     'invalid' => 'Rossz paskey',
+    'invalid_origin' => 'A passkey-ek a :domain hoz vannak kapcsolva és csak akkor működnek ha ezen a domainon nyitod meg',
     'last_used' => 'Utoljára használva',
     'name' => 'Név',
     'name_placeholder' => 'Az én passkey-em',

@@ -11,4 +11,5 @@ return [
     'no_configuration' => 'No se requiere configuración adicional',
     'no_backup_hosts' => 'No hay hosts de copia de seguridad',
     'local_backups_only' => 'Todas las copias de seguridad se crearán localmente en el nodo correspondiente',
+    'delete_help' => 'El host de copias de seguridad tiene copias de seguridad guardadas',
 ];

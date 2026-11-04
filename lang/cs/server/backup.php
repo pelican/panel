@@ -12,6 +12,14 @@ return [
         'successful' => 'Úspěšné',
         'failed' => 'Selhání',
     ],
+    'notifications' => [
+        'action' => 'Nastavení upozornění',
+        'toggle_manual' => 'Upozornění na ruční zálohy',
+        'helper_manual' => 'Dostávat upozornění a e-mail, když ručně vytvořená záloha tohoto serveru doběhne nebo selže.',
+        'toggle_scheduled' => 'Upozornění na plánované zálohy',
+        'helper_scheduled' => 'Dostávat upozornění a e-mail, když plánovaná záloha tohoto serveru doběhne nebo selže.',
+        'saved' => 'Nastavení upozornění uloženo',
+    ],
     'actions' => [
         'create' => [
             'title' => 'Vytvořit zálohu',

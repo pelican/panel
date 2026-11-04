@@ -11,4 +11,5 @@ return [
     'no_configuration' => '追加設定は不要です',
     'no_backup_hosts' => 'バックアップホストが存在しません',
     'local_backups_only' => 'すべてのバックアップは、それぞれのノード上にローカルで作成されます',
+    'delete_help' => 'バックアップホストにバックアップがあります',
 ];

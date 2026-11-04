@@ -17,14 +17,19 @@ return [
     'no_mounts' => 'Brak punktów montowania',
     'eggs' => 'Jajka',
     'nodes' => 'Węzły',
+    'user_mountable' => 'Montowalne przez użytkownika?',
+    'user_mountable_help' => 'Czy użytkownicy powinni mieć możliwość włączenia lub wyłączenia tego punktu montowania na swoich serwerach?',
     'toggles' => [
         'writable' => 'Zapisywalne',
         'read_only' => 'Tylko do odczytu',
+        'user_mountable' => 'Montowalne przez użytkownika',
+        'not_user_mountable' => 'Tylko dla Administratorów',
     ],
     'table' => [
         'name' => 'Nazwa',
         'all_eggs' => 'Wszystkie Jajka',
         'all_nodes' => 'Wszystkie Węzły',
         'read_only' => 'Tylko do odczytu',
+        'user_mountable' => 'Montowalne przez użytkownika',
     ],
 ];

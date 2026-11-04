@@ -106,7 +106,7 @@ return [
     'misc' => [
         'auto_allocation' => [
             'title' => 'Automatisches Erstellen von Allokationen',
-            'helper' => 'Stelle ein, ob Benutzer in der Kundenansicht Allokationen erstellen können.',
+            'helper' => 'Legen Sie fest, ob Benutzer über den Kundenbereich Zuweisungen erstellen können. Server benötigen zunächst eine primäre Zuweisung.',
             'question' => 'Benutzern erlauben Allokationen zu erstellen?',
             'create_new' => 'Neue Ports erstellen, falls keine frei sind?',
             'create_new_help' => 'Wenn aktiviert, werden neue Port-Zuweisungen erstellt. Wenn deaktiviert, werden nur bereits vorhandene, nicht zugewiesene Ports verwendet. Beide Optionen berücksichtigen dabei den unten angegebenen Port-Bereich.',

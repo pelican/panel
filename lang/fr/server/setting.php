@@ -41,6 +41,18 @@ return [
             'password_body' => 'Votre mot de passe SFTP est le même que celui que vous utilisez pour accéder à ce panneau.',
         ],
     ],
+    'notifications' => [
+        'title' => 'Notifications',
+        'saved' => 'Paramètres de notification mis à jour',
+        'backup_manual' => [
+            'label' => 'Notifications de sauvegarde manuelle',
+            'helper' => 'Recevoir une notification et un e-mail lorsqu\'une sauvegarde créée manuellement pour ce serveur se termine ou échoue.',
+        ],
+        'backup_scheduled' => [
+            'label' => 'Notifications de sauvegarde planifiées',
+            'helper' => 'Recevoir une notification et un courriel lorsqu\'une sauvegarde planifiée de ce serveur se termine ou échoue.',
+        ],
+    ],
     'reinstall' => [
         'title' => 'Réinstaller le serveur',
         'body' => 'Réinstaller votre serveur l\'arrêtera, puis va relancer le script d\'installation qui l\'a initialement configuré.',
