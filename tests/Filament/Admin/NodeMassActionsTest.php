@@ -269,6 +269,22 @@ it('stays open, creates nothing and shows the conflicts when a port is in use', 
         ->and($component->get('selected'))->toHaveCount(2);
 });
 
+it('shows a port as in use when the target listens on it on all IPv4 addresses', function () {
+    $target = Node::factory()->create();
+    $occupant = massActionServer($target, 'occupant', 30000);
+    Allocation::factory()->create(['node_id' => $target->id, 'ip' => '0.0.0.0', 'port' => 25565, 'server_id' => $occupant->id]);
+    Allocation::factory()->create(['node_id' => $target->id, 'ip' => '10.0.0.5', 'port' => 1]);
+    $server = massActionServer($this->node, 'server', 25565);
+    fakeNodeStates([]);
+
+    livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'transfer'])
+        ->set('data.node_id', $target->id)
+        ->set('data.default_ip', '10.0.0.5')
+        ->set('selected', [(string) $server->id])
+        ->assertSee('10.0.0.5:25565 (' . trans('admin/node.transfer_batch.port_taken') . ')')
+        ->assertSee(trans_choice('admin/node.transfer_batch.conflict_count', 1));
+});
+
 it('shows batch progress and failures and can cancel a batch', function () {
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     fakeNodeStates([]);

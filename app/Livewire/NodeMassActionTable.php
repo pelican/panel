@@ -87,8 +87,11 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
     /** @var array<int, string[]>|null */
     private ?array $conflicts = null;
 
-    /** @var array<string, int>|null */
+    /** @var array<string, true>|null the addresses that have an allocation on the target */
     private ?array $targetAllocations = null;
+
+    /** @var array<int, array<string, true>>|null */
+    private ?array $targetTakenPorts = null;
 
     /** @var array<int, bool> whether the admin can access a node, by node id */
     private array $accessibleTargets = [];
@@ -144,6 +147,7 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
                             $this->ipOverrides = [];
                             $this->ipOptions = null;
                             $this->targetAllocations = null;
+                            $this->targetTakenPorts = null;
                             $this->forgetConflicts();
                         }),
                     Select::make('default_ip')
@@ -463,18 +467,18 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
             return null;
         }
 
-        // server_id of each allocation on the target, 0 when it is free
+        $this->targetTakenPorts ??= $this->batchService->takenPorts($this->targetId());
         $this->targetAllocations ??= Allocation::query()->where('node_id', $this->targetId())->get()
-            ->mapWithKeys(fn (Allocation $allocation) => ["$allocation->ip:$allocation->port" => $allocation->server_id ?? 0])
+            ->mapWithKeys(fn (Allocation $allocation) => ["$allocation->ip:$allocation->port" => true])
             ->all();
 
         return $server->allocations->where('node_id', $this->node->id)->map(function (Allocation $allocation) use ($ip) {
             $key = "$ip:$allocation->port";
 
-            $status = match ($this->targetAllocations[$key] ?? null) {
-                null => 'port_create',
-                0 => 'port_free',
-                default => 'port_taken',
+            $status = match (true) {
+                $this->batchService->isPortTaken($this->targetTakenPorts[$allocation->port] ?? [], $ip) => 'port_taken',
+                isset($this->targetAllocations[$key]) => 'port_free',
+                default => 'port_create',
             };
 
             return "$key (" . trans("admin/node.transfer_batch.$status") . ')';

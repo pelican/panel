@@ -4,6 +4,7 @@ return [
     'daemon_connection_failed' => 'There was an exception while attempting to communicate with the daemon resulting in a HTTP/:code response code. This exception has been logged.',
     'node' => [
         'servers_attached' => 'A node must have no servers linked to it in order to be deleted.',
+        'in_transfer_batch' => 'A node cannot be deleted while it is part of a running mass transfer.',
         'error_connecting' => 'Error connecting to :node',
         'not_viable' => 'The node :node does not have enough free resources to accept this server.',
         'daemon_off_config_updated' => 'The daemon configuration <strong>has been updated</strong>, however there was an error encountered while attempting to automatically update the configuration file on the Daemon. You will need to manually update the configuration file (config.yml) for the daemon to apply these changes.',

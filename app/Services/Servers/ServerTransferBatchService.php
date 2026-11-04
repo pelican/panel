@@ -39,6 +39,8 @@ class ServerTransferBatchService
 
     private const int CONFLICTS_IN_MESSAGE = 5;
 
+    private const string IPV4_WILDCARD = '0.0.0.0';
+
     public function __construct(
         private readonly ConnectionInterface $connection,
         private readonly TransferServerService $transferService,
@@ -169,9 +171,7 @@ class ServerTransferBatchService
      */
     public function portConflicts(Node $target, EloquentCollection $servers, array $ips): array
     {
-        $taken = Allocation::query()->where('node_id', $target->id)->whereNotNull('server_id')->get()
-            ->mapWithKeys(fn (Allocation $allocation) => ["$allocation->ip:$allocation->port" => true])
-            ->all();
+        $taken = $this->takenPorts($target->id);
         $conflicts = [];
 
         foreach ($servers as $server) {
@@ -182,15 +182,52 @@ class ServerTransferBatchService
             }
 
             foreach ($this->portsOf($server) as $port) {
-                if (isset($taken["$ip:$port"])) {
+                if ($this->isPortTaken($taken[$port] ?? [], $ip)) {
                     $conflicts[$server->id][] = "$ip:$port";
                 }
 
-                $taken["$ip:$port"] = true;
+                $taken[$port][$ip] = true;
             }
         }
 
         return $conflicts;
+    }
+
+    /**
+     * @return array<int, array<string, true>> the IPs that are in use on a node, by port
+     */
+    public function takenPorts(int $nodeId): array
+    {
+        $taken = [];
+
+        foreach (Allocation::query()->where('node_id', $nodeId)->whereNotNull('server_id')->get() as $allocation) {
+            $taken[$allocation->port][$allocation->ip] = true;
+        }
+
+        return $taken;
+    }
+
+    /**
+     * Listening on 0.0.0.0 occupies the port on every IPv4 address, so those two can't share a port either way around.
+     * IPv6 is compared as is: whether :: clashes depends on how the node publishes ports.
+     *
+     * @param  array<string, true>  $ipsInUse  the IPs in use on a port
+     */
+    public function isPortTaken(array $ipsInUse, string $ip): bool
+    {
+        if (isset($ipsInUse[$ip])) {
+            return true;
+        }
+
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            return false;
+        }
+
+        if ($ip !== self::IPV4_WILDCARD) {
+            return isset($ipsInUse[self::IPV4_WILDCARD]);
+        }
+
+        return collect($ipsInUse)->keys()->contains(fn (string $used) => filter_var($used, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4));
     }
 
     /** @return int[] */
@@ -232,11 +269,12 @@ class ServerTransferBatchService
             return;
         }
 
-        $batch->items()->whereIn('status', [ItemStatus::Stopping, ItemStatus::Transferring])->each(
+        // By id: settling takes an item out of these queries, and paging by offset would then skip others.
+        $batch->items()->whereIn('status', [ItemStatus::Stopping, ItemStatus::Transferring])->eachById(
             fn (ServerTransferBatchItem $item) => $this->abort($item, ItemStatus::Cancelled, null)
         );
 
-        $batch->items()->where('status', ItemStatus::Queued)->each(
+        $batch->items()->where('status', ItemStatus::Queued)->eachById(
             fn (ServerTransferBatchItem $item) => $this->settle($item, ItemStatus::Cancelled, null)
         );
 
@@ -438,15 +476,16 @@ class ServerTransferBatchService
         }
 
         $primaryPort = $server->allocation->port;
+        $taken = $this->takenPorts($nodeId);
         $additional = [];
         $primary = null;
 
         foreach ($this->portsOf($server) as $port) {
-            $allocation = Allocation::query()->firstOrCreate(['node_id' => $nodeId, 'ip' => $ip, 'port' => $port]);
-
-            if ($allocation->server_id) {
+            if ($this->isPortTaken($taken[$port] ?? [], $ip)) {
                 return null;
             }
+
+            $allocation = Allocation::query()->firstOrCreate(['node_id' => $nodeId, 'ip' => $ip, 'port' => $port]);
 
             if ($port === $primaryPort) {
                 $primary = $allocation->id;

@@ -135,7 +135,7 @@ class ServerDetailsController extends Controller
         ServerTransfer::query()
             ->whereNull('successful')
             ->where(fn ($query) => $query->where('old_node', $node->id)->orWhere('new_node', $node->id))
-            ->each(fn (ServerTransfer $transfer) => $transfer->markFailed());
+            ->eachById(fn (ServerTransfer $transfer) => $transfer->markFailed());
 
         return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
     }

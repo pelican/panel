@@ -4,6 +4,7 @@ namespace App\Tests\Integration\Services\Servers;
 
 use App\Enums\ServerTransferBatchItemStatus as ItemStatus;
 use App\Enums\ServerTransferBatchStatus as BatchStatus;
+use App\Exceptions\Service\HasActiveServersException;
 use App\Exceptions\Service\Server\TransferBatchException;
 use App\Jobs\AdvanceServerTransferBatch;
 use App\Jobs\SendServerPowerAction;
@@ -20,6 +21,7 @@ use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class ServerTransferBatchServiceTest extends IntegrationTestCase
 {
@@ -161,6 +163,52 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         $this->expectExceptionMessage(self::IP . ':25565');
 
         $this->batch([$server]);
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function wildcardClashes(): array
+    {
+        return [
+            'in use on all IPv4 addresses, chosen a specific one' => ['0.0.0.0', self::IP],
+            'in use on a specific IPv4 address, chosen all of them' => [self::IP, '0.0.0.0'],
+        ];
+    }
+
+    #[DataProvider('wildcardClashes')]
+    public function test_batch_is_refused_when_a_port_clashes_with_the_ipv4_wildcard(string $inUse, string $chosen): void
+    {
+        $server = $this->serverOnPort(25565);
+        $other = $this->createServerModel(['node_id' => $this->target->id]);
+        Allocation::factory()->create(['node_id' => $this->target->id, 'ip' => '0.0.0.0', 'port' => 1]);
+        Allocation::factory()->create(['node_id' => $this->target->id, 'ip' => $inUse, 'port' => 25565, 'server_id' => $other->id]);
+
+        $this->expectException(TransferBatchException::class);
+        $this->expectExceptionMessage("$chosen:25565");
+
+        $this->batch([$server], $chosen);
+    }
+
+    public function test_batch_allows_the_same_port_on_different_specific_ips(): void
+    {
+        $server = $this->serverOnPort(25565);
+        $other = $this->createServerModel(['node_id' => $this->target->id]);
+        Allocation::factory()->create(['node_id' => $this->target->id, 'ip' => '10.0.0.6', 'port' => 25565, 'server_id' => $other->id]);
+
+        $this->assertSame(1, $this->batch([$server])->items()->count());
+    }
+
+    public function test_server_fails_when_the_wildcard_took_its_port_while_it_was_queued(): void
+    {
+        $this->fakeDaemon();
+        $server = $this->serverOnPort(25565);
+        $batch = $this->batch([$server]);
+        $other = $this->createServerModel(['node_id' => $this->target->id]);
+        Allocation::factory()->create(['node_id' => $this->target->id, 'ip' => '0.0.0.0', 'port' => 25565, 'server_id' => $other->id]);
+
+        $this->service()->advance($batch);
+
+        $this->assertSame(ItemStatus::Failed, $batch->items()->sole()->status);
+        $this->assertSame(0, ServerTransfer::query()->count());
     }
 
     public function test_batch_is_refused_when_two_of_its_servers_need_the_same_port(): void
@@ -508,6 +556,41 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
 
         $this->assertSame(BatchStatus::Cancelled, $batch->refresh()->status);
         Bus::assertNotDispatched(SendServerPowerAction::class);
+    }
+
+    public function test_cancel_reaches_every_item_of_a_large_batch(): void
+    {
+        $this->fakeDaemon();
+        $server = $this->serverOnPort(25565);
+        $batch = $this->batch([$server]);
+        $batch->items()->createMany(array_fill(0, 1001, ['server_id' => $server->id, 'status' => ItemStatus::Queued]));
+
+        $this->service()->cancel($batch);
+
+        $this->assertSame(0, $batch->items()->where('status', ItemStatus::Queued)->count());
+    }
+
+    public function test_node_cannot_be_deleted_during_a_batch_it_is_part_of(): void
+    {
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+
+        foreach ([$this->source, $this->target] as $node) {
+            $this->assertTrue($node->isInRunningTransferBatch());
+        }
+
+        try {
+            $this->target->delete();
+            $this->fail('The target node was deleted during a running batch.');
+        } catch (HasActiveServersException) {
+            $this->assertModelExists($this->target);
+            $this->assertModelExists($batch);
+        }
+
+        $batch->update(['status' => BatchStatus::Completed]);
+        $this->target->allocations()->delete();
+        $this->target->delete();
+
+        $this->assertModelMissing($this->target);
     }
 
     public function test_cancel_leaves_a_finished_batch_alone(): void
