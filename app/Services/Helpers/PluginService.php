@@ -542,10 +542,12 @@ class PluginService
      */
     public function downloadPluginFromHub(string $slug, PluginHubService $hub): string
     {
-        $plugin = $hub->find($slug);
+        $listings = $hub->findMany([$slug]);
+
+        throw_if($listings === null, new RuntimeException(trans('admin/plugin.hub.unreachable')));
 
         // Re-check on the server: only free plugins may ever be installed from the Hub.
-        throw_if($plugin === null || !$hub->isFree($plugin), new RuntimeException(trans('admin/plugin.hub.not_free')));
+        throw_if($listings === [] || !$hub->isFree($listings[0]), new RuntimeException(trans('admin/plugin.hub.not_free')));
 
         $release = $hub->latestRelease($slug);
 

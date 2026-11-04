@@ -68,6 +68,7 @@ class PluginHubServiceTest extends IntegrationTestCase
             $this->plugin('sub-one', 'subscription'),
             $this->plugin('donation-one', 'donation'),
             ['title' => 'no slug', 'pricing_type' => 'free'],
+            $this->plugin('bad slug'),
         ]))]);
 
         $results = $this->service->search();
@@ -190,6 +191,22 @@ class PluginHubServiceTest extends IntegrationTestCase
         Http::fake(['hub.example.test/plugins/good/update.json' => Http::response(['*' => ['version' => '1.2.0']])]);
 
         $this->assertNull($this->service->latestRelease('good'));
+    }
+
+    public function test_latest_release_is_null_when_the_plugin_has_no_update_feed(): void
+    {
+        Http::fake(['hub.example.test/plugins/good/update.json' => Http::response('Not found', 404)]);
+
+        $this->assertNull($this->service->latestRelease('good'));
+    }
+
+    public function test_latest_release_throws_when_the_hub_is_unreachable(): void
+    {
+        Http::fake(['hub.example.test/plugins/good/update.json' => Http::response('down', 503)]);
+
+        $this->expectExceptionMessage(trans('admin/plugin.hub.unreachable'));
+
+        $this->service->latestRelease('good');
     }
 
     /**

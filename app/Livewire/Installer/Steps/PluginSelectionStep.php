@@ -12,12 +12,16 @@ use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\View;
 use Filament\Schemas\Components\Wizard\Step;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class PluginSelectionStep
 {
-    /** The most the Hub returns on one page. Anything further down can be installed from the panel later. */
-    private const MAX_PLUGINS = 100;
+    /** The most the Hub returns on one page. It can't filter by type, so the page is split up here. */
+    private const HUB_PAGE_SIZE = 100;
+
+    /** Keeps the step short. Anything further down can be installed from the panel later. */
+    private const MAX_PLUGINS_PER_TYPE = 20;
 
     public static function make(PanelInstaller $installer): Step
     {
@@ -28,17 +32,19 @@ class PluginSelectionStep
     }
 
     /**
-     * The Hub's most popular free plugins, cut down to what the step shows since
-     * this is kept on the page between requests. Empty when the Hub can't be reached.
+     * The Hub's most popular free plugins of each type, cut down to what the step shows
+     * since this is kept on the page between requests. Empty when the Hub can't be reached.
      *
      * @return array<int, array{slug: string, title: string, type: string, description: string}>
      */
     public static function loadPlugins(PluginHubService $hub): array
     {
-        $plugins = $hub->search(sort: 'popular', perPage: self::MAX_PLUGINS)?->getCollection() ?? collect();
+        $plugins = $hub->search(sort: 'popular', perPage: self::HUB_PAGE_SIZE)?->getCollection() ?? collect();
 
         return $plugins
             ->filter(fn (array $plugin) => PluginCategory::tryFrom((string) ($plugin['type'] ?? '')) !== null)
+            ->groupBy('type')
+            ->flatMap(fn (Collection $ofType) => $ofType->take(self::MAX_PLUGINS_PER_TYPE))
             ->map(fn (array $plugin) => [
                 'slug' => (string) $plugin['slug'],
                 'title' => (string) ($plugin['title'] ?? $plugin['slug']),

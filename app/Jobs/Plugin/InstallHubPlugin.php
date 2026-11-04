@@ -6,13 +6,13 @@ use App\Models\Plugin;
 use App\Models\User;
 use App\Services\Helpers\PluginHubService;
 use App\Services\Helpers\PluginService;
-use Exception;
 use Filament\Notifications\Notification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Throwable;
 
 /**
  * Downloads a free plugin from the Pelican Hub in the background, then queues its install.
@@ -35,7 +35,7 @@ class InstallHubPlugin implements ShouldQueue
             Plugin::refreshRows();
 
             InstallPlugin::dispatch($this->user, $id, reinstall: $wasInstalled);
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             report($exception);
 
             Notification::make()

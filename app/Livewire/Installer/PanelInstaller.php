@@ -202,8 +202,8 @@ class PanelInstaller extends SimplePage implements HasForms
             // Disable installer
             $this->writeToEnvironment(['APP_INSTALLED' => 'true']);
 
-            // Install selected plugins. The sync queue driver runs this inline, and a composer
-            // and yarn build that outlasts the request must not leave the panel half installed.
+            // Install selected plugins. This comes last so that a composer and yarn
+            // build that fails or gets cut off can't leave the panel half installed.
             $this->installPlugins($user);
 
             // Redirect to admin panel
@@ -330,16 +330,22 @@ class PanelInstaller extends SimplePage implements HasForms
         abort_if(self::isInstalled(), 404);
 
         try {
+            // The form isn't validated on submit, so only accept plugins the step actually listed.
             $slugs = collect(array_get($this->data, 'plugins', []))
                 ->flatten()
-                ->filter(fn ($slug) => is_string($slug))
+                ->intersect(array_column($this->hubPlugins ?? [], 'slug'))
                 ->unique();
 
             if ($slugs->isEmpty()) {
                 return;
             }
 
-            $slugs->each(fn (string $slug) => InstallHubPlugin::dispatch($user, $slug));
+            // The sync driver would otherwise hold up the redirect until every plugin has been built.
+            $runsInline = config('queue.default') === 'sync';
+
+            $slugs->each(fn (string $slug) => $runsInline
+                ? InstallHubPlugin::dispatchAfterResponse($user, $slug)
+                : InstallHubPlugin::dispatch($user, $slug));
 
             Notification::make()
                 ->title(trans('installer.plugin.background_install_started'))

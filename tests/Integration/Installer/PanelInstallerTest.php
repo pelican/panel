@@ -12,9 +12,11 @@ use App\Models\User;
 use App\Tests\Integration\IntegrationTestCase;
 use Filament\Notifications\Notification;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use ReflectionMethod;
 use ZipArchive;
@@ -144,7 +146,22 @@ class PanelInstallerTest extends IntegrationTestCase
         Livewire::test(PanelInstaller::class)
             ->call('loadCatalogs')
             ->assertSuccessful()
-            ->assertSee(trans('installer.plugin.unavailable'));
+            ->assertSee(trans('installer.plugin.unavailable'))
+            ->goToWizardStep(6)
+            ->assertHasNoErrors()
+            ->assertDispatched('next-wizard-step');
+    }
+
+    public function test_plugin_step_lists_the_most_popular_of_each_type(): void
+    {
+        $plugins = array_map(fn (int $rank) => $this->hubPlugin("plugin-$rank", "Plugin $rank"), range(1, 25));
+        $plugins[] = $this->hubPlugin('a-theme', 'A Theme', type: 'theme');
+
+        $listed = collect($this->installerWithHubPlugins($plugins)->get('hubPlugins'))->groupBy('type');
+
+        $this->assertSame(array_map(fn (int $rank) => "plugin-$rank", range(1, 20)), $listed['plugin']->pluck('slug')->all());
+        $this->assertSame(['a-theme'], $listed['theme']->pluck('slug')->all());
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), '/api/plugins') && $request['per_page'] === 100);
     }
 
     public function test_the_page_renders_loading_indicators_without_any_remote_requests(): void
@@ -157,6 +174,7 @@ class PanelInstallerTest extends IntegrationTestCase
             ->assertSuccessful()
             ->assertSee(trans('installer.egg.loading'))
             ->assertSee(trans('installer.plugin.loading'))
+            ->assertSeeHtml('$wire.loadCatalogs()')
             ->assertSet('eggIndex', null)
             ->assertSet('hubPlugins', null);
 
@@ -199,22 +217,34 @@ class PanelInstallerTest extends IntegrationTestCase
 
     public function test_selected_plugins_are_queued_for_the_admin_once_each(): void
     {
-        config()->set('app.installed', false);
-        config()->set('panel.plugin.hub_url', self::HUB);
+        config()->set('queue.default', 'database');
 
-        Http::fake([self::HUB . '/*' => Http::response('down', 503)]);
         Queue::fake();
 
         $user = User::factory()->create();
 
-        Livewire::test(PanelInstaller::class)
-            ->set('data.plugins', ['plugin' => ['first', 'second'], 'theme' => ['second']])
+        $this->installerWithHubPlugins([$this->hubPlugin('first', 'First'), $this->hubPlugin('second', 'Second')])
+            ->set('data.plugins', ['plugin' => ['first', 'second', 'not-listed'], 'theme' => ['second']])
             ->instance()
             ->installPlugins($user);
 
         Queue::assertPushed(InstallHubPlugin::class, 2);
         Queue::assertPushed(InstallHubPlugin::class, fn (InstallHubPlugin $job) => $job->slug === 'first' && $job->user->is($user));
         Queue::assertPushed(InstallHubPlugin::class, fn (InstallHubPlugin $job) => $job->slug === 'second');
+    }
+
+    public function test_the_sync_driver_installs_selected_plugins_after_the_response(): void
+    {
+        config()->set('queue.default', 'sync');
+
+        Bus::fake();
+
+        $this->installerWithHubPlugins([$this->hubPlugin('first', 'First')])
+            ->set('data.plugins', ['plugin' => ['first']])
+            ->instance()
+            ->installPlugins(User::factory()->create());
+
+        Bus::assertDispatchedAfterResponse(InstallHubPlugin::class, fn (InstallHubPlugin $job) => $job->slug === 'first');
     }
 
     public function test_nothing_is_queued_when_no_plugins_are_selected(): void
@@ -286,6 +316,21 @@ class PanelInstallerTest extends IntegrationTestCase
         $this->assertSame(1, $user->notifications()->count());
     }
 
+    public function test_hub_plugin_job_tells_the_admin_when_the_hub_is_unreachable(): void
+    {
+        config()->set('panel.plugin.hub_url', self::HUB);
+
+        Http::fake([self::HUB . '/*' => Http::response('down', 503)]);
+        Queue::fake([InstallPlugin::class]);
+
+        $user = User::factory()->create();
+
+        app()->call([new InstallHubPlugin($user, 'installer-any-plugin'), 'handle']);
+
+        Queue::assertNotPushed(InstallPlugin::class);
+        $this->assertStringContainsString(trans('admin/plugin.hub.unreachable'), $user->notifications()->sole()->data['body']);
+    }
+
     public function test_no_egg_notification_is_sent_when_no_eggs_are_selected(): void
     {
         config()->set('app.installed', false);
@@ -322,6 +367,21 @@ class PanelInstallerTest extends IntegrationTestCase
                 ->success()
                 ->persistent()
         );
+    }
+
+    /** @param  array<int, array<string, mixed>>  $plugins */
+    private function installerWithHubPlugins(array $plugins): Testable
+    {
+        config()->set('app.installed', false);
+        config()->set('panel.cdn.egg_index_url', 'https://eggs.example.test/index.json');
+        config()->set('panel.plugin.hub_url', self::HUB);
+
+        Http::fake([
+            'eggs.example.test/*' => Http::response(['nests' => []]),
+            self::HUB . '/api/plugins*' => Http::response(['data' => $plugins]),
+        ]);
+
+        return Livewire::test(PanelInstaller::class)->call('loadCatalogs');
     }
 
     /** @return array<string, mixed> */

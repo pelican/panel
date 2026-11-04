@@ -9,6 +9,7 @@ use Exception;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * Read-only client for the Pelican Hub's public plugin API. Only free plugins
@@ -47,7 +48,7 @@ class PluginHubService
 
         // The Hub is asked for free plugins only, but never trust it to have filtered.
         $plugins = collect($response['data'])
-            ->filter(fn ($plugin) => is_array($plugin) && filled($plugin['slug'] ?? null) && $this->isFree($plugin))
+            ->filter(fn ($plugin) => is_array($plugin) && is_string($plugin['slug'] ?? null) && $this->isValidSlug($plugin['slug']) && $this->isFree($plugin))
             // JSON objects only ever have string keys.
             ->map(fn (array $plugin) => array_filter($plugin, 'is_string', ARRAY_FILTER_USE_KEY))
             ->values();
@@ -106,10 +107,12 @@ class PluginHubService
     }
 
     /**
-     * The latest stable release from the plugin's update feed. Not cached, so
-     * an install always gets the current download and checksum.
+     * The latest stable release from the plugin's update feed, or null if it has none.
+     * Not cached, so an install always gets the current download and checksum.
      *
      * @return array{version: string, download_url: string, sha256: ?string}|null
+     *
+     * @throws RuntimeException when the Hub couldn't be reached
      */
     public function latestRelease(string $slug): ?array
     {
@@ -122,9 +125,13 @@ class PluginHubService
         try {
             $feed = HubCredentials::request($url)->timeout(5)->connectTimeout(1)->get($url)->throw()->json();
         } catch (Exception $exception) {
+            if ($exception instanceof RequestException && $exception->response->status() === 404) {
+                return null;
+            }
+
             report($exception);
 
-            return null;
+            throw new RuntimeException(trans('admin/plugin.hub.unreachable'), previous: $exception);
         }
 
         $release = $feed['*'] ?? null;
