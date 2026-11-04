@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\Servers\RelationManagers;
 
+use App\Enums\AllocationProtocol;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Models\Allocation;
@@ -21,6 +22,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\TextInputColumn;
 use Filament\Tables\Columns\ToggleColumn;
@@ -55,6 +57,11 @@ class AllocationsRelationManager extends RelationManager
                     ->sortable(),
                 ToggleColumn::make('show_port')
                     ->label(trans('admin/server.show_port')),
+                SelectColumn::make('protocol')
+                    ->label(trans('admin/server.protocol'))
+                    ->options(AllocationProtocol::class)
+                    ->selectablePlaceholder(false)
+                    ->disabled(fn () => $this->isReadOnly()),
                 TextInputColumn::make('ip_alias')
                     ->label(trans('admin/server.alias'))
                     ->placeholder(trans('admin/server.no_alias'))
@@ -177,6 +184,14 @@ class AllocationsRelationManager extends RelationManager
                             ->disabled(fn (Get $get) => empty($get('allocation_ip')))
                             ->afterStateUpdated(fn ($state, Set $set, Get $get) => $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord()->node, $state, $get('allocation_ip'))))
                             ->splitKeys(['Tab', ' ', ','])
+                            ->required(),
+                        Select::make('protocol')
+                            ->label(trans('admin/server.protocol'))
+                            ->inlineLabel()
+                            ->options(AllocationProtocol::class)
+                            ->default(AllocationProtocol::Both->value)
+                            ->selectablePlaceholder(false)
+                            ->helperText(trans('admin/server.protocol_helper'))
                             ->required(),
                         Hidden::make('is_locked')
                             ->default(true),

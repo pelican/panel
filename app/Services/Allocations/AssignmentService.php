@@ -2,6 +2,7 @@
 
 namespace App\Services\Allocations;
 
+use App\Enums\AllocationProtocol;
 use App\Exceptions\DisplayException;
 use App\Exceptions\Service\Allocation\CidrOutOfRangeException;
 use App\Exceptions\Service\Allocation\InvalidPortMappingException;
@@ -33,7 +34,7 @@ class AssignmentService
     /**
      * Insert allocations into the database and link them to a specific node.
      *
-     * @param  array{allocation_ip: string, allocation_ports: array<int|string>}  $data
+     * @param  array{allocation_ip: string, allocation_ports: array<int|string>, allocation_alias?: string|null, is_locked?: bool, protocol?: string|null}  $data
      * @return array<int>
      *
      * @throws DisplayException
@@ -78,6 +79,7 @@ class AssignmentService
                             'ip_alias' => array_get($data, 'allocation_alias'),
                             'server_id' => $server->id ?? null,
                             'is_locked' => array_get($data, 'is_locked', false),
+                            'protocol' => array_get($data, 'protocol') ?? AllocationProtocol::Both->value,
                         ];
                     }
                 } else {
@@ -90,6 +92,7 @@ class AssignmentService
                         'ip_alias' => array_get($data, 'allocation_alias'),
                         'server_id' => $server->id ?? null,
                         'is_locked' => array_get($data, 'is_locked', false),
+                        'protocol' => array_get($data, 'protocol') ?? AllocationProtocol::Both->value,
                     ];
                 }
 

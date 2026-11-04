@@ -61,6 +61,8 @@ return [
     'invalid' => 'Invalid DNS',
     'port' => 'Port',
     'ports' => 'Ports',
+    'protocol' => 'Protocol',
+    'protocol_help' => 'Which protocols are exposed on these ports. Defaults to both TCP and UDP.',
     'port_help' => 'If you are running the daemon behind Cloudflare you should set the daemon port to 8443 to allow websocket proxying over SSL.',
     'connect_port' => 'Connection Port',
     'connect_port_help' => 'Connections to wings will use this port. If you are using a reverse proxy this can differ from the listen port. When using Cloudflare proxy you should use 8443.',

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\Nodes\RelationManagers;
 
+use App\Enums\AllocationProtocol;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
@@ -77,6 +78,12 @@ class AllocationsRelationManager extends RelationManager
                     ->searchable()
                     ->sortable()
                     ->label(trans('admin/node.port')),
+                SelectColumn::make('protocol')
+                    ->label(trans('admin/node.protocol'))
+                    ->options(AllocationProtocol::class)
+                    ->selectablePlaceholder(false)
+                    ->sortable()
+                    ->disabled(fn () => $this->isReadOnly()),
                 TextInputColumn::make('ip_alias')
                     ->searchable()
                     ->sortable()
@@ -151,6 +158,14 @@ class AllocationsRelationManager extends RelationManager
                             ->disabled(fn (Get $get) => empty($get('allocation_ip')))
                             ->afterStateUpdated(fn ($state, Set $set, Get $get) => $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord(), $state, $get('allocation_ip'))))
                             ->splitKeys(['Tab', ' ', ','])
+                            ->required(),
+                        Select::make('protocol')
+                            ->label(trans('admin/node.protocol'))
+                            ->inlineLabel()
+                            ->options(AllocationProtocol::class)
+                            ->default(AllocationProtocol::Both->value)
+                            ->selectablePlaceholder(false)
+                            ->helperText(trans('admin/node.protocol_help'))
                             ->required(),
                     ])
                     ->action(fn (array $data, AssignmentService $service) => $service->handle($this->getOwnerRecord(), $data)),

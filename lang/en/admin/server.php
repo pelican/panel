@@ -14,6 +14,8 @@ return [
     'port' => 'Port',
     'ports' => 'Ports',
     'show_port' => 'Show port',
+    'protocol' => 'Protocol',
+    'protocol_helper' => 'Which protocols are exposed on these ports. Defaults to both TCP and UDP.',
     'alias' => 'Alias',
     'alias_helper' => 'Optional display name to help you remember what these are.',
     'no_alias' => 'No Alias',
