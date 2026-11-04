@@ -21,9 +21,11 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
+use Filament\Support\Components\Attributes\Exposed;
+use Filament\Support\Components\Attributes\Unexposed;
+use Filament\Tables\Columns\CheckboxColumn;
 use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\Filter;
@@ -65,8 +67,7 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
     #[Locked]
     public array $eligible = [];
 
-    /** @var int[] */
-    #[Locked]
+    /** @var array<int|string> filled by the table's row selection, so always read it through selectedIds() */
     public array $selected = [];
 
     /** @var array<int, string> IPs that differ from the one chosen for all servers, by server id */
@@ -116,22 +117,13 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
             }
         }
 
-        $this->form->fill(['all' => false, 'move_all_backups' => true]);
+        $this->form->fill(['move_all_backups' => true]);
     }
 
     public function form(Schema $schema): Schema
     {
-        $all = Toggle::make('all')
-            ->label(trans('admin/node.mass_actions.all_servers'))
-            ->disabled(empty($this->eligible))
-            ->live()
-            ->afterStateUpdated(function (bool $state) {
-                $this->selected = $state ? $this->eligible : [];
-                $this->forgetConflicts();
-            });
-
         if (!$this->isTransfer()) {
-            return $schema->statePath('data')->components([$all]);
+            return $schema->statePath('data')->components([]);
         }
 
         return $schema
@@ -161,7 +153,6 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
                             $this->ipOverrides = [];
                             $this->forgetConflicts();
                         }),
-                    $all,
                     Toggle::make('move_all_backups')
                         ->label(trans('admin/node.transfer_batch.move_all_backups'))
                         ->helperText(trans('admin/node.transfer_batch.move_backups_help'))
@@ -179,13 +170,21 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
             ->paginated([10, 25, 50, 100])
             ->defaultPaginationPageOption(25)
             ->deferFilters(false)
+            ->selectable()
+            ->checkIfRecordIsSelectableUsing(fn (Server $record) => in_array($record->id, $this->eligible, true))
+            ->currentSelectionLivewireProperty('selected')
+            ->deselectAllRecordsWhenFiltered(false)
             ->columns([
-                ToggleColumn::make('selected')
-                    ->label(trans('admin/node.mass_actions.include'))
-                    ->state(fn (Server $record) => $this->isSelected($record))
+                CheckboxColumn::make('move_backups')
+                    ->label(trans('admin/node.transfer_batch.move_backups_column'))
+                    ->alignCenter()
+                    ->extraInputAttributes(['style' => 'width: 1.25rem; height: 1.25rem;'])
+                    ->visible(fn () => $this->isTransfer())
+                    ->state(fn (Server $record) => $this->movesBackups($record->id))
                     ->disabled(fn (Server $record) => !in_array($record->id, $this->eligible, true))
+                    ->extraCellAttributes(fn (Server $record) => $this->onlyWhen($this->isSelected($record) && $this->batchService->localBackups($record)->isNotEmpty()))
                     ->updateStateUsing(function (Server $record, mixed $state) {
-                        $this->select($record, (bool) $state);
+                        $this->setMovesBackups($record, (bool) $state);
 
                         return (bool) $state;
                     }),
@@ -217,23 +216,12 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
                     ->state(fn (Server $record) => $this->describePorts($record))
                     ->color(fn (Server $record) => isset($this->conflicts()[$record->id]) ? 'danger' : 'gray')
                     ->extraCellAttributes(fn (Server $record) => $this->onlyWhen($this->isSelected($record))),
-                ToggleColumn::make('move_backups')
-                    ->label(trans('admin/node.transfer_batch.move_backups_column'))
-                    ->visible(fn () => $this->isTransfer())
-                    ->state(fn (Server $record) => $this->movesBackups($record->id))
-                    ->disabled(fn (Server $record) => !in_array($record->id, $this->eligible, true))
-                    ->extraCellAttributes(fn (Server $record) => $this->onlyWhen($this->isSelected($record) && $this->batchService->localBackups($record)->isNotEmpty()))
-                    ->updateStateUsing(function (Server $record, mixed $state) {
-                        $this->setMovesBackups($record, (bool) $state);
-
-                        return (bool) $state;
-                    }),
             ])
             ->filters([
                 Filter::make('only_selected')
                     ->label(trans('admin/node.mass_actions.filter_selected'))
                     ->toggle()
-                    ->query(fn (Builder $query) => $query->whereKey($this->selected)),
+                    ->query(fn (Builder $query) => $query->whereKey($this->selectedIds())),
                 Filter::make('port_conflict')
                     ->label(trans('admin/node.transfer_batch.filter_conflicts'))
                     ->visible(fn () => $this->isTransfer())
@@ -250,10 +238,31 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
         $this->isTransfer() ? $this->submitTransfer() : $this->submitSignal($repository);
     }
 
+    /**
+     * Filament would load every server of the node to work out which are selectable, on every render.
+     *
+     * @return array<string>
+     */
+    #[Exposed]
+    public function getAllSelectableTableRecordKeys(): array
+    {
+        return $this->getFilteredTableQuery()
+            ->whereKey($this->eligible)
+            ->pluck('id')
+            ->map(fn (int $id) => (string) $id)
+            ->all();
+    }
+
+    #[Unexposed]
+    public function getAllSelectableTableRecordsCount(): int
+    {
+        return $this->getFilteredTableQuery()->whereKey($this->eligible)->count();
+    }
+
     /** What is about to happen, as one line above the submit button. */
     public function summary(): string
     {
-        $parts = [trans_choice('admin/node.mass_actions.selected_count', count($this->selected))];
+        $parts = [trans_choice('admin/node.mass_actions.selected_count', count($this->selectedIds()))];
 
         if ($this->isTransfer() && $conflicts = count($this->conflicts())) {
             $parts[] = trans_choice('admin/node.transfer_batch.conflict_count', $conflicts);
@@ -327,7 +336,13 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
     /** @return Collection<int, Server> */
     private function selectedServers(): Collection
     {
-        return $this->node->servers()->whereKey(array_intersect($this->selected, $this->eligible))->with('transfer')->get();
+        return $this->node->servers()->whereKey($this->selectedIds())->with('transfer')->get();
+    }
+
+    /** @return int[] */
+    private function selectedIds(): array
+    {
+        return array_values(array_intersect($this->eligible, array_map(intval(...), $this->selected)));
     }
 
     private function isTransfer(): bool
@@ -353,19 +368,7 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
 
     private function isSelected(Server $server): bool
     {
-        return in_array($server->id, $this->selected, true);
-    }
-
-    private function select(Server $server, bool $selected): void
-    {
-        abort_unless(in_array($server->id, $this->eligible, true), 403);
-
-        $this->selected = $selected
-            ? array_values(array_unique([...$this->selected, $server->id]))
-            : array_values(array_diff($this->selected, [$server->id]));
-
-        $this->data['all'] = count($this->selected) === count($this->eligible);
-        $this->forgetConflicts();
+        return in_array($server->id, $this->selectedIds(), true);
     }
 
     private function setIp(Server $server, mixed $ip): void
@@ -472,11 +475,11 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
 
         $target = $this->targetId() ? Node::find($this->targetId()) : null;
 
-        if (!$target || !$this->selected) {
+        if (!$target || !$this->selectedIds()) {
             return $this->conflicts = [];
         }
 
-        $servers = Server::query()->whereKey($this->selected)->with('allocations')->get();
+        $servers = Server::query()->whereKey($this->selectedIds())->with('allocations')->get();
         $ips = $servers->mapWithKeys(fn (Server $server) => [$server->id => $this->ipFor($server->id)])->all();
 
         return $this->conflicts = $this->batchService->portConflicts($target, $servers, $ips);

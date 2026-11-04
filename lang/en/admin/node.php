@@ -45,8 +45,6 @@ return [
         'stop' => 'Stop Servers',
         'restart' => 'Restart Servers',
         'transfer' => 'Transfer All Servers',
-        'all_servers' => 'All Servers',
-        'include' => 'Include',
         'server' => 'Server',
         'details' => 'Status',
         'filter_selected' => 'Selected',

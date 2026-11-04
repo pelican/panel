@@ -1,5 +1,19 @@
-<div class="node-mass-action-table flex flex-col gap-4">
+{{--
+    The row selection only reaches the server with the next request, but the rows and the summary depend on it.
+    The block matters: $watch returns its unwatch function, which Alpine would call straight away if it was the result.
+--}}
+<div
+    class="node-mass-action-table flex flex-col gap-4"
+    x-data
+    x-init="() => { $wire.$watch('selected', () => $wire.$commit()) }"
+>
     <style>
+        .node-mass-action-table input[type='checkbox'].fi-ta-record-checkbox,
+        .node-mass-action-table input[type='checkbox'].fi-ta-page-checkbox {
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+
         .node-mass-action-table .fi-ta-content-ctn {
             max-height: 45vh;
             overflow-y: auto;

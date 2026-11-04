@@ -88,6 +88,7 @@ it('only lets a signal reach servers in a state it applies to', function (string
     $eligible = massActionServer($this->node, 'eligible', 25565);
     $other = massActionServer($this->node, 'other', 25566);
     $missing = massActionServer($this->node, 'missing', 25567);
+    $elsewhere = massActionServer(Node::factory()->create(), 'elsewhere', 25568);
 
     $otherState = $eligibleState === 'offline' ? 'running' : 'offline';
     fakeNodeStates([$eligible->uuid => $eligibleState, $other->uuid => $otherState]);
@@ -96,13 +97,10 @@ it('only lets a signal reach servers in a state it applies to', function (string
 
     expect($component->get('eligible'))->toBe([$eligible->id]);
 
-    $component->assertTableColumnStateSet('selected', false, $eligible)
-        ->call('updateTableColumnState', 'selected', (string) $eligible->id, true)
-        ->call('updateTableColumnState', 'selected', (string) $other->id, true)
-        ->call('updateTableColumnState', 'selected', (string) $missing->id, true)
+    $component->set('selected', [(string) $eligible->id, (string) $other->id, (string) $missing->id, (string) $elsewhere->id])
+        ->assertSee(trans_choice('admin/node.mass_actions.selected_count', 1))
         ->call('submit');
 
-    expect($component->get('selected'))->toBe([$eligible->id]);
     Bus::assertDispatchedTimes(SendServerPowerAction::class, 1);
     Bus::assertDispatched(SendServerPowerAction::class, fn ($job) => $job->server->is($eligible) && $job->signal === $signal);
 })->with([
@@ -118,25 +116,27 @@ it('does not send a signal to a server whose state changed after opening', funct
         ->push([['state' => 'offline', 'configuration' => ['uuid' => $server->uuid]]])]);
 
     livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'stop'])
-        ->call('updateTableColumnState', 'selected', (string) $server->id, true)
+        ->set('selected', [(string) $server->id])
         ->call('submit');
 
     Bus::assertNotDispatched(SendServerPowerAction::class);
 });
 
-it('selects only the eligible servers with the all toggle', function () {
+it('only offers the eligible servers for selecting all', function () {
     $eligible = massActionServer($this->node, 'eligible', 25565);
-    $other = massActionServer($this->node, 'other', 25566);
-    fakeNodeStates([$eligible->uuid => 'running', $other->uuid => 'offline']);
+    $hidden = massActionServer($this->node, 'hidden', 25566);
+    $other = massActionServer($this->node, 'other', 25567);
+    fakeNodeStates([$eligible->uuid => 'running', $hidden->uuid => 'running', $other->uuid => 'offline']);
 
-    $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'stop'])
-        ->set('data.all', true);
+    $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'stop']);
 
-    expect($component->get('selected'))->toBe([$eligible->id]);
+    expect($component->instance()->getAllSelectableTableRecordKeys())->toEqualCanonicalizing([(string) $eligible->id, (string) $hidden->id])
+        ->and($component->instance()->getAllSelectableTableRecordsCount())->toBe(2);
 
-    $component->call('submit');
+    $component->searchTable('eligible');
 
-    Bus::assertDispatchedTimes(SendServerPowerAction::class, 1);
+    expect($component->instance()->getAllSelectableTableRecordKeys())->toBe([(string) $eligible->id])
+        ->and($component->instance()->getAllSelectableTableRecordsCount())->toBe(1);
 });
 
 it('finds servers by name, IP and port and keeps the selection while searching', function () {
@@ -145,7 +145,7 @@ it('finds servers by name, IP and port and keeps the selection while searching',
     fakeNodeStates([$alpha->uuid => 'running', $beta->uuid => 'running']);
 
     $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'stop'])
-        ->call('updateTableColumnState', 'selected', (string) $alpha->id, true)
+        ->set('selected', [(string) $alpha->id])
         ->searchTable('beta')
         ->assertCanSeeTableRecords([$beta])
         ->assertCanNotSeeTableRecords([$alpha])
@@ -153,7 +153,7 @@ it('finds servers by name, IP and port and keeps the selection while searching',
         ->assertCanSeeTableRecords([$alpha])
         ->assertCanNotSeeTableRecords([$beta]);
 
-    expect($component->get('selected'))->toBe([$alpha->id]);
+    expect($component->get('selected'))->toBe([(string) $alpha->id]);
 });
 
 it('only lists what is selected with the selected filter', function () {
@@ -162,7 +162,7 @@ it('only lists what is selected with the selected filter', function () {
     fakeNodeStates([$alpha->uuid => 'running', $beta->uuid => 'running']);
 
     livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'stop'])
-        ->call('updateTableColumnState', 'selected', (string) $alpha->id, true)
+        ->set('selected', [(string) $alpha->id])
         ->filterTable('only_selected')
         ->assertCanSeeTableRecords([$alpha])
         ->assertCanNotSeeTableRecords([$beta]);
@@ -180,8 +180,7 @@ it('queues the selected servers for transfer on the chosen IP', function () {
     livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'transfer'])
         ->set('data.node_id', $target->id)
         ->set('data.default_ip', '10.0.0.5')
-        ->call('updateTableColumnState', 'selected', (string) $included->id, true)
-        ->call('updateTableColumnState', 'selected', (string) $override->id, true)
+        ->set('selected', [(string) $included->id, (string) $override->id])
         ->call('updateTableColumnState', 'ip', (string) $override->id, '10.0.0.6')
         ->call('updateTableColumnState', 'move_backups', (string) $override->id, false)
         ->call('submit')
@@ -205,7 +204,7 @@ it('requires a target node', function () {
     fakeNodeStates([]);
 
     livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'transfer'])
-        ->call('updateTableColumnState', 'selected', (string) $server->id, true)
+        ->set('selected', [(string) $server->id])
         ->call('submit')
         ->assertHasErrors(['data.node_id' => 'required']);
 
@@ -223,8 +222,7 @@ it('stays open, creates nothing and shows the conflicts when a port is in use', 
     $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'transfer'])
         ->set('data.node_id', $target->id)
         ->set('data.default_ip', '10.0.0.5')
-        ->call('updateTableColumnState', 'selected', (string) $server->id, true)
-        ->call('updateTableColumnState', 'selected', (string) $fine->id, true)
+        ->set('selected', [(string) $server->id, (string) $fine->id])
         ->assertSee(trans_choice('admin/node.transfer_batch.conflict_count', 1))
         ->call('submit')
         ->assertNotDispatched('mass-action-close')
