@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\AllocationProtocol;
 use App\Enums\RolePermissionModels;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
@@ -149,4 +150,32 @@ it('non root admin without permission cannot create servers', function () {
 
     $this->actingAs($user);
     livewire(CreateServer::class)->assertForbidden();
+});
+
+it('creates a server allocation with the chosen protocol', function () {
+    $server = createServerModel();
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
+        ->callAction(TestAction::make('create')->table(), [
+            'allocation_ip' => '10.0.0.9',
+            'allocation_ports' => ['19132'],
+            'protocol' => AllocationProtocol::Udp->value,
+        ])
+        ->assertHasNoFormErrors();
+
+    $allocation = Allocation::query()->where('server_id', $server->id)->where('port', 19132)->firstOrFail();
+
+    expect($allocation->protocol)->toBe(AllocationProtocol::Udp)
+        ->and($server->refresh()->getAllocationProtocols())->toBe(['10.0.0.9' => [19132 => 'udp']]);
+});
+
+it('changes the protocol of a server allocation from the table', function () {
+    $server = createServerModel();
+    $primary = $server->allocation;
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
+        ->assertTableColumnExists('protocol')
+        ->call('updateTableColumnState', 'protocol', (string) $primary->getKey(), AllocationProtocol::Tcp->value);
+
+    expect($primary->refresh()->protocol)->toBe(AllocationProtocol::Tcp);
 });

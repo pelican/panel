@@ -2,6 +2,7 @@
 
 namespace App\Tests\Integration\Api\Application;
 
+use App\Enums\AllocationProtocol;
 use App\Models\Allocation;
 use App\Models\Node;
 use App\Services\Acl\Api\AdminAcl;
@@ -49,6 +50,45 @@ class AllocationControllerTest extends ApplicationApiIntegrationTestCase
         $this->postJson("/api/application/nodes/{$this->node->id}/allocations", [
             'ip' => '10.0.0.1',
         ])->assertUnprocessable();
+    }
+
+    public function test_create_allocations_with_a_protocol(): void
+    {
+        $this->postJson("/api/application/nodes/{$this->node->id}/allocations", [
+            'ip' => '10.0.0.1',
+            'ports' => ['19132'],
+            'protocol' => 'udp',
+        ])->assertStatus(Response::HTTP_NO_CONTENT);
+
+        $this->assertSame(AllocationProtocol::Udp, Allocation::query()->where('node_id', $this->node->id)->firstOrFail()->protocol);
+    }
+
+    public function test_create_allocations_defaults_to_both_protocols(): void
+    {
+        $this->postJson("/api/application/nodes/{$this->node->id}/allocations", [
+            'ip' => '10.0.0.1',
+            'ports' => ['25565'],
+        ])->assertStatus(Response::HTTP_NO_CONTENT);
+
+        $this->assertSame(AllocationProtocol::Both, Allocation::query()->where('node_id', $this->node->id)->firstOrFail()->protocol);
+    }
+
+    public function test_create_allocations_rejects_an_invalid_protocol(): void
+    {
+        $this->postJson("/api/application/nodes/{$this->node->id}/allocations", [
+            'ip' => '10.0.0.1',
+            'ports' => ['25565'],
+            'protocol' => 'sctp',
+        ])->assertUnprocessable()->assertJsonPath('errors.0.meta.source_field', 'protocol');
+    }
+
+    public function test_list_node_allocations_includes_the_protocol(): void
+    {
+        Allocation::factory()->create(['node_id' => $this->node->id, 'protocol' => AllocationProtocol::Tcp]);
+
+        $this->getJson("/api/application/nodes/{$this->node->id}/allocations")
+            ->assertOk()
+            ->assertJsonPath('data.0.attributes.protocol', 'tcp');
     }
 
     public function test_delete_unassigned_allocation(): void
