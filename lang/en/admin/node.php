@@ -107,6 +107,7 @@ return [
             'ports_taken' => 'These ports are already in use on the target node: :conflicts',
             'port_taken' => 'One of the server\'s ports is in use on :ip by now.',
             'server_moved' => 'The server is no longer on the source node.',
+            'state_unknown' => 'The source node did not say whether this server is running. Trying again shortly.',
             'stop_timeout' => 'The server did not stop within 5 minutes.',
             'transfer_failed' => 'The transfer failed. Check the logs of Wings on both nodes for details.',
             'timed_out' => 'The transfer did not finish within :minutes minutes.',

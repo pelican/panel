@@ -261,8 +261,11 @@ class ServerTransferBatchService
         // The application API "cancels" a transfer by marking it successful, so check that the server really moved.
         if ($transfer?->successful && $item->server->node_id === $transfer->new_node) {
             // The files went away with the server on the old node. Only now, so a failed transfer loses nothing.
+            // Backups newer than the transfer were made on the new node, by which time the server may be in use again.
             if (!$item->move_backups) {
-                $this->localBackups($item->server)->each(fn (Backup $backup) => $backup->delete());
+                $this->localBackups($item->server)
+                    ->filter(fn (Backup $backup) => $backup->created_at->lte($transfer->created_at))
+                    ->each(fn (Backup $backup) => $backup->delete());
             }
 
             $this->settle($item, ItemStatus::Successful, null);
@@ -298,15 +301,20 @@ class ServerTransferBatchService
             return false;
         }
 
-        $details = $this->daemonRepository->setServer($server)->getDetails(5);
-        $state = ContainerStatus::tryFrom($details['state'] ?? '') ?? ContainerStatus::Missing;
+        $state = $this->daemonRepository->setServer($server)->getState(5);
 
-        // Missing also covers an unreachable node, which the transfer request below then reports.
-        if ($state->isOffline()) {
+        if ($state?->isOffline()) {
             return $this->startTransfer($item);
         }
 
         if (!$item->stop_requested_at) {
+            // It may well be running, and would then not be started again after moving. The scheduled wake-up tries again.
+            if ($state === null) {
+                $item->update(['error' => trans('admin/node.transfer_batch.errors.state_unknown')]);
+
+                return false;
+            }
+
             return $this->stopServer($item, $state);
         }
 
@@ -353,10 +361,13 @@ class ServerTransferBatchService
 
     private function stopServer(ServerTransferBatchItem $item, ContainerStatus $state): bool
     {
+        // Kept once set: the stop may have worked even if the answer got lost, and the next look at the server would then find it offline.
+        $wasRunning = $item->was_running || $state->isStartingOrRunning();
+
         try {
             $this->daemonRepository->setServer($item->server)->power('stop');
         } catch (ConnectionException $exception) {
-            $item->update(['error' => $exception->getMessage()]);
+            $item->update(['error' => $exception->getMessage(), 'was_running' => $wasRunning]);
 
             return false;
         } catch (Throwable $exception) {
@@ -368,7 +379,7 @@ class ServerTransferBatchService
         $item->update([
             'status' => ItemStatus::Stopping,
             'stop_requested_at' => now(),
-            'was_running' => $state->isStartingOrRunning(),
+            'was_running' => $wasRunning,
             'error' => null,
         ]);
 
@@ -450,6 +461,13 @@ class ServerTransferBatchService
     private function abort(ServerTransferBatchItem $item, ItemStatus $status, ?string $error): void
     {
         $transfer = $item->transfer;
+
+        // Too late to abort: it finished, and only the batch hadn't caught up yet.
+        if ($transfer?->successful && $item->server->node_id === $transfer->new_node) {
+            $this->checkTransfer($item);
+
+            return;
+        }
 
         if ($transfer && $transfer->successful === null) {
             try {

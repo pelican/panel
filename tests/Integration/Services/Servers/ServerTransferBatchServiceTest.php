@@ -33,6 +33,10 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
 
     private bool $targetIsUp = true;
 
+    private bool $sourceAnswersPower = true;
+
+    private bool $sourceAnswersState = true;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -83,8 +87,8 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
 
         Http::fake([
             '*/transfer' => Http::response(status: 202),
-            '*/power' => Http::response(status: 204),
-            '*/api/servers/*' => fn () => Http::response(['state' => $this->daemonState]),
+            '*/power' => fn () => $this->sourceAnswersPower ? Http::response(status: 204) : throw new ConnectionException('lost'),
+            '*/api/servers/*' => fn () => $this->sourceAnswersState ? Http::response(['state' => $this->daemonState]) : throw new ConnectionException('timed out'),
             '*/api/system' => fn () => $this->targetIsUp ? $this->systemInformation() : throw new ConnectionException('down'),
         ]);
     }
@@ -227,6 +231,64 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         Bus::assertDispatched(SendServerPowerAction::class, fn ($job) => $job->server->is($server) && $job->signal === 'start');
     }
 
+    public function test_server_is_left_alone_while_the_node_does_not_say_what_state_it_is_in(): void
+    {
+        $this->fakeDaemon('running');
+        $this->sourceAnswersState = false;
+        $server = $this->serverOnPort(25565);
+        $batch = $this->batch([$server]);
+        $item = $batch->items()->sole();
+
+        $this->assertFalse($this->service()->advance($batch));
+
+        $this->assertSame(0, ServerTransfer::query()->count());
+        $this->assertSame(ItemStatus::Queued, $item->refresh()->status);
+        $this->assertNotNull($item->error);
+
+        // Found running once it answers, so it gets started again after moving.
+        $this->sourceAnswersState = true;
+        $this->service()->advance($batch);
+        $this->assertTrue($item->refresh()->was_running);
+    }
+
+    public function test_server_the_node_does_not_have_fails_instead_of_waiting_forever(): void
+    {
+        Http::fake([
+            '*/api/system' => $this->systemInformation(),
+            '*' => Http::response(status: 404, headers: ['User-Agent' => 'Pelican Wings']),
+        ]);
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+
+        $this->assertTrue($this->service()->advance($batch));
+
+        $this->assertSame(ItemStatus::Failed, $batch->items()->sole()->status);
+    }
+
+    public function test_server_is_started_again_when_the_answer_to_its_stop_got_lost(): void
+    {
+        $this->fakeDaemon('running');
+        $this->sourceAnswersPower = false;
+        $server = $this->serverOnPort(25565);
+        $batch = $this->batch([$server]);
+        $item = $batch->items()->sole();
+
+        $this->assertFalse($this->service()->advance($batch));
+        $this->assertTrue($item->refresh()->was_running);
+
+        // It did stop. Asking it to stop again while it does must not forget that it was running.
+        $this->sourceAnswersPower = true;
+        $this->daemonState = 'stopping';
+        $this->service()->advance($batch);
+        $this->assertTrue($item->refresh()->was_running);
+
+        $this->daemonState = 'offline';
+        $this->service()->advance($batch);
+        $this->transferSucceeds($server);
+        $this->service()->advance($batch);
+
+        Bus::assertDispatched(SendServerPowerAction::class, fn ($job) => $job->server->is($server) && $job->signal === 'start');
+    }
+
     public function test_server_that_never_stops_fails_without_transferring(): void
     {
         $this->fakeDaemon('running');
@@ -343,6 +405,39 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
 
         $this->assertModelMissing($local);
         $this->assertModelExists($remote);
+    }
+
+    public function test_not_moving_backups_keeps_those_made_after_the_transfer(): void
+    {
+        $this->fakeDaemon();
+        $server = $this->serverOnPort(25565);
+        ['local' => $old] = $this->backupsOf($server);
+        $batch = $this->batch([$server], moveBackups: false);
+
+        $this->service()->advance($batch);
+        $this->travel(1)->minutes();
+        $this->transferSucceeds($server);
+        $new = Backup::factory()->create(['server_id' => $server->id, 'backup_host_id' => $old->backup_host_id]);
+        $this->service()->advance($batch);
+
+        $this->assertModelMissing($old);
+        $this->assertModelExists($new);
+    }
+
+    public function test_cancelling_a_transfer_that_already_finished_counts_as_moved(): void
+    {
+        $this->fakeDaemon();
+        $server = $this->serverOnPort(25565);
+        ['local' => $local] = $this->backupsOf($server);
+        $batch = $this->batch([$server], moveBackups: false);
+        $this->service()->advance($batch);
+        $this->transferSucceeds($server);
+
+        $this->service()->cancel($batch);
+
+        $this->assertSame(BatchStatus::Cancelled, $batch->refresh()->status);
+        $this->assertSame(ItemStatus::Successful, $batch->items()->sole()->status);
+        $this->assertModelMissing($local);
     }
 
     public function test_failed_transfer_keeps_local_backups_it_would_have_deleted(): void
