@@ -17,7 +17,12 @@ return [
         'intro-update-available' => [
             'heading' => 'Actualización disponible',
             'content' => '¡La versión :latestVersion ya está disponible! Consulta nuestra documentación para actualizar tu panel.',
+            'content_container' => '¡Una nueva versión ya está disponible! Descarga la nueva imagen del contenedor Docker para actualizar el panel.',
             'button_changelog' => '¿Qué hay de nuevo?',
+        ],
+        'intro-version-unavailable' => [
+            'heading' => 'No se ha podido comprobar la versión',
+            'content' => 'Estás usando la versión :version . No hemos podido comprobar la versión más reciente mediante GitHub, así que no podemos buscar actualizaciones disponibles.',
         ],
         'intro-no-update' => [
             'heading' => 'Tu panel está actualizado',

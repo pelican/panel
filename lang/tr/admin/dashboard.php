@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'heading' => 'Pelican\'a Hoş Geldiniz!',
+    'heading' => ':app hoşgeldiniz',
     'version' => 'Sürüm: :version',
     'advanced' => 'Gelişmiş',
     'server' => 'Sunucu',
@@ -17,7 +17,12 @@ return [
         'intro-update-available' => [
             'heading' => 'Güncelleme Mevcut',
             'content' => ':latestVersion sürümü şimdi kullanılabilir! Panelinizi güncellemek için belgelerimizi okuyun.',
+            'content_container' => ':latestVersion artık mevcut! Yeni imajı çekin ve panelinizi güncellemek için kapsayıcıyı yeniden oluşturun.',
             'button_changelog' => 'Neler değişti?',
+        ],
+        'intro-version-unavailable' => [
+            'heading' => 'Sürüm kontrolü kullanılamıyor',
+            'content' => 'Şu anda :version sürümünü kullanıyorsunuz. GitHub\'dan en son sürüm alınamadığı için bir güncellemenin mevcut olup olmadığı bilinmiyor.',
         ],
         'intro-no-update' => [
             'heading' => 'Paneliniz Güncel',
@@ -27,7 +32,7 @@ return [
             'heading' => 'Hiç Düğüm Algılanmadı',
             'content' => 'Görünüşe göre henüz herhangi bir Düğüm ayarlamadınız, ancak endişelenmeyin çünkü ilk düğümünüzü oluşturmak için eylem düğmesine tıklayabilirsiniz!',
             'extra_note' => 'Herhangi bir sorunla karşılaşırsanız, lütfen GitHub üzerinde bildirin.',
-            'button_label' => 'Pelican\'da İlk Düğümü Oluştur',
+            'button_label' => 'İlk Düğümü oluşturun',
         ],
         'intro-support' => [
             'heading' => 'Pelican\'ı Destekleyin',

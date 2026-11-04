@@ -48,7 +48,7 @@ return [
             'ask_driver' => 'Který ovladač by měl být použit pro odesílání e-mailů?',
             'ask_mail_from' => 'E-mailové adresy by měly pocházet z',
             'ask_mail_name' => 'Název, ze kterého by se měly zobrazit e-maily',
-            'ask_encryption' => 'Používat šifrovací metodu',
+            'ask_scheme' => 'Schéma e-mailu',
         ],
     ],
 ];

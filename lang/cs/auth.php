@@ -20,5 +20,6 @@ return [
     'password' => 'Zadané heslo není správné.',
     'throttle' => 'Příliš mnoho pokusů o přihlášení. Zkuste to prosím znovu za :seconds sekund.',
     '2fa_must_be_enabled' => 'Správce požadoval, aby 2-Factor ověření bylo povoleno pro váš účet, aby bylo možné použít panel.',
+    'password_login_disabled' => 'Přihlášení heslem je vypnuté. Pro přihlášení použijte poskytovatele OAuth.',
 
 ];

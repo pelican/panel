@@ -5,6 +5,7 @@ return [
     'node' => [
         'servers_attached' => 'Un nodo no debe tener servidores vinculados a él para poder ser eliminado.',
         'error_connecting' => 'Error al conectarse con :node',
+        'not_viable' => 'El nodo :node no tiene suficientes recursos para aceptar este servidor.',
         'daemon_off_config_updated' => 'La configuración del daemon <strong>se ha actualizado</strong>, sin embargo, se encontró un error al intentar actualizar automáticamente el archivo de configuración en el daemon. Deberás actualizar manualmente el archivo de configuración (config.yml) para que el daemon aplique estos cambios.',
     ],
     'allocations' => [

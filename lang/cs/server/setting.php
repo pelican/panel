@@ -41,6 +41,18 @@ return [
             'password_body' => 'Vaše SFTP heslo je stejné, jako heslo, kterým se přihlašujete do panelu.',
         ],
     ],
+    'notifications' => [
+        'title' => 'Upozornění',
+        'saved' => 'Nastavení upozornění uloženo',
+        'backup_manual' => [
+            'label' => 'Upozornění na ruční zálohy',
+            'helper' => 'Dostávat upozornění a e-mail, když ručně vytvořená záloha tohoto serveru doběhne nebo selže.',
+        ],
+        'backup_scheduled' => [
+            'label' => 'Upozornění na plánované zálohy',
+            'helper' => 'Dostávat upozornění a e-mail, když plánovaná záloha tohoto serveru doběhne nebo selže.',
+        ],
+    ],
     'reinstall' => [
         'title' => 'Přeinstalovat Server',
         'body' => 'Přeinstalování serveru ho zastaví a poté znovu spustí instalační skript.',

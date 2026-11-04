@@ -20,5 +20,6 @@ return [
     'password' => 'Virheellinen salasana.',
     'throttle' => 'Liian monta kirjautumisyritystä. Yritä uudelleen :seconds sekunnin kuluttua.',
     '2fa_must_be_enabled' => 'Ylläpitäjä on vaatinut, että kaksivaiheinen tunnistautuminen on otettava käyttöön tililläsi, jotta voit käyttää paneelia.',
+    'password_login_disabled' => 'Salasanalla kirjautuminen ei ole käytössä. Ole hyvä ja käytä OAuth-palveluntarjoajaa kirjautuaksesi sisään.',
 
 ];
