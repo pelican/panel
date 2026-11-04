@@ -76,7 +76,7 @@ it('ignores restricted allocations of other nodes in the protocols', function ()
     expect($server->refresh()->getAllocationProtocols())->toBe([]);
 });
 
-it('resets the protocol when an allocation is released', function () {
+it('keeps the protocol when an allocation is released', function () {
     $server = createServerModel();
     $udp = Allocation::factory()->forServer($server)->create(['protocol' => AllocationProtocol::Udp]);
 
@@ -84,7 +84,7 @@ it('resets the protocol when an allocation is released', function () {
 
     expect($udp->refresh())
         ->server_id->toBeNull()
-        ->protocol->toBe(AllocationProtocol::Both);
+        ->protocol->toBe(AllocationProtocol::Udp);
 });
 
 it('keeps the protocol of an unassigned allocation when it is edited', function () {

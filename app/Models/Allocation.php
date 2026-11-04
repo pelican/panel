@@ -75,13 +75,12 @@ class Allocation extends Model
         'notes' => null,
         'is_locked' => false,
         'show_port' => true,
-        'protocol' => AllocationProtocol::Both,
     ];
 
     protected $attributes = [
         'is_locked' => false,
         'show_port' => true,
-        'protocol' => AllocationProtocol::Both,
+        'protocol' => 'both',
     ];
 
     /**
