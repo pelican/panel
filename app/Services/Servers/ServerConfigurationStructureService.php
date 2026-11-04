@@ -59,6 +59,7 @@ class ServerConfigurationStructureService
      *         force_outgoing_ip: bool,
      *         default: array{ip: string, port: int},
      *         mappings: array<string, array<int>>,
+     *         protocols?: object,
      *     },
      *     egg: array{id: string|null, file_denylist: string[]|null, features: string[][]},
      *     labels?: array<mixed>,
@@ -107,6 +108,11 @@ class ServerConfigurationStructureService
                 'features' => $this->featureService->getMappings($server->egg->features),
             ],
         ];
+
+        $protocols = $server->getAllocationProtocols();
+        if (!empty($protocols)) {
+            $response['allocations']['protocols'] = (object) array_map(fn (array $ports) => (object) $ports, $protocols);
+        }
 
         if (!empty($server->docker_labels)) {
             $response['labels'] = $server->docker_labels;
