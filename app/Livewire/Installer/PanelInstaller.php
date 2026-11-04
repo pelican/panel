@@ -246,7 +246,8 @@ class PanelInstaller extends SimplePage implements HasForms
         abort_if(self::isInstalled(), 404);
 
         try {
-            $selectedEggs = array_get($this->data, 'eggs', []);
+            // Every egg category has an entry in the form state, even with nothing selected in it.
+            $selectedEggs = array_filter(array_get($this->data, 'eggs', []));
             if (!$selectedEggs) {
                 return;
             }
