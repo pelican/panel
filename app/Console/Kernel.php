@@ -8,6 +8,7 @@ use App\Console\Commands\Maintenance\CleanServiceBackupFilesCommand;
 use App\Console\Commands\Maintenance\PruneImagesCommand;
 use App\Console\Commands\Maintenance\PruneOrphanedBackupsCommand;
 use App\Console\Commands\Schedule\ProcessRunnableCommand;
+use App\Console\Commands\Server\AdvanceTransferBatchesCommand;
 use App\Models\ActivityLog;
 use App\Models\Webhook;
 use Illuminate\Console\Scheduling\Schedule;
@@ -40,6 +41,8 @@ class Kernel extends ConsoleKernel
 
         // Execute scheduled commands for servers every minute, as if there was a normal cron running.
         $schedule->command(ProcessRunnableCommand::class)->everyMinute()->withoutOverlapping(10);
+
+        $schedule->command(AdvanceTransferBatchesCommand::class)->everyMinute();
 
         $schedule->command(CleanServiceBackupFilesCommand::class)->daily();
         $schedule->command(PruneImagesCommand::class)->daily();

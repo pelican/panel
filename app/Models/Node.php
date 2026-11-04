@@ -489,6 +489,16 @@ class Node extends Model implements Validatable
     }
 
     /**
+     * Gets the batches moving servers off this node.
+     *
+     * @return HasMany<ServerTransferBatch, $this>
+     */
+    public function transferBatches(): HasMany
+    {
+        return $this->hasMany(ServerTransferBatch::class, 'old_node');
+    }
+
+    /**
      * Gets the allocations associated with a node.
      */
     public function allocations(): HasMany

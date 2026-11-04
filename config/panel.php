@@ -40,6 +40,11 @@ return [
         ],
     ],
 
+    'transfers' => [
+        // Minutes a batch waits on one server's transfer before failing it and moving on. 0 waits forever.
+        'batch_timeout' => env('PANEL_TRANSFER_BATCH_TIMEOUT', 1440),
+    ],
+
     'files' => [
         'max_edit_size' => env('PANEL_FILES_MAX_EDIT_SIZE', 1024 * 1024 * 4),
     ],

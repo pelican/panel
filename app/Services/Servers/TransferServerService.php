@@ -41,7 +41,8 @@ class TransferServerService
             ->pluck('uuid')
             ->all();
 
-        Http::daemon($transfer->oldNode)->post("/api/servers/{$transfer->server->uuid}/transfer", [
+        // Wings waits up to 15 seconds for a running server to stop before it responds
+        Http::daemon($transfer->oldNode)->timeout(30)->post("/api/servers/{$transfer->server->uuid}/transfer", [
             'url' => $transfer->newNode->getConnectionAddress() . '/api/transfers',
             'token' => 'Bearer ' . $token->toString(),
             'backups' => $backups,
@@ -49,7 +50,7 @@ class TransferServerService
                 'uuid' => $transfer->server->uuid,
                 'start_on_completion' => false,
             ],
-        ]);
+        ])->throw();
     }
 
     /**
@@ -61,7 +62,7 @@ class TransferServerService
      * @throws NodeNotViableException
      * @throws Throwable
      */
-    public function handle(Server $server, int $node_id, ?int $allocation_id = null, ?array $additional_allocations = [], array $backup_uuids = []): void
+    public function handle(Server $server, int $node_id, ?int $allocation_id = null, ?array $additional_allocations = [], array $backup_uuids = []): ServerTransfer
     {
         $additional_allocations = array_map(intval(...), $additional_allocations);
 
@@ -105,15 +106,24 @@ class TransferServerService
             return $transfer;
         });
 
-        // Generate a token for the destination node that the source node can use to authenticate with.
-        $token = $this->nodeJWTService
-            ->setExpiresAt(CarbonImmutable::now()->addMinutes(15))
-            ->setScopes(NodeJwtScope::ServerTransfer)
-            ->setSubject($server->uuid)
-            ->handle($transfer->newNode, $server->uuid);
+        try {
+            // Generate a token for the destination node that the source node can use to authenticate with.
+            $token = $this->nodeJWTService
+                ->setExpiresAt(CarbonImmutable::now()->addMinutes(15))
+                ->setScopes(NodeJwtScope::ServerTransfer)
+                ->setSubject($server->uuid)
+                ->handle($transfer->newNode, $server->uuid);
 
-        // Notify the source node of the pending outgoing transfer.
-        $this->notify($transfer, $token, $backup_uuids);
+            // Notify the source node of the pending outgoing transfer.
+            $this->notify($transfer, $token, $backup_uuids);
+        } catch (Throwable $exception) {
+            // The daemon won't report on a transfer it never accepted, which would leave the server locked forever.
+            $transfer->markFailed();
+
+            throw $exception;
+        }
+
+        return $transfer;
     }
 
     /**

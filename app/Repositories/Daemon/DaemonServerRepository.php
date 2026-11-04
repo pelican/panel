@@ -46,6 +46,26 @@ class DaemonServerRepository extends DaemonRepository
     }
 
     /**
+     * Returns the state of all servers on the node in one request. Empty if the daemon can't be reached.
+     *
+     * @return array<string, ContainerStatus> keyed by server uuid
+     */
+    public function getStates(int $timeout = 5): array
+    {
+        try {
+            $servers = $this->getHttpClient()->connectTimeout($timeout)->timeout($timeout)->get('/api/servers')->throw()->json();
+        } catch (Exception $exception) {
+            report($exception);
+
+            return [];
+        }
+
+        return collect($servers)
+            ->mapWithKeys(fn (array $server) => [$server['configuration']['uuid'] => ContainerStatus::tryFrom($server['state']) ?? ContainerStatus::Missing])
+            ->all();
+    }
+
+    /**
      * Creates a new server on the daemon.
      *
      * @throws ConnectionException
