@@ -2,6 +2,7 @@
 
 namespace App\Tests\Integration\Installer;
 
+use App\Jobs\InstallEgg;
 use App\Jobs\Plugin\InstallHubPlugin;
 use App\Jobs\Plugin\InstallPlugin;
 use App\Livewire\Installer\PanelInstaller;
@@ -9,6 +10,7 @@ use App\Livewire\Installer\Steps\DatabaseStep;
 use App\Models\Plugin;
 use App\Models\User;
 use App\Tests\Integration\IntegrationTestCase;
+use Filament\Notifications\Notification;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -282,6 +284,44 @@ class PanelInstallerTest extends IntegrationTestCase
         Queue::assertNotPushed(InstallPlugin::class);
         Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'update.json'));
         $this->assertSame(1, $user->notifications()->count());
+    }
+
+    public function test_no_egg_notification_is_sent_when_no_eggs_are_selected(): void
+    {
+        config()->set('app.installed', false);
+
+        Http::fake();
+        Queue::fake();
+
+        Livewire::test(PanelInstaller::class)
+            ->set('data.eggs', ['minecraft' => [], 'rust' => []])
+            ->instance()
+            ->installEggs();
+
+        Queue::assertNothingPushed();
+        Notification::assertNotNotified(trans('installer.egg.background_install_started'));
+    }
+
+    public function test_selected_eggs_are_queued_and_counted_in_the_notification(): void
+    {
+        config()->set('app.installed', false);
+
+        Http::fake();
+        Queue::fake();
+
+        Livewire::test(PanelInstaller::class)
+            ->set('data.eggs', ['minecraft' => ['https://eggs.example.test/paper.json', 'https://eggs.example.test/forge.json'], 'rust' => []])
+            ->instance()
+            ->installEggs();
+
+        Queue::assertPushed(InstallEgg::class, 2);
+        Notification::assertNotified(
+            Notification::make()
+                ->title(trans('installer.egg.background_install_started'))
+                ->body(trans('installer.egg.background_install_description', ['count' => 2]))
+                ->success()
+                ->persistent()
+        );
     }
 
     /** @return array<string, mixed> */
