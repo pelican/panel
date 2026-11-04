@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AllocationProtocol;
 use App\Exceptions\Service\Allocation\ServerUsingAllocationException;
 use App\Traits\HasValidation;
 use Illuminate\Database\Eloquent\Builder;
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property int $node_id
  * @property string $ip
  * @property int $port
+ * @property AllocationProtocol $protocol
  * @property int|null $server_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -44,6 +46,7 @@ use Illuminate\Support\Carbon;
  * @method static Builder<static>|Allocation whereNodeId($value)
  * @method static Builder<static>|Allocation whereNotes($value)
  * @method static Builder<static>|Allocation wherePort($value)
+ * @method static Builder<static>|Allocation whereProtocol($value)
  * @method static Builder<static>|Allocation whereServerId($value)
  * @method static Builder<static>|Allocation whereShowPort($value)
  * @method static Builder<static>|Allocation whereUpdatedAt($value)
@@ -72,11 +75,13 @@ class Allocation extends Model
         'notes' => null,
         'is_locked' => false,
         'show_port' => true,
+        'protocol' => AllocationProtocol::Both,
     ];
 
     protected $attributes = [
         'is_locked' => false,
         'show_port' => true,
+        'protocol' => AllocationProtocol::Both,
     ];
 
     /**
@@ -94,6 +99,7 @@ class Allocation extends Model
         'notes' => ['nullable', 'string', 'max:256'],
         'is_locked' => ['boolean'],
         'show_port' => ['boolean'],
+        'protocol' => ['required', 'string', 'in:tcp,udp,both'],
     ];
 
     protected static function booted(): void
@@ -118,6 +124,7 @@ class Allocation extends Model
             'server_id' => 'integer',
             'is_locked' => 'bool',
             'show_port' => 'bool',
+            'protocol' => AllocationProtocol::class,
         ];
     }
 
