@@ -6,6 +6,7 @@ use App\Enums\ContainerStatus;
 use App\Enums\ServerTransferBatchItemStatus as ItemStatus;
 use App\Enums\ServerTransferBatchStatus as BatchStatus;
 use App\Exceptions\Service\Server\TransferBatchException;
+use App\Exceptions\Service\Server\TransferUnconfirmedException;
 use App\Extensions\BackupAdapter\BackupAdapterService;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
 use App\Jobs\AdvanceServerTransferBatch;
@@ -20,9 +21,12 @@ use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Repositories\Daemon\DaemonSystemRepository;
 use Filament\Notifications\Notification;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -40,6 +44,12 @@ class ServerTransferBatchService
     private const int CONFLICTS_IN_MESSAGE = 5;
 
     private const string IPV4_WILDCARD = '0.0.0.0';
+
+    /** Longer than a step can take: the daemon requests in it time out well before this. */
+    private const int LOCK_SECONDS = 120;
+
+    /** An admin is waiting on this. A step usually takes far less, as only an unresponsive node drags it out. */
+    private const int CANCEL_WAIT_SECONDS = 30;
 
     public function __construct(
         private readonly ConnectionInterface $connection,
@@ -244,41 +254,66 @@ class ServerTransferBatchService
      */
     public function advance(ServerTransferBatch $batch): bool
     {
-        if ($batch->refresh()->status !== BatchStatus::Running) {
-            return false;
-        }
+        // If it is being cancelled there is nothing left to do, and otherwise the next wake-up gets to it.
+        return (bool) $this->lock($batch)->get(function () use ($batch) {
+            if ($batch->refresh()->status !== BatchStatus::Running) {
+                return false;
+            }
 
-        $item = $batch->activeItem()->first()
-            ?? $batch->items()->where('status', ItemStatus::Queued)->orderBy('id')->first();
+            $item = $batch->activeItem()->first()
+                ?? $batch->items()->where('status', ItemStatus::Queued)->orderBy('id')->first();
 
-        if (!$item) {
-            $this->finish($batch, BatchStatus::Completed);
+            if (!$item) {
+                $hasCancelledItems = $batch->items()->where('status', ItemStatus::Cancelled)->exists();
+                $this->finish($batch, $hasCancelledItems ? BatchStatus::Cancelled : BatchStatus::Completed);
 
-            return false;
-        }
+                return false;
+            }
 
-        return $item->status === ItemStatus::Transferring ? $this->checkTransfer($item) : $this->prepareServer($item);
+            return $item->status === ItemStatus::Transferring ? $this->checkTransfer($item) : $this->prepareServer($item);
+        });
     }
 
     /**
-     * Stops the batch, aborting the transfer it is currently waiting on.
+     * Stops the batch, aborting the transfer it is currently waiting on. If the node doesn't confirm that,
+     * the queue is cleared but the batch keeps watching that transfer, and this can be called again to retry.
+     *
+     * @return bool whether the batch is done
+     *
+     * @throws LockTimeoutException if the batch is too busy with its current step, in which case nothing changed
      */
-    public function cancel(ServerTransferBatch $batch): void
+    public function cancel(ServerTransferBatch $batch): bool
     {
-        if ($batch->status !== BatchStatus::Running) {
-            return;
-        }
+        return $this->lock($batch)->block(self::CANCEL_WAIT_SECONDS, function () use ($batch) {
+            if ($batch->refresh()->status !== BatchStatus::Running) {
+                return true;
+            }
 
-        // By id: settling takes an item out of these queries, and paging by offset would then skip others.
-        $batch->items()->whereIn('status', [ItemStatus::Stopping, ItemStatus::Transferring])->eachById(
-            fn (ServerTransferBatchItem $item) => $this->abort($item, ItemStatus::Cancelled, null)
-        );
+            $isAborted = true;
 
-        $batch->items()->where('status', ItemStatus::Queued)->eachById(
-            fn (ServerTransferBatchItem $item) => $this->settle($item, ItemStatus::Cancelled, null)
-        );
+            // By id: settling takes an item out of these queries, and paging by offset would then skip others.
+            $batch->items()->whereIn('status', [ItemStatus::Stopping, ItemStatus::Transferring])->eachById(function (ServerTransferBatchItem $item) use (&$isAborted) {
+                $isAborted = $this->abort($item, ItemStatus::Cancelled, null) && $isAborted;
+            });
 
-        $this->finish($batch, BatchStatus::Cancelled);
+            $batch->items()->where('status', ItemStatus::Queued)->eachById(
+                fn (ServerTransferBatchItem $item) => $this->settle($item, ItemStatus::Cancelled, null)
+            );
+
+            if ($isAborted) {
+                $this->finish($batch, BatchStatus::Cancelled);
+            }
+
+            return $isAborted;
+        });
+    }
+
+    /**
+     * Keeps a cancel from acting on what a running step is about to overwrite, such as an item it is starting the transfer of.
+     */
+    private function lock(ServerTransferBatch $batch): Lock
+    {
+        return Cache::lock("server-transfer-batch:$batch->id", self::LOCK_SECONDS);
     }
 
     private function checkTransfer(ServerTransferBatchItem $item): bool
@@ -291,9 +326,8 @@ class ServerTransferBatchService
                 return false;
             }
 
-            $this->abort($item, ItemStatus::Failed, trans('admin/node.transfer_batch.errors.timed_out', ['minutes' => $timeout]));
-
-            return true;
+            // Otherwise the next wake-up tries to abort it again.
+            return $this->abort($item, ItemStatus::Failed, trans('admin/node.transfer_batch.errors.timed_out', ['minutes' => $timeout]));
         }
 
         // The application API "cancels" a transfer by marking it successful, so check that the server really moved.
@@ -435,6 +469,8 @@ class ServerTransferBatchService
             return true;
         }
 
+        $error = null;
+
         try {
             $transfer = $this->transferService->handle(
                 $server,
@@ -443,6 +479,10 @@ class ServerTransferBatchService
                 $allocations['additional'],
                 $item->move_backups ? $this->localBackups($server)->pluck('uuid')->all() : [],
             );
+        } catch (TransferUnconfirmedException $exception) {
+            // Waits like any other transfer: for the node to report back, a restart of it or the batch timeout.
+            $transfer = $exception->transfer;
+            $error = $exception->getMessage();
         } catch (ConnectionException $exception) {
             // The node may just be restarting: keep the server queued and try again on the next scheduled wake-up.
             $item->update(['status' => ItemStatus::Queued, 'error' => $exception->getMessage()]);
@@ -458,7 +498,7 @@ class ServerTransferBatchService
             'status' => ItemStatus::Transferring,
             'server_transfer_id' => $transfer->id,
             'started_at' => now(),
-            'error' => null,
+            'error' => $error,
         ]);
 
         return false;
@@ -497,7 +537,10 @@ class ServerTransferBatchService
         return ['primary' => $primary, 'additional' => $additional];
     }
 
-    private function abort(ServerTransferBatchItem $item, ItemStatus $status, ?string $error): void
+    /**
+     * @return bool whether the item is settled, as opposed to its transfer possibly still running
+     */
+    private function abort(ServerTransferBatchItem $item, ItemStatus $status, ?string $error): bool
     {
         $transfer = $item->transfer;
 
@@ -505,21 +548,31 @@ class ServerTransferBatchService
         if ($transfer?->successful && $item->server->node_id === $transfer->new_node) {
             $this->checkTransfer($item);
 
-            return;
+            return true;
         }
 
         if ($transfer && $transfer->successful === null) {
             try {
                 $this->daemonRepository->setServer($item->server)->cancelTransfer();
             } catch (Throwable $exception) {
-                // A node that cannot be reached is usually why we are aborting in the first place.
                 logger()->warning($exception, ['transfer_id' => $transfer->id]);
+
+                // Marking it failed would make the panel refuse the result if it does finish.
+                if ($this->transferService->mayHaveReachedDaemon($exception)) {
+                    $item->update(['error' => trans('admin/node.transfer_batch.errors.abort_unconfirmed')]);
+
+                    return false;
+                }
+
+                // A node that cannot be reached is usually why we are aborting in the first place.
             }
 
             $transfer->markFailed();
         }
 
         $this->settle($item, $status, $error);
+
+        return true;
     }
 
     private function settle(ServerTransferBatchItem $item, ItemStatus $status, ?string $error): void

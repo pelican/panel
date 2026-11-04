@@ -61,6 +61,7 @@ return [
         'servers_attached' => 'A mount must have no servers attached to it in order to be deleted.',
     ],
     'server' => [
+        'transfer_unconfirmed' => 'The source node did not answer in time, so the transfer may or may not be running. The server stays locked until a node reports back or restarts, or the transfer is aborted.',
         'marked_as_failed' => 'This server has not yet completed its installation process, please try again later.',
         'file_too_large' => 'The file you are attempting to open is too large to view in the file editor.',
         'state_conflict' => 'This server is currently in an unsupported state, please try again later.',

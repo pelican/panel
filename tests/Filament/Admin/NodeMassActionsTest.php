@@ -2,6 +2,7 @@
 
 use App\Enums\RolePermissionModels;
 use App\Enums\ServerTransferBatchItemStatus;
+use App\Enums\ServerTransferBatchStatus;
 use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
 use App\Filament\Admin\Resources\Nodes\Pages\ViewNode;
 use App\Filament\Admin\Resources\Nodes\RelationManagers\ServerTransferBatchesRelationManager;
@@ -12,12 +13,18 @@ use App\Models\Allocation;
 use App\Models\Node;
 use App\Models\Role;
 use App\Models\Server;
+use App\Models\ServerTransfer;
 use App\Models\ServerTransferBatch;
 use App\Services\Servers\ServerTransferBatchService;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use GuzzleHttp\Exception\NetworkTimeoutException;
+use GuzzleHttp\Psr7\Request;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
@@ -283,6 +290,38 @@ it('shows a port as in use when the target listens on it on all IPv4 addresses',
         ->set('selected', [(string) $server->id])
         ->assertSee('10.0.0.5:25565 (' . trans('admin/node.transfer_batch.port_taken') . ')')
         ->assertSee(trans_choice('admin/node.transfer_batch.conflict_count', 1));
+});
+
+it('tells the admin when a batch could not be cancelled yet', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    fakeNodeStates([]);
+    $target = Node::factory()->create();
+    Allocation::factory()->create(['node_id' => $target->id, 'ip' => '10.0.0.5', 'port' => 1]);
+    $server = massActionServer($this->node, 'server', 25565);
+    $batch = app(ServerTransferBatchService::class)->create($this->node, $target, [$server->id => ['ip' => '10.0.0.5', 'move_backups' => true]]);
+
+    $lock = Cache::lock("server-transfer-batch:$batch->id", 120);
+    expect($lock->get())->toBeTrue();
+    Sleep::fake(syncWithCarbon: true);
+
+    livewire(ServerTransferBatchesRelationManager::class, ['ownerRecord' => $this->node, 'pageClass' => EditNode::class])
+        ->callAction(TestAction::make('cancel')->table($batch))
+        ->assertNotified(trans('admin/node.transfer_batch.notifications.cancel_busy'));
+
+    expect($batch->refresh()->status)->toBe(ServerTransferBatchStatus::Running);
+
+    $lock->release();
+    $batch->items()->update([
+        'status' => ServerTransferBatchItemStatus::Transferring,
+        'server_transfer_id' => ServerTransfer::factory()->for($server)->create(['old_node' => $this->node->id, 'new_node' => $target->id])->id,
+    ]);
+    Http::fake(['*/transfer' => fn () => throw new ConnectionException('timed out', 0, new NetworkTimeoutException('timed out', new Request('DELETE', 'http://node')))]);
+
+    livewire(ServerTransferBatchesRelationManager::class, ['ownerRecord' => $this->node, 'pageClass' => EditNode::class])
+        ->callAction(TestAction::make('cancel')->table($batch))
+        ->assertNotified(trans('admin/node.transfer_batch.notifications.cancel_unconfirmed'));
+
+    expect($batch->refresh()->status)->toBe(ServerTransferBatchStatus::Running);
 });
 
 it('shows batch progress and failures and can cancel a batch', function () {

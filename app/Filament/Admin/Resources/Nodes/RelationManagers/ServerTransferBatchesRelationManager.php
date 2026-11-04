@@ -15,6 +15,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Text;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -92,12 +93,23 @@ class ServerTransferBatchesRelationManager extends RelationManager
                     ->authorize(fn () => user()?->can('update server'))
                     ->visible(fn (ServerTransferBatch $batch) => !$this->isReadOnly() && $batch->status === ServerTransferBatchStatus::Running)
                     ->action(function (ServerTransferBatch $batch, ServerTransferBatchService $service) {
-                        $service->cancel($batch);
+                        try {
+                            $isDone = $service->cancel($batch);
+                        } catch (LockTimeoutException) {
+                            Notification::make()
+                                ->title(trans('admin/node.transfer_batch.notifications.cancel_busy'))
+                                ->warning()
+                                ->send();
 
-                        Notification::make()
-                            ->title(trans('admin/node.transfer_batch.notifications.cancelled'))
-                            ->success()
-                            ->send();
+                            return;
+                        }
+
+                        $notification = Notification::make();
+
+                        ($isDone
+                            ? $notification->title(trans('admin/node.transfer_batch.notifications.cancelled'))->success()
+                            : $notification->title(trans('admin/node.transfer_batch.notifications.cancel_unconfirmed'))->warning()
+                        )->send();
                     }),
             ]);
     }

@@ -5,6 +5,7 @@ namespace App\Filament\Admin\Resources\Servers;
 use App\Enums\CustomizationKey;
 use App\Enums\SuspendAction;
 use App\Enums\TablerIcon;
+use App\Exceptions\Service\Server\TransferUnconfirmedException;
 use App\Extensions\BackupAdapter\BackupAdapterService;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
@@ -944,6 +945,12 @@ class ServerResource extends Resource
                                                     Notification::make()
                                                         ->title(trans('admin/server.notifications.transfer_started'))
                                                         ->success()
+                                                        ->send();
+                                                } catch (TransferUnconfirmedException $exception) {
+                                                    Notification::make()
+                                                        ->title(trans('admin/server.notifications.transfer_unconfirmed'))
+                                                        ->body($exception->getMessage())
+                                                        ->warning()
                                                         ->send();
                                                 } catch (Exception $exception) {
                                                     Notification::make()

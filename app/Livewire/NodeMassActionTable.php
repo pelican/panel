@@ -87,7 +87,7 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
     /** @var array<int, string[]>|null */
     private ?array $conflicts = null;
 
-    /** @var array<string, true>|null the addresses that have an allocation on the target */
+    /** @var array<string, bool>|null the addresses that have an allocation on the target */
     private ?array $targetAllocations = null;
 
     /** @var array<int, array<string, true>>|null */

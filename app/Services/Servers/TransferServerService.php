@@ -4,6 +4,7 @@ namespace App\Services\Servers;
 
 use App\Enums\NodeJwtScope;
 use App\Exceptions\Http\Server\NodeNotViableException;
+use App\Exceptions\Service\Server\TransferUnconfirmedException;
 use App\Extensions\BackupAdapter\BackupAdapterService;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
 use App\Models\Allocation;
@@ -13,7 +14,10 @@ use App\Models\Server;
 use App\Models\ServerTransfer;
 use App\Services\Nodes\NodeJWTService;
 use Carbon\CarbonImmutable;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\TransferException;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Lcobucci\JWT\UnencryptedToken;
 use Throwable;
@@ -117,6 +121,11 @@ class TransferServerService
             // Notify the source node of the pending outgoing transfer.
             $this->notify($transfer, $token, $backup_uuids);
         } catch (Throwable $exception) {
+            // Marking it failed would make the panel refuse the result if the daemon is in fact running it.
+            if ($this->mayHaveReachedDaemon($exception)) {
+                throw new TransferUnconfirmedException($transfer, $exception);
+            }
+
             // The daemon won't report on a transfer it never accepted, which would leave the server locked forever.
             $transfer->markFailed();
 
@@ -124,6 +133,17 @@ class TransferServerService
         }
 
         return $transfer;
+    }
+
+    /**
+     * Whether a request that failed could still have been acted on: the connection worked but no full
+     * answer came back, as opposed to the daemon having been refused, unresolvable or out of reach.
+     */
+    public function mayHaveReachedDaemon(Throwable $exception): bool
+    {
+        $cause = $exception instanceof ConnectionException ? $exception->getPrevious() : null;
+
+        return $cause instanceof TransferException && !$cause instanceof ConnectException;
     }
 
     /**

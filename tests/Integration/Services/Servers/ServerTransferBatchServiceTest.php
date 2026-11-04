@@ -17,10 +17,17 @@ use App\Models\ServerTransfer;
 use App\Models\ServerTransferBatch;
 use App\Services\Servers\ServerTransferBatchService;
 use App\Tests\Integration\IntegrationTestCase;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\NetworkTimeoutException;
 use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Psr7\Request;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 class ServerTransferBatchServiceTest extends IntegrationTestCase
@@ -38,6 +45,8 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
     private bool $sourceAnswersPower = true;
 
     private bool $sourceAnswersState = true;
+
+    private ?ConnectionException $transferFailure = null;
 
     protected function setUp(): void
     {
@@ -88,7 +97,8 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         $this->daemonState = $state;
 
         Http::fake([
-            '*/transfer' => Http::response(status: 202),
+            '*/transfer' => fn () => $this->transferFailure ? throw $this->transferFailure : Http::response(status: 202),
+            '*/api/transfers/*' => Http::response(status: 204),
             '*/power' => fn () => $this->sourceAnswersPower ? Http::response(status: 204) : throw new ConnectionException('lost'),
             '*/api/servers/*' => fn () => $this->sourceAnswersState ? Http::response(['state' => $this->daemonState]) : throw new ConnectionException('timed out'),
             '*/api/system' => fn () => $this->targetIsUp ? $this->systemInformation() : throw new ConnectionException('down'),
@@ -591,6 +601,164 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         $this->target->delete();
 
         $this->assertModelMissing($this->target);
+    }
+
+    public function test_transfer_whose_start_timed_out_is_waited_on_like_any_other(): void
+    {
+        $this->fakeDaemon();
+        $this->transferFailure = $this->readTimeout();
+        $server = $this->serverOnPort(25565);
+        $batch = $this->batch([$server]);
+        $item = $batch->items()->sole();
+
+        $this->assertFalse($this->service()->advance($batch));
+
+        $this->assertSame(ItemStatus::Transferring, $item->refresh()->status);
+        $this->assertNotNull($item->error);
+        $this->assertNull(ServerTransfer::query()->sole()->successful);
+        $this->assertFalse($this->service()->advance($batch));
+
+        $this->transferSucceeds($server);
+        $this->service()->advance($batch);
+
+        $this->assertSame(ItemStatus::Successful, $item->refresh()->status);
+        $this->assertNull($item->error);
+    }
+
+    public function test_batch_timeout_keeps_trying_until_the_node_confirms_the_abort(): void
+    {
+        $this->fakeDaemon();
+        $this->transferFailure = $this->readTimeout();
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+        $item = $batch->items()->sole();
+        $this->service()->advance($batch);
+
+        $this->travel(config('panel.transfers.batch_timeout') + 1)->minutes();
+
+        $this->assertFalse($this->service()->advance($batch));
+        $this->assertSame(ItemStatus::Transferring, $item->refresh()->status);
+        $this->assertNull(ServerTransfer::query()->sole()->successful);
+
+        $this->transferFailure = null;
+
+        $this->assertTrue($this->service()->advance($batch));
+        $this->assertSame(ItemStatus::Failed, $item->refresh()->status);
+        $this->assertFalse(ServerTransfer::query()->sole()->successful);
+    }
+
+    public function test_cancel_clears_the_queue_and_keeps_watching_a_transfer_it_could_not_abort(): void
+    {
+        $this->fakeDaemon();
+        $first = $this->serverOnPort(25565);
+        $second = $this->serverOnPort(25566);
+        $batch = $this->batch([$first, $second]);
+        $this->service()->advance($batch);
+
+        $this->transferFailure = $this->readTimeout();
+
+        $this->assertFalse($this->service()->cancel($batch));
+
+        $this->assertSame(BatchStatus::Running, $batch->refresh()->status);
+        $this->assertSame(ItemStatus::Transferring, $batch->items()->where('server_id', $first->id)->first()->status);
+        $this->assertSame(ItemStatus::Cancelled, $batch->items()->where('server_id', $second->id)->first()->status);
+        $this->assertNull(ServerTransfer::query()->sole()->successful);
+
+        // It went through after all, which is what the batch was still there to notice.
+        $this->transferSucceeds($first);
+        $this->assertTrue($this->service()->advance($batch));
+        $this->assertFalse($this->service()->advance($batch));
+
+        $this->assertSame(ItemStatus::Successful, $batch->items()->where('server_id', $first->id)->first()->status);
+        $this->assertSame(BatchStatus::Cancelled, $batch->refresh()->status);
+    }
+
+    public function test_cancel_can_be_retried_after_the_node_did_not_confirm(): void
+    {
+        $this->fakeDaemon();
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+        $this->service()->advance($batch);
+
+        $this->transferFailure = $this->readTimeout();
+        $this->assertFalse($this->service()->cancel($batch));
+
+        $this->transferFailure = null;
+        $this->assertTrue($this->service()->cancel($batch));
+
+        $this->assertSame(BatchStatus::Cancelled, $batch->refresh()->status);
+        $this->assertSame(ItemStatus::Cancelled, $batch->items()->sole()->status);
+        $this->assertFalse(ServerTransfer::query()->sole()->successful);
+    }
+
+    public function test_cancel_gives_up_on_a_transfer_when_the_node_cannot_be_reached(): void
+    {
+        $this->fakeDaemon();
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+        $this->service()->advance($batch);
+
+        $this->transferFailure = new ConnectionException('refused', 0, new ConnectException('refused', new Request('DELETE', 'http://node')));
+
+        $this->assertTrue($this->service()->cancel($batch));
+
+        $this->assertSame(BatchStatus::Cancelled, $batch->refresh()->status);
+        $this->assertFalse(ServerTransfer::query()->sole()->successful);
+    }
+
+    public function test_a_step_of_the_batch_holds_the_lock_while_it_starts_a_transfer(): void
+    {
+        $this->fakeDaemon();
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+        $wasLocked = null;
+
+        Http::fake(['*/transfer' => function () use ($batch, &$wasLocked) {
+            $wasLocked = !$this->lockOf($batch)->get();
+
+            return Http::response(status: 202);
+        }]);
+
+        $this->service()->advance($batch);
+
+        $this->assertTrue($wasLocked);
+        $this->assertTrue($this->lockOf($batch)->get(), 'The lock should be released after the step.');
+    }
+
+    public function test_cancel_changes_nothing_when_a_step_keeps_the_batch_busy(): void
+    {
+        $this->fakeDaemon();
+        $server = $this->serverOnPort(25565);
+        $batch = $this->batch([$server]);
+        $this->assertTrue($this->lockOf($batch)->get());
+
+        Sleep::fake(syncWithCarbon: true);
+
+        try {
+            $this->service()->cancel($batch);
+            $this->fail('Cancelling should have given up on the lock.');
+        } catch (LockTimeoutException) {
+            $this->assertSame(BatchStatus::Running, $batch->refresh()->status);
+            $this->assertSame(ItemStatus::Queued, $batch->items()->sole()->status);
+        }
+    }
+
+    public function test_batch_does_not_advance_while_it_is_being_cancelled(): void
+    {
+        $this->fakeDaemon();
+        $batch = $this->batch([$this->serverOnPort(25565)]);
+        $this->assertTrue($this->lockOf($batch)->get());
+
+        $this->assertFalse($this->service()->advance($batch));
+
+        $this->assertSame(0, ServerTransfer::query()->count());
+    }
+
+    private function lockOf(ServerTransferBatch $batch): Lock
+    {
+        return Cache::lock("server-transfer-batch:$batch->id", 120);
+    }
+
+    /** What the HTTP client throws when a node accepts the connection but never answers. */
+    private function readTimeout(): ConnectionException
+    {
+        return new ConnectionException('timed out', 0, new NetworkTimeoutException('timed out', new Request('POST', 'http://node')));
     }
 
     public function test_cancel_leaves_a_finished_batch_alone(): void
