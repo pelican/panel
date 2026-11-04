@@ -84,6 +84,42 @@ it('refuses admins who cannot update servers', function () {
     livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'stop'])->assertForbidden();
 });
 
+it('refuses to act once access to the node is revoked', function (string $action) {
+    $server = massActionServer($this->node, 'server', 25565);
+    fakeNodeStates([$server->uuid => 'running']);
+
+    $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => $action])
+        ->set('selected', [(string) $server->id]);
+
+    $this->admin->roles->first()->nodes()->sync([Node::factory()->create()->id]);
+
+    $component->call('submit')->assertForbidden();
+
+    Bus::assertNotDispatched(SendServerPowerAction::class);
+    expect(ServerTransferBatch::query()->count())->toBe(0);
+})->with(['stop', 'transfer']);
+
+it('does not show the IPs and ports of a target node the admin cannot access', function () {
+    $hidden = Node::factory()->create();
+    $occupant = massActionServer($hidden, 'occupant', 30000);
+    Allocation::factory()->create(['node_id' => $hidden->id, 'ip' => '10.9.9.9', 'port' => 25565, 'server_id' => $occupant->id]);
+    $server = massActionServer($this->node, 'server', 25565);
+    fakeNodeStates([]);
+
+    $select = fn () => livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'transfer'])
+        ->set('selected', [(string) $server->id])
+        ->set('data.node_id', $hidden->id);
+
+    $select()->assertSee('10.9.9.9');
+
+    $this->admin->roles->first()->nodes()->sync([$this->node->id]);
+
+    $select()->assertDontSee('10.9.9.9');
+    $select()->set('data.default_ip', '10.9.9.8')
+        ->assertDontSee('10.9.9.8:25565')
+        ->assertDontSee(trans_choice('admin/node.transfer_batch.conflict_count', 1));
+});
+
 it('only lets a signal reach servers in a state it applies to', function (string $signal, string $eligibleState) {
     $eligible = massActionServer($this->node, 'eligible', 25565);
     $other = massActionServer($this->node, 'other', 25566);

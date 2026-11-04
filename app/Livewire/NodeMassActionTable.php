@@ -90,6 +90,9 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
     /** @var array<string, int>|null */
     private ?array $targetAllocations = null;
 
+    /** @var array<int, bool> whether the admin can access a node, by node id */
+    private array $accessibleTargets = [];
+
     private ServerTransferBatchService $batchService;
 
     public function boot(ServerTransferBatchService $batchService): void
@@ -233,7 +236,7 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
 
     public function submit(DaemonServerRepository $repository): void
     {
-        abort_unless(user()?->can('update server'), 403);
+        abort_unless(user()?->can('update server') && user()->accessibleNodes()->whereKey($this->node->id)->exists(), 403);
 
         $this->isTransfer() ? $this->submitTransfer() : $this->submitSignal($repository);
     }
@@ -309,7 +312,7 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
             ->all();
 
         try {
-            $this->batchService->create($this->node, $target, $assignments, user());
+            $batch = $this->batchService->create($this->node, $target, $assignments, user());
         } catch (TransferBatchException $exception) {
             Notification::make()
                 ->title(trans('admin/node.transfer_batch.notifications.not_started'))
@@ -326,7 +329,7 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
         }
 
         Notification::make()
-            ->title(trans_choice('admin/node.transfer_batch.notifications.started', count($assignments), ['node' => $target->name]))
+            ->title(trans_choice('admin/node.transfer_batch.notifications.started', $batch->items()->count(), ['node' => $target->name]))
             ->success()
             ->send();
 
@@ -399,9 +402,21 @@ class NodeMassActionTable extends Component implements HasActions, HasSchemas, H
         return (bool) ($this->data['move_all_backups'] ?? true) !== in_array($serverId, $this->backupExceptions, true);
     }
 
+    /**
+     * The chosen node comes from the browser, and the table reads its IPs and ports. Asked for every row, hence the cache.
+     */
     private function targetId(): ?int
     {
-        return filled($this->data['node_id'] ?? null) ? (int) $this->data['node_id'] : null;
+        $id = $this->data['node_id'] ?? null;
+
+        if (!is_numeric($id)) {
+            return null;
+        }
+
+        $id = (int) $id;
+        $this->accessibleTargets[$id] ??= user()?->accessibleNodes()->whereKey($id)->exists() ?? false;
+
+        return $this->accessibleTargets[$id] ? $id : null;
     }
 
     private function search(Builder $query, string $search): Builder
