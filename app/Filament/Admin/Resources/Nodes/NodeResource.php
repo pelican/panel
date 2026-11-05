@@ -140,7 +140,9 @@ class NodeResource extends Resource
                         ->schema([
                             TextEntry::make('wings_version')
                                 ->label(trans('admin/node.wings_version'))
-                                ->state(fn (Node $node, SoftwareVersionService $versionService) => ($node->systemInformation()['version'] ?? trans('admin/node.unknown')) . ' ' . trans('admin/node.latest', ['version' => $versionService->latestWingsVersion() ?? trans('admin/node.unknown')])),
+                                ->state(fn (Node $node, SoftwareVersionService $versionService) => ($node->systemInformation()['version'] ?? trans('admin/node.unknown')) . ' ' . trans('admin/node.latest', ['version' => $versionService->latestWingsVersion() ?? trans('admin/node.unknown')]))
+                                ->color(fn (Node $node, SoftwareVersionService $versionService) => self::isIncompatibleWings($node, $versionService) ? 'danger' : null)
+                                ->helperText(fn (Node $node, SoftwareVersionService $versionService) => self::isIncompatibleWings($node, $versionService) ? trans('admin/node.requires_wings', ['min' => config('panel.wings.min_version')]) : null),
                             TextEntry::make('cpu_threads')
                                 ->label(trans('admin/node.cpu_threads'))
                                 ->state(fn (Node $node) => $node->systemInformation()['cpu_count'] ?? 0),
@@ -1126,5 +1128,12 @@ class NodeResource extends Resource
                         ->visible(fn (Get $get) => ($get('pulled') ?? false) || ($get('uploaded') ?? false)),
                 ]),
         ];
+    }
+
+    private static function isIncompatibleWings(Node $node, SoftwareVersionService $versionService): bool
+    {
+        $version = $node->systemInformation()['version'] ?? null;
+
+        return $version !== null && !$versionService->isCompatibleWings($version);
     }
 }

@@ -35,6 +35,8 @@ return [
             'no_nodes' => 'No Nodes',
             'all_up_to_date' => 'All up-to-date',
             'outdated' => ':outdated/:all outdated',
+            'incompatible' => ':incompatible/:all incompatible',
+            'failed_incompatible' => ':incompatible/:all Nodes run Wings older than :min, the minimum this Panel supports',
         ],
         'panelversion' => [
             'label' => 'Panel Version',
