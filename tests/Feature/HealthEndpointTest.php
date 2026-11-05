@@ -26,15 +26,21 @@ it('is disabled without a secret', function () {
 
 it('rejects a missing or wrong token', function (string $uri) {
     $this->getJson($uri)->assertForbidden();
-})->with(['/health', '/health?token=nope']);
+})->with(['/health', '/health?token=nope', '/health?token[]=hunter2']);
 
 it('returns 200 when the worst check is a warning', function () {
     $this->getJson('/health', ['Authorization' => 'Bearer hunter2'])->assertOk()->assertJsonCount(2, 'checkResults');
-    $this->getJson('/health?token=hunter2')->assertOk();
+    $this->getJson('/health?token=hunter2')->assertOk()->assertCookieMissing(config('session.cookie'));
 });
 
 it('returns 503 when a check failed', function () {
     $this->store->save(collect([Result::make()->check(DatabaseCheck::new())->failed('down')]));
+
+    $this->getJson('/health?token=hunter2')->assertServiceUnavailable();
+});
+
+it('returns 503 when the results are stale', function () {
+    $this->travel(11)->minutes();
 
     $this->getJson('/health?token=hunter2')->assertServiceUnavailable();
 });

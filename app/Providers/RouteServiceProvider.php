@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Enums\ResourceLimit;
+use App\Http\Controllers\HealthController;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
@@ -28,6 +29,9 @@ class RouteServiceProvider extends ServiceProvider
         });
 
         $this->routes(function () {
+            // No middleware group: monitors poll this, so it shouldn't start a session on every hit.
+            Route::get('health', HealthController::class)->name('health');
+
             Route::middleware('web')->group(function () {
                 Route::middleware(['auth.session'])
                     ->prefix('docs')
