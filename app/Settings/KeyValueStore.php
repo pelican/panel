@@ -29,7 +29,7 @@ class KeyValueStore
     {
         // ponytail: memoized per request, one query per group; add a cache if it shows up in profiling
         return $this->groups[$group] ??= rescue(fn () => collect($this->repository->getPropertiesInGroup($group))
-            ->map(fn ($value, $key) => self::isSecret($key) && is_string($value) ? Crypt::decryptString($value) : $value)
+            ->map(fn ($value, $key) => self::isSecret($key) && is_string($value) && filled($value) ? Crypt::decryptString($value) : $value)
             ->all(), [], false);
     }
 

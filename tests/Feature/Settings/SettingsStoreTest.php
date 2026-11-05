@@ -87,3 +87,11 @@ it('seeds the store from config and env on upgrade, and can be re-run', function
         ->and(app(RateLimitSettings::class)->app_api_client_ratelimit)->toBe(300)
         ->and(setting('OAUTH_GITHUB_CLIENT_ID'))->toBe('upgrade-client');
 });
+
+it('keeps the rest of a group readable when a secret is empty', function () {
+    app(KeyValueStore::class)->set(['OAUTH_GITHUB_CLIENT_SECRET' => '', 'OAUTH_GITHUB_ENABLED' => 'true']);
+    reloadSettings();
+
+    expect(setting('OAUTH_GITHUB_ENABLED'))->toBeTrue()
+        ->and(setting('OAUTH_GITHUB_CLIENT_SECRET'))->toBe('');
+});
