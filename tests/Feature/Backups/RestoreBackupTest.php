@@ -7,6 +7,7 @@ use App\Models\BackupHost;
 use App\Models\Server;
 use App\Repositories\Daemon\DaemonBackupRepository;
 use GuzzleHttp\Psr7\Response as PsrResponse;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 
 function restoreBackupUrl(Server $server, Backup $backup): string
@@ -73,4 +74,19 @@ it('requires the restore permission', function () {
     $this->actingAs($user)
         ->postJson(restoreBackupUrl($server, $backup), ['truncate' => false])
         ->assertForbidden();
+});
+
+it('rolls the server status back when the daemon call fails', function () {
+    [$user, $server] = generateTestAccount([SubuserPermission::BackupRestore]);
+    $backup = makeBackup($server);
+
+    $this->mock(DaemonBackupRepository::class)
+        ->expects('setServer->restore')
+        ->andThrow(new ConnectionException('Wings is down'));
+
+    $this->actingAs($user)
+        ->postJson(restoreBackupUrl($server, $backup), ['truncate' => false])
+        ->assertServerError();
+
+    expect($server->refresh()->status)->toBeNull();
 });
