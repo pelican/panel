@@ -3,6 +3,7 @@
 namespace App\Tests\Integration\Services\Servers;
 
 use App\Exceptions\Http\Server\NodeNotViableException;
+use App\Exceptions\Service\Allocation\AllocationUnavailableException;
 use App\Exceptions\Service\Server\TransferUnconfirmedException;
 use App\Models\Allocation;
 use App\Models\Node;
@@ -40,6 +41,45 @@ class TransferServerServiceTest extends IntegrationTestCase
         } finally {
             $this->assertSame(0, ServerTransfer::query()->count());
             $this->assertSame($server->node_id, $server->refresh()->node_id);
+        }
+    }
+
+    public function test_transfer_is_refused_when_an_allocation_belongs_to_another_server(): void
+    {
+        Http::fake();
+
+        $server = $this->createServerModel();
+        $target = Node::factory()->create();
+        $other = $this->createServerModel(['node_id' => $target->id]);
+        $free = Allocation::factory()->create(['node_id' => $target->id]);
+        $taken = Allocation::factory()->create(['node_id' => $target->id, 'server_id' => $other->id]);
+
+        try {
+            $this->getService()->handle($server, $target->id, $free->id, [$taken->id]);
+            $this->fail('The transfer should have been refused.');
+        } catch (AllocationUnavailableException) {
+            $this->assertSame(0, ServerTransfer::query()->count());
+            $this->assertNull($free->refresh()->server_id);
+            $this->assertSame($other->id, $taken->refresh()->server_id);
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_transfer_is_refused_for_an_allocation_on_another_node(): void
+    {
+        Http::fake();
+
+        $server = $this->createServerModel();
+        $target = Node::factory()->create();
+        $elsewhere = Allocation::factory()->create(['node_id' => Node::factory()->create()->id]);
+
+        $this->expectException(AllocationUnavailableException::class);
+
+        try {
+            $this->getService()->handle($server, $target->id, $elsewhere->id);
+        } finally {
+            $this->assertSame(0, ServerTransfer::query()->count());
+            $this->assertNull($elsewhere->refresh()->server_id);
         }
     }
 

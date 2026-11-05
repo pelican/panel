@@ -5,6 +5,7 @@ namespace App\Services\Servers;
 use App\Enums\ContainerStatus;
 use App\Enums\ServerTransferBatchItemStatus as ItemStatus;
 use App\Enums\ServerTransferBatchStatus as BatchStatus;
+use App\Exceptions\Service\Allocation\AllocationUnavailableException;
 use App\Exceptions\Service\Server\TransferBatchException;
 use App\Exceptions\Service\Server\TransferUnconfirmedException;
 use App\Extensions\BackupAdapter\BackupAdapterService;
@@ -487,6 +488,10 @@ class ServerTransferBatchService
             // Waits like any other transfer: for the node to report back, a restart of it or the batch timeout.
             $transfer = $exception->transfer;
             $error = $exception->getMessage();
+        } catch (AllocationUnavailableException) {
+            $this->settle($item, ItemStatus::Failed, trans('admin/node.transfer_batch.errors.port_taken', ['ip' => $item->new_ip]));
+
+            return true;
         } catch (ConnectionException $exception) {
             // The node may just be restarting: keep the server queued and try again on the next scheduled wake-up.
             $item->update(['status' => ItemStatus::Queued, 'error' => $exception->getMessage()]);

@@ -221,6 +221,26 @@ class ServerTransferBatchServiceTest extends IntegrationTestCase
         $this->assertSame(0, ServerTransfer::query()->count());
     }
 
+    public function test_server_fails_when_its_port_is_claimed_just_before_the_transfer_takes_it(): void
+    {
+        $this->fakeDaemon();
+        $server = $this->serverOnPort(25565);
+        $batch = $this->batch([$server]);
+        $other = $this->createServerModel(['node_id' => $this->target->id]);
+
+        // Runs after the batch found the port free and created its allocation, like another writer getting in between.
+        Allocation::created(fn (Allocation $allocation) => Allocation::query()->whereKey($allocation->id)->update(['server_id' => $other->id]));
+
+        $this->service()->advance($batch);
+
+        $item = $batch->items()->sole();
+        $this->assertSame(ItemStatus::Failed, $item->status);
+        $this->assertSame(trans('admin/node.transfer_batch.errors.port_taken', ['ip' => self::IP]), $item->error);
+        $this->assertSame(0, ServerTransfer::query()->count());
+        $this->assertSame($other->id, Allocation::query()->where('node_id', $this->target->id)->where('port', 25565)->sole()->server_id);
+        Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/transfer'));
+    }
+
     public function test_batch_is_refused_when_two_of_its_servers_need_the_same_port(): void
     {
         $first = $this->serverOnPort(25565);

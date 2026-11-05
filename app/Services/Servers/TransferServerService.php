@@ -4,6 +4,7 @@ namespace App\Services\Servers;
 
 use App\Enums\NodeJwtScope;
 use App\Exceptions\Http\Server\NodeNotViableException;
+use App\Exceptions\Service\Allocation\AllocationUnavailableException;
 use App\Exceptions\Service\Server\TransferUnconfirmedException;
 use App\Extensions\BackupAdapter\BackupAdapterService;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
@@ -153,26 +154,21 @@ class TransferServerService
      */
     private function assignAllocationsToServer(Server $server, int $node_id, int $allocation_id, array $additional_allocations): void
     {
-        $allocations = $additional_allocations;
-        $allocations[] = $allocation_id;
+        $allocations = array_unique([...$additional_allocations, $allocation_id]);
 
         $node = Node::findOrFail($node_id);
-        $unassigned = $node->allocations()
+
+        // Only claims what is still free, so another server's allocation can't end up on this server too.
+        $node->allocations()
+            ->whereIn('id', $allocations)
             ->whereNull('server_id')
-            ->pluck('id')
-            ->toArray();
+            ->update(['server_id' => $server->id]);
 
-        $updateIds = [];
-        foreach ($allocations as $allocation) {
-            if (!in_array($allocation, $unassigned)) {
-                continue;
-            }
+        $claimed = $node->allocations()
+            ->whereIn('id', $allocations)
+            ->where('server_id', $server->id)
+            ->count();
 
-            $updateIds[] = $allocation;
-        }
-
-        if (!empty($updateIds)) {
-            Allocation::whereIn('id', $updateIds)->update(['server_id' => $server->id]);
-        }
+        throw_if($claimed !== count($allocations), new AllocationUnavailableException());
     }
 }

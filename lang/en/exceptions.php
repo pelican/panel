@@ -11,6 +11,7 @@ return [
     ],
     'allocations' => [
         'server_using' => 'A server is currently assigned to this allocation. An allocation can only be deleted if no server is currently assigned.',
+        'unavailable' => 'One of the selected allocations is not available on the target node.',
         'too_many_ports' => 'Adding more than 1000 ports in a single range at once is not supported.',
         'invalid_mapping' => 'The mapping provided for :port was invalid and could not be processed.',
         'cidr_out_of_range' => 'CIDR notation only allows masks between /25 and /32.',
