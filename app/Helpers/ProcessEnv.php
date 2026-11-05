@@ -18,10 +18,17 @@ final class ProcessEnv
     /** @param  array<string, mixed>|null  $environment */
     public static function capture(?array $environment = null): void
     {
+        $real = $environment === null;
         $environment ??= getenv();
         $fromFile = preg_split('/[\s,]+/', (string) ($environment[self::FROM_FILE] ?? ''), flags: PREG_SPLIT_NO_EMPTY) ?: [];
 
         self::$keys = array_fill_keys(array_diff(array_keys($environment), $fromFile, [self::FROM_FILE]), true);
+
+        // The entrypoint's copies are from container start; drop them so the current .env wins.
+        foreach ($real ? $fromFile : [] as $key) {
+            putenv($key);
+            unset($_ENV[$key], $_SERVER[$key]);
+        }
     }
 
     public static function has(string $key): bool

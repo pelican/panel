@@ -27,6 +27,23 @@ it('treats keys the docker entrypoint copied out of .env as file values', functi
         ->and(ProcessEnv::has(ProcessEnv::FROM_FILE))->toBeFalse();
 });
 
+it('drops the entrypoint copies so the current .env value wins', function () {
+    putenv('W11_FROM_FILE=stale');
+    putenv(ProcessEnv::FROM_FILE.'=W11_FROM_FILE');
+    $_SERVER['W11_FROM_FILE'] = 'stale';
+
+    try {
+        ProcessEnv::capture();
+
+        expect(getenv('W11_FROM_FILE'))->toBeFalse()
+            ->and($_SERVER)->not->toHaveKey('W11_FROM_FILE')
+            ->and(ProcessEnv::has('W11_FROM_FILE'))->toBeFalse();
+    } finally {
+        putenv(ProcessEnv::FROM_FILE);
+        ProcessEnv::capture([]);
+    }
+});
+
 it('refuses hub credentials that the server environment already sets', function () {
     ProcessEnv::capture(['PANEL_PLUGIN_HUB_API_KEY' => 'pnl_fromcontainer']);
 
