@@ -25,23 +25,41 @@ class NodeVersionsCheck extends Check
             return $result;
         }
 
-        $outdated = $all
-            ->filter(fn (Node $node) => !isset($node->systemInformation()['exception']) && !$this->versionService->isLatestWings($node->systemInformation()['version']))
-            ->count();
+        $versions = $all
+            ->map(fn (Node $node) => $node->systemInformation())
+            ->reject(fn (array $info) => isset($info['exception']))
+            ->pluck('version')
+            ->filter();
+
+        $incompatible = $versions->reject(fn (string $version) => $this->versionService->isCompatibleWings($version))->count();
+        $outdated = $versions->reject(fn (string $version) => $this->versionService->isLatestWings($version))->count();
 
         $all = $all->count();
-        $latestVersion = $this->versionService->latestWingsVersion();
+        $min = config('panel.wings.min_version');
 
         $result = Result::make()
             ->meta([
                 'all' => $all,
                 'outdated' => $outdated,
-                'latestVersion' => $latestVersion,
-            ])
-            ->shortSummary($outdated === 0 ? trans('admin/health.results.nodeversions.all_up_to_date') : trans('admin/health.results.nodeversions.outdated', ['outdated' => $outdated, 'all' => $all]));
+                'incompatible' => $incompatible,
+                'latestVersion' => $this->versionService->latestWingsVersion(),
+                'minVersion' => $min,
+            ]);
 
-        return $outdated === 0
-            ? $result->ok(trans('admin/health.results.nodeversions.ok'))
-            : $result->warning(trans('admin/health.results.nodeversions.failed', ['outdated' => $outdated, 'all' => $all]));
+        if ($incompatible > 0) {
+            return $result
+                ->shortSummary(trans('admin/health.results.nodeversions.incompatible', ['incompatible' => $incompatible, 'all' => $all]))
+                ->failed(trans('admin/health.results.nodeversions.failed_incompatible', ['incompatible' => $incompatible, 'all' => $all, 'min' => $min]));
+        }
+
+        if ($outdated > 0) {
+            return $result
+                ->shortSummary(trans('admin/health.results.nodeversions.outdated', ['outdated' => $outdated, 'all' => $all]))
+                ->warning(trans('admin/health.results.nodeversions.failed', ['outdated' => $outdated, 'all' => $all]));
+        }
+
+        return $result
+            ->shortSummary(trans('admin/health.results.nodeversions.all_up_to_date'))
+            ->ok(trans('admin/health.results.nodeversions.ok'));
     }
 }
