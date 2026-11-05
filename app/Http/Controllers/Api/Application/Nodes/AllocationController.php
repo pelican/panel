@@ -82,6 +82,8 @@ class AllocationController extends ApplicationApiController
     }
 
     /**
+     * Update allocation
+     *
      * @return array<mixed>
      */
     public function update(UpdateAllocationRequest $request, Node $node, Allocation $allocation): array
