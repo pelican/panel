@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Client\Servers;
 
 use App\Data\Api\Client\BackupData;
+use App\Enums\BackupStatus;
 use App\Enums\ServerState;
 use App\Enums\SubuserPermission;
 use App\Extensions\BackupAdapter\BackupAdapterService;
@@ -244,7 +245,7 @@ class BackupController extends ClientApiController
         // processing a different backup restoration request.
         throw_unless(is_null($server->status), new BadRequestHttpException('This server is not currently in a state that allows for a backup to be restored.'));
 
-        throw_if(!$backup->is_successful && is_null($backup->completed_at), new BadRequestHttpException('This backup cannot be restored at this time: not completed or failed.'));
+        throw_if($backup->status !== BackupStatus::Successful, new BadRequestHttpException('This backup cannot be restored at this time: not completed or failed.'));
 
         $log = Activity::event('server:backup.restore')
             ->subject($backup)
