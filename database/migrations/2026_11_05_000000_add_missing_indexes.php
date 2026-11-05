@@ -38,14 +38,24 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Only drop the names up() creates, so an index the install already had on these columns stays.
         foreach ($this->indexes() as [$table, $columns]) {
-            if (!Schema::hasIndex($table, $columns)) {
+            $name = $this->indexName($table, $columns);
+            if (!Schema::hasIndex($table, $name)) {
                 continue;
             }
 
             $this->keepForeignKeyIndex($table, $columns[0]);
-            Schema::table($table, fn ($blueprint) => $blueprint->dropIndex($columns));
+            Schema::table($table, fn ($blueprint) => $blueprint->dropIndex($name));
         }
+    }
+
+    /** @param  string[]  $columns */
+    private function indexName(string $table, array $columns): string
+    {
+        $prefix = Schema::getConnection()->getTablePrefix();
+
+        return str_replace(['-', '.'], '_', strtolower($prefix . $table . '_' . implode('_', $columns) . '_index'));
     }
 
     // MySQL drops its implicit foreign key index once our composite covers the column,
