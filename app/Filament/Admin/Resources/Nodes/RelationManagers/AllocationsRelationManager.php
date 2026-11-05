@@ -84,7 +84,7 @@ class AllocationsRelationManager extends RelationManager
                     ->options(AllocationProtocol::class)
                     ->selectablePlaceholder(false)
                     ->sortable()
-                    ->disabled(fn () => $this->isReadOnly()),
+                    ->disabled(fn (Allocation $allocation) => $this->isReadOnly() || !user()?->can('update', $allocation)),
                 TextInputColumn::make('ip_alias')
                     ->searchable()
                     ->sortable()
@@ -159,7 +159,13 @@ class AllocationsRelationManager extends RelationManager
                             ->selectablePlaceholder(false)
                             ->helperText(trans('admin/node.protocol_help'))
                             ->live()
-                            ->afterStateUpdated(fn (Set $set) => $set('allocation_ports', []))
+                            ->afterStateUpdated(function ($state, Set $set, Get $get) {
+                                if (empty($get('allocation_ip')) || empty($get('allocation_ports'))) {
+                                    return;
+                                }
+
+                                $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord(), $get('allocation_ports'), $get('allocation_ip'), $state));
+                            })
                             ->required(),
                         TagsInput::make('allocation_ports')
                             ->placeholder('27015, 27017-27019')
