@@ -32,6 +32,8 @@ use App\Models\WebhookConfiguration;
 use App\Observers\AuditObserver;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\SoftwareVersionService;
+use App\Settings\KeyValueStore;
+use App\Settings\SettingsMap;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
@@ -134,6 +136,10 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(LoginResponseContract::class, LoginResponse::class);
+
+        // Overlay the database-backed settings onto config before any provider boots and reads it.
+        $this->app->singleton(KeyValueStore::class);
+        $this->app->booting(fn () => SettingsMap::apply());
 
         // Registered here rather than in boot() so it's in place before the panel providers load
         // plugins, and a plugin crashing them can still notify users and look up their roles.

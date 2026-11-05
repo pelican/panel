@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1d6adb28cf147fc591a3ffd778d2ce18",
+    "content-hash": "9902e8dfc7b91014349921f6015a3e2a",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -7879,6 +7879,91 @@
                 }
             ],
             "time": "2026-10-26T11:47:01+00:00"
+        },
+        {
+            "name": "spatie/laravel-settings",
+            "version": "3.10.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/spatie/laravel-settings.git",
+                "reference": "1c5fa839c2102070bb94cc327fecf8e33246c267"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/spatie/laravel-settings/zipball/1c5fa839c2102070bb94cc327fecf8e33246c267",
+                "reference": "1c5fa839c2102070bb94cc327fecf8e33246c267",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "illuminate/database": "^12.0|^13.0",
+                "php": "^8.2",
+                "phpdocumentor/type-resolver": "^1.5|^2.0",
+                "spatie/temporary-directory": "^1.3|^2.0"
+            },
+            "require-dev": {
+                "ext-redis": "*",
+                "mockery/mockery": "^1.4",
+                "orchestra/testbench": "^10.0|^11.0",
+                "pestphp/pest": "^3.0|^4.0|^5.0",
+                "pestphp/pest-plugin-laravel": "^3.0|^4.0|^5.0",
+                "phpstan/extension-installer": "^1.1",
+                "phpstan/phpstan-deprecation-rules": "^2.0",
+                "phpstan/phpstan-phpunit": "^2.0",
+                "spatie/laravel-data": "^2.0.0|^4.0.0",
+                "spatie/pest-plugin-snapshots": "^2.0",
+                "spatie/phpunit-snapshot-assertions": "^4.2|^5.0",
+                "spatie/ray": "^1.36"
+            },
+            "suggest": {
+                "spatie/data-transfer-object": "Allows for DTO casting to settings. (deprecated)"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Spatie\\LaravelSettings\\LaravelSettingsServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Spatie\\LaravelSettings\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Ruben Van Assche",
+                    "email": "ruben@spatie.be",
+                    "homepage": "https://spatie.be",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Store your application settings",
+            "homepage": "https://github.com/spatie/laravel-settings",
+            "keywords": [
+                "laravel-settings",
+                "spatie"
+            ],
+            "support": {
+                "issues": "https://github.com/spatie/laravel-settings/issues",
+                "source": "https://github.com/spatie/laravel-settings/tree/3.10.1"
+            },
+            "funding": [
+                {
+                    "url": "https://spatie.be/open-source/support-us",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://github.com/spatie",
+                    "type": "github"
+                }
+            ],
+            "time": "2026-11-04T11:29:25+00:00"
         },
         {
             "name": "spatie/php-structure-discoverer",

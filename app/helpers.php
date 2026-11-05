@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\User;
+use App\Settings\KeyValueStore;
+use Illuminate\Support\Facades\App;
 
 if (!function_exists('is_digit')) {
     /**
@@ -170,5 +172,13 @@ if (!function_exists('user')) {
     function user(): ?User
     {
         return auth(config('auth.defaults.guard', 'web'))->user();
+    }
+}
+
+if (!function_exists('setting')) {
+    /** A keyed (OAuth, captcha, plugin) setting from the database store. */
+    function setting(string $key, mixed $default = null, string $group = 'extensions'): mixed
+    {
+        return App::make(KeyValueStore::class)->get($key, $default, $group);
     }
 }

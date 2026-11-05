@@ -38,6 +38,7 @@
         "spatie/laravel-health": "^1.40",
         "spatie/laravel-permission": "^8.3",
         "spatie/laravel-query-builder": "^7.3",
+        "spatie/laravel-settings": "^3.10",
         "spatie/temporary-directory": "^2.4",
         "symfony/http-client": "^7.4",
         "symfony/mailgun-mailer": "^7.4",
