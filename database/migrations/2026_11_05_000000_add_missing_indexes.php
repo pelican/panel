@@ -28,14 +28,21 @@ return new class extends Migration
 
     public function up(): void
     {
+        // Skip existing ones so a partly applied run (MySQL can't roll back DDL) can run again.
         foreach ($this->indexes() as [$table, $columns]) {
-            Schema::table($table, fn ($blueprint) => $blueprint->index($columns));
+            if (!Schema::hasIndex($table, $columns)) {
+                Schema::table($table, fn ($blueprint) => $blueprint->index($columns));
+            }
         }
     }
 
     public function down(): void
     {
         foreach ($this->indexes() as [$table, $columns]) {
+            if (!Schema::hasIndex($table, $columns)) {
+                continue;
+            }
+
             $this->keepForeignKeyIndex($table, $columns[0]);
             Schema::table($table, fn ($blueprint) => $blueprint->dropIndex($columns));
         }
