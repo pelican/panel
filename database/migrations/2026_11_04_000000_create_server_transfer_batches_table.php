@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Not recorded yet, so tables left here are from an earlier run that failed halfway.
+        Schema::dropIfExists('server_transfer_batch_items');
+        Schema::dropIfExists('server_transfer_batches');
+
         Schema::create('server_transfer_batches', function (Blueprint $table) {
             $table->increments('id');
             $table->unsignedInteger('old_node');
