@@ -19,6 +19,10 @@ return new class extends Migration
             });
         }
 
+        if (!Schema::hasColumn('eggs', 'startup')) {
+            return;
+        }
+
         DB::table('eggs')->select(['id', 'startup'])->cursor()->each(function ($egg) {
             DB::table('eggs')->where('id', $egg->id)->update(['startup_commands' => json_encode(['Default' => $egg->startup], JSON_UNESCAPED_SLASHES)]);
         });

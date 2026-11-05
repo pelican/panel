@@ -10,43 +10,56 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('eggs', function (Blueprint $table) {
-            $table->text('tags')->nullable();
-        });
-
-        DB::table('eggs')->update(['tags' => '[]']);
-
-        $eggsWithNests = DB::table('eggs')
-            ->select(['eggs.id', 'nests.name'])
-            ->join('nests', 'nests.id', '=', 'eggs.nest_id')
-            ->get();
-
-        foreach ($eggsWithNests as $egg) {
-            DB::table('eggs')
-                ->where('id', $egg->id)
-                ->update(['tags' => json_encode([$egg->name])]);
+        // Each step checks whether it already ran, so a migration that failed halfway can be run again.
+        if (!Schema::hasColumn('eggs', 'tags')) {
+            Schema::table('eggs', function (Blueprint $table) {
+                $table->text('tags')->nullable();
+            });
         }
 
-        Schema::table('eggs', function (Blueprint $table) {
-            if (Schema::getConnection()->getDriverName() !== 'sqlite') {
-                $table->dropForeign('service_options_nest_id_foreign');
-            } else {
-                $table->dropForeign(['nest_id']);
+        if (Schema::hasColumn('eggs', 'nest_id')) {
+            DB::table('eggs')->update(['tags' => '[]']);
+
+            $eggsWithNests = DB::table('eggs')
+                ->select(['eggs.id', 'nests.name'])
+                ->join('nests', 'nests.id', '=', 'eggs.nest_id')
+                ->get();
+
+            foreach ($eggsWithNests as $egg) {
+                DB::table('eggs')
+                    ->where('id', $egg->id)
+                    ->update(['tags' => json_encode([$egg->name])]);
             }
 
-            $table->dropColumn('nest_id');
-        });
+            Schema::table('eggs', function (Blueprint $table) {
+                if (Schema::getConnection()->getDriverName() !== 'sqlite') {
+                    if (in_array('service_options_nest_id_foreign', array_column(Schema::getForeignKeys('eggs'), 'name'))) {
+                        $table->dropForeign('service_options_nest_id_foreign');
+                    }
+                } else {
+                    $table->dropForeign(['nest_id']);
+                }
 
-        Schema::table('servers', function (Blueprint $table) {
-            $table->dropForeign(['nest_id']);
-            $table->dropColumn('nest_id');
-        });
+                $table->dropColumn('nest_id');
+            });
+        }
 
-        Schema::drop('nests');
+        if (Schema::hasColumn('servers', 'nest_id')) {
+            Schema::table('servers', function (Blueprint $table) {
+                if (in_array(['nest_id'], array_column(Schema::getForeignKeys('servers'), 'columns'))) {
+                    $table->dropForeign(['nest_id']);
+                }
+                $table->dropColumn('nest_id');
+            });
+        }
 
-        Schema::table('api_keys', function (Blueprint $table) {
-            $table->dropColumn('r_nests');
-        });
+        Schema::dropIfExists('nests');
+
+        if (Schema::hasColumn('api_keys', 'r_nests')) {
+            Schema::table('api_keys', function (Blueprint $table) {
+                $table->dropColumn('r_nests');
+            });
+        }
     }
 
     // Not really reversible, but...
