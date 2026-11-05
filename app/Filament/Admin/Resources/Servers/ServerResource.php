@@ -773,7 +773,7 @@ class ServerResource extends Resource
                                 $server->ensureVariablesExist();
                             }
 
-                            return $query->orderByPowerJoins('variable.sort');
+                            return $query->with('variable')->orderByPowerJoins('variable.sort');
                         })
                         ->grid()
                         ->mutateRelationshipDataBeforeSaveUsing(function (array $data): array {
