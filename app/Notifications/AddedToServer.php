@@ -27,6 +27,7 @@ class AddedToServer extends Notification implements ShouldQueue
         $locale = $notifiable->language ?? 'en';
 
         return (new MailMessage())
+            ->subject(trans('mail.added_to_server.subject', locale: $locale))
             ->greeting(trans('mail.greeting', ['name' => $notifiable->username], $locale))
             ->line(trans('mail.added_to_server.body', locale: $locale))
             ->line(trans('mail.added_to_server.server_name', ['name' => $this->server->name], $locale))
