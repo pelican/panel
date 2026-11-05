@@ -180,6 +180,7 @@ final class SettingsMap
 
         return match ($type->getName()) {
             'int' => (int) $value,
+            'float' => (float) $value,
             'bool' => filter_var($value, FILTER_VALIDATE_BOOL),
             'string' => (string) $value,
             default => $value,

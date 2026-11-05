@@ -28,9 +28,9 @@ class GeneralSettings extends Settings
 
     public ?string $trusted_proxies;
 
-    public int $guzzle_timeout;
+    public float $guzzle_timeout;
 
-    public int $guzzle_connect_timeout;
+    public float $guzzle_connect_timeout;
 
     public static function group(): string
     {
