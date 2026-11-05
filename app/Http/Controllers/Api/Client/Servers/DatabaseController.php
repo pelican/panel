@@ -42,7 +42,10 @@ class DatabaseController extends ClientApiController
      */
     public function index(GetDatabasesRequest $request, Server $server): array
     {
-        return $this->response->collection($server->databases)
+        // DatabaseData reads the host, and the server to authorize the password include.
+        $databases = $server->databases->loadMissing('host')->each->setRelation('server', $server);
+
+        return $this->response->collection($databases)
             ->transformWith(DatabaseData::class)
             ->toArray();
     }

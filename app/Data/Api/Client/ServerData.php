@@ -113,10 +113,12 @@ final class ServerData extends ApiResource
                     $primary = clone $server->allocation;
                     $primary->notes = null;
 
-                    return $context->collection([$primary], AllocationData::class);
+                    return $context->collection([$primary->setRelation('server', $server)], AllocationData::class);
                 }
 
-                return $context->collection($server->allocations, AllocationData::class);
+                // AllocationData reads the server back to flag the primary allocation. Set it here
+                // rather than with chaperone() so webhook payloads of allocations stay unchanged.
+                return $context->collection($server->allocations->each->setRelation('server', $server), AllocationData::class);
             },
             'variables' => function (Server $server, IncludeContext $context): array {
                 if (!$context->allowsClient(SubuserPermission::StartupRead->value, $server)) {

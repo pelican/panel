@@ -15,19 +15,21 @@ class EggConfigurationService
     public function __construct(private ServerConfigurationStructureService $configurationStructureService) {}
 
     /**
-     * Return an Egg file to be used by the Daemon.
+     * Return an Egg file to be used by the Daemon. Pass the server's configuration
+     * structure when the caller already built it, to avoid building it twice.
      *
+     * @param  array<array-key, mixed>|null  $structure
      * @return array{
      *     startup: array{done: string[], user_interaction: string[], strip_ansi: bool},
      *     stop: array{type: string, value: string},
      *     configs: list<array<string, mixed>>
      * }
      */
-    public function handle(Server $server): array
+    public function handle(Server $server, ?array $structure = null): array
     {
         $configFiles = json_decode($server->egg->inherit_config_files ?? '{}');
         $configs = is_object($configFiles) || is_array($configFiles)
-            ? $this->replacePlaceholders($server, $configFiles)
+            ? $this->replacePlaceholders($server, $configFiles, $structure)
             : [];
 
         return [
@@ -82,13 +84,14 @@ class EggConfigurationService
 
     /**
      * @param  array<string, mixed>  $configs
+     * @param  array<array-key, mixed>|null  $structure
      * @return list<array<string, mixed>>
      */
-    protected function replacePlaceholders(Server $server, object|array $configs): array
+    protected function replacePlaceholders(Server $server, object|array $configs, ?array $structure = null): array
     {
         // Get the legacy configuration structure for the server so that we
         // can property map the egg placeholders to values.
-        $structure = $this->configurationStructureService->handle($server);
+        $structure ??= $this->configurationStructureService->handle($server);
 
         $response = [];
         // Normalize the output of the configuration for the new Daemon to more
