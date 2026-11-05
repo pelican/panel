@@ -32,7 +32,8 @@ class TagsFilter extends BaseFilter
 
     private function getTags(): Collection
     {
-        return $this->getModel()::query()->pluck('tags')->flatten()->unique();
+        return once(fn () => $this->getModel()::query()->pluck('tags')->flatten()->unique());
+
     }
 
     public function getFormField(): Field

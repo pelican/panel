@@ -32,6 +32,7 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 class DatabaseResource extends Resource
@@ -119,8 +120,10 @@ class DatabaseResource extends Resource
         $server = Filament::getTenant();
 
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('host'))
             ->columns([
                 TextColumn::make('host')
+
                     ->label(trans('server/database.host'))
                     ->state(fn (Database $database) => $database->address())
                     ->badge(),

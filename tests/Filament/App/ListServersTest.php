@@ -4,6 +4,7 @@ use App\Enums\CustomizationKey;
 use App\Enums\SubuserPermission;
 use App\Filament\App\Resources\Servers\Pages\ListServers;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 use function Pest\Livewire\livewire;
@@ -180,4 +181,30 @@ it('shows the server tabs when the user is a subuser on another server', functio
 
     livewire(ListServers::class)
         ->assertSee(trans('server/dashboard.tabs.other'));
+});
+
+it('does not query per row in the list layout', function () {
+    Http::fake(['*' => Http::response(['state' => 'running', 'utilization' => []])]);
+
+    [$user] = generateTestAccount();
+    $user->setCustomization(CustomizationKey::DashboardLayout, 'table');
+
+    $this->actingAs($user);
+
+    $count = function () {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        livewire(ListServers::class)->assertSuccessful();
+
+        return countQueriesExceptCanTarget();
+    };
+
+    $count(); // Warm the permission and settings caches.
+    $baseline = $count();
+
+    foreach (range(1, 9) as $ignored) {
+        createServerModel(['owner_id' => $user->id]);
+    }
+
+    expect($count())->toBe($baseline);
 });

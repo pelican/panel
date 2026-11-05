@@ -33,6 +33,7 @@ use App\Models\Subuser;
 use App\Models\User;
 use App\Tests\Integration\IntegrationTestCase;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Ramsey\Uuid\Uuid;
 
 expect()->extend('toBeOne', function () {
@@ -178,4 +179,18 @@ function getBungeecordEgg(): Egg
     $egg = Egg::query()->where('author', 'panel@example.com')->where('name', 'Bungeecord')->firstOrFail();
 
     return $egg;
+}
+
+/**
+ * Counts the logged queries, ignoring the accessible node lookups that User::canTarget()
+ * still runs on every call, so per row tests can catch other N+1 queries.
+ */
+function countQueriesExceptCanTarget(): int
+{
+    return collect(DB::getQueryLog())
+        ->map(fn (array $query) => str_replace(['"', '`'], '', $query['query']))
+        ->reject(fn (string $sql) => str_contains($sql, 'node_role')
+            || str_starts_with($sql, 'select id from roles inner join model_has_roles')
+            || str_starts_with($sql, 'select exists(select * from nodes where id = ?)'))
+        ->count();
 }
