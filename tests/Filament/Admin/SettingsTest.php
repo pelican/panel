@@ -1,11 +1,13 @@
 <?php
 
+use App\Events\ActivityLogged;
 use App\Extensions\Captcha\CaptchaService;
 use App\Extensions\OAuth\OAuthService;
 use App\Filament\Admin\Pages\Settings;
 use App\Helpers\ProcessEnv;
 use App\Models\Role;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Event;
 
 use function Pest\Livewire\livewire;
 
@@ -128,4 +130,66 @@ it('is read only when the environment file is not writable', function () {
         @unlink("$path/.env");
         @rmdir($path);
     }
+});
+
+it('logs only the changed settings with secrets masked', function () {
+    $path = sys_get_temp_dir().'/pelican-settings-audit-'.getmypid();
+    @mkdir($path);
+    file_put_contents("$path/.env", '');
+    app()->useEnvironmentPath($path);
+    Event::fake(ActivityLogged::class);
+
+    try {
+        livewire(Settings::class)
+            ->fillForm([
+                'APP_NAME' => 'Audited Panel',
+                'FILAMENT_AVATAR_PROVIDER' => 'gravatar',
+                'MAIL_MAILER' => 'smtp',
+                'MAIL_HOST' => 'smtp.audit.test',
+                'MAIL_PORT' => 2525,
+                'MAIL_SCHEME' => 'smtp',
+                'MAIL_PASSWORD' => 'supersecretpw',
+                'GUZZLE_CONNECT_TIMEOUT' => 5,
+            ])
+            ->call('save')
+            ->assertHasNoErrors();
+    } finally {
+        @unlink("$path/.env");
+        @rmdir($path);
+    }
+
+    Event::assertDispatched(ActivityLogged::class, function (ActivityLogged $event) {
+        if (!$event->is('audit:settings.update')) {
+            return false;
+        }
+
+        $changes = $event->model->properties['changes'];
+
+        return $changes['APP_NAME'] === ['old' => config('app.name'), 'new' => 'Audited Panel']
+            && $changes['MAIL_PASSWORD']['new'] === '********'
+            && $event->model->properties['count'] === count($changes)
+            && !array_key_exists('APP_DEBUG', $changes)
+            && !array_key_exists('PANEL_USE_BINARY_PREFIX', $changes)
+            && !array_key_exists('TRUSTED_PROXIES', $changes)
+            && !str_contains(json_encode($changes), 'supersecretpw');
+    });
+});
+
+it('does not log a save that changes nothing', function () {
+    $path = sys_get_temp_dir().'/pelican-settings-noop-'.getmypid();
+    @mkdir($path);
+    file_put_contents("$path/.env", '');
+    app()->useEnvironmentPath($path);
+    config()->set('panel.filament.avatar-provider', 'gravatar');
+    config()->set('mail.default', 'log');
+    Event::fake(ActivityLogged::class);
+
+    try {
+        livewire(Settings::class)->call('save')->assertHasNoErrors();
+    } finally {
+        @unlink("$path/.env");
+        @rmdir($path);
+    }
+
+    Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $event) => $event->is('audit:settings.update'));
 });
