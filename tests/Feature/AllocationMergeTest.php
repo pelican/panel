@@ -1,11 +1,13 @@
 <?php
 
 use App\Enums\AllocationProtocol;
+use App\Exceptions\DisplayException;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Models\Allocation;
 use App\Models\Node;
 use App\Services\Allocations\AssignmentService;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 
 function assignPorts(Node $node, array $ports, string $protocol, string $ip = '10.0.0.1', $server = null): array
 {
@@ -146,6 +148,47 @@ it('keeps ports that can be merged when validating the ports of the create form'
     expect($valid('udp'))->toBe([30001, 30005])
         ->and($valid('tcp'))->toBe([30003, 30005])
         ->and($valid('both'))->toBe([30001, 30003, 30005])
-        ->and($valid(null))->toBe([30005])
-        ->and($valid('invalid'))->toBe([30005]);
+        ->and($valid(null))->toBe([30001, 30003, 30005])
+        ->and($valid('invalid'))->toBe([30001, 30003, 30005]);
+});
+
+it('returns the ids in the order they were requested', function () {
+    $node = Node::factory()->create();
+    $tcp = assignPorts($node, ['30000'], 'tcp')['created'];
+
+    $ids = app(AssignmentService::class)->handle($node, ['allocation_ip' => '10.0.0.1', 'allocation_ports' => ['30000-30001'], 'protocol' => 'udp']);
+
+    expect($ids)->toHaveCount(2)
+        ->and($ids[0])->toBe($tcp[0])
+        ->and(Allocation::query()->findOrFail($ids[1])->port)->toBe(30001);
+});
+
+it('makes the first requested port the primary allocation of a server', function () {
+    $server = createServerModel();
+    $server->update(['allocation_id' => null]);
+    assignPorts($server->node, ['30000'], 'tcp');
+
+    assignPorts($server->node, ['30000-30001'], 'udp', '10.0.0.1', $server);
+
+    expect($server->refresh()->allocation->port)->toBe(30000);
+});
+
+it('aborts the merge when another request claimed the allocation in the meantime', function () {
+    $node = Node::factory()->create();
+    $other = createServerModel(['node_id' => $node->id]);
+    $target = assignPorts($node, ['30000'], 'tcp')['created'][0];
+    $claimed = false;
+
+    DB::listen(function ($query) use (&$claimed, $target, $other) {
+        if ($claimed || !str_contains($query->sql, '"port" in')) {
+            return;
+        }
+
+        $claimed = true;
+        Allocation::withoutGlobalScopes()->whereKey($target)->update(['server_id' => $other->id]);
+    });
+
+    expect(fn () => assignPorts($node, ['30000-30001'], 'udp'))->toThrow(DisplayException::class)
+        ->and($claimed)->toBeTrue()
+        ->and(Allocation::query()->where('node_id', $node->id)->where('port', 30001)->exists())->toBeFalse();
 });

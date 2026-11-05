@@ -13,6 +13,7 @@ use App\Models\Node;
 use App\Models\Server;
 use Exception;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Collection;
 use IPTools\Network;
 use Throwable;
 
@@ -48,12 +49,12 @@ class AssignmentService
     {
         $result = $this->assign($node, $data, $server);
 
-        return array_merge($result['created'], $result['merged']);
+        return $result['ids'];
     }
 
     /**
      * @param  array{allocation_ip: string, allocation_ports: array<int|string>, allocation_alias?: string|null, is_locked?: bool, protocol?: AllocationProtocol|string|null}  $data
-     * @return array{created: array<int>, merged: array<int>}
+     * @return array{created: array<int>, merged: array<int>, ids: array<int>}
      *
      * @throws DisplayException
      * @throws CidrOutOfRangeException
@@ -78,56 +79,19 @@ class AssignmentService
         $requested = $data['protocol'] ?? null;
         $protocol = $requested instanceof AllocationProtocol ? $requested : (AllocationProtocol::tryFrom($requested ?? '') ?? AllocationProtocol::Both);
 
-        $created = $merged = [];
+        $created = $merged = $ids = [];
 
         $this->connection->beginTransaction();
 
         try {
             foreach ($parsed as $ip) {
-                $ip = $ip->__toString();
+                $result = $this->assignToIp($node, $ip->__toString(), $ports, $protocol, $data, $server);
 
-                $existing = collect();
-                foreach (array_chunk($ports, 500) as $chunk) {
-                    $existing = $existing->concat(
-                        Allocation::withoutGlobalScopes()->where('node_id', $node->id)->where('ip', $ip)->whereIn('port', $chunk)->get(['id', 'port', 'protocol', 'server_id'])
-                    );
-                }
-                $existing = $existing->keyBy('port');
-
-                foreach ($ports as $port) {
-                    $current = $existing->get($port);
-
-                    if ($current && $this->canMerge($current, $protocol)) {
-                        $merged[] = $current->id;
-
-                        continue;
-                    }
-
-                    $allocation = Allocation::query()->create([
-                        'node_id' => $node->id,
-                        'ip' => $ip,
-                        'port' => $port,
-                        'protocol' => $protocol->value,
-                        'ip_alias' => array_get($data, 'allocation_alias'),
-                        'server_id' => $server->id ?? null,
-                        'is_locked' => array_get($data, 'is_locked', false),
-                    ]);
-                    $created[] = $allocation->id;
-                }
+                $created = array_merge($created, $result['created']);
+                $merged = array_merge($merged, $result['merged']);
+                $ids = array_merge($ids, $result['ids']);
             }
 
-            $merged = array_values(array_unique($merged));
-
-            if (!empty($merged)) {
-                $attributes = ['protocol' => AllocationProtocol::Both->value];
-                if ($server) {
-                    $attributes += ['server_id' => $server->id, 'is_locked' => array_get($data, 'is_locked', false)];
-                }
-
-                Allocation::withoutGlobalScopes()->whereIn('id', $merged)->update($attributes);
-            }
-
-            $ids = array_merge($created, $merged);
             if ($server && !$server->allocation_id) {
                 $server->update(['allocation_id' => $ids[0]]);
             }
@@ -139,7 +103,90 @@ class AssignmentService
             throw $exception;
         }
 
-        return ['created' => $created, 'merged' => $merged];
+        return ['created' => $created, 'merged' => $merged, 'ids' => $ids];
+    }
+
+    /**
+     * @param  array<int>  $ports
+     * @param  array{allocation_ip: string, allocation_ports: array<int|string>, allocation_alias?: string|null, is_locked?: bool, protocol?: AllocationProtocol|string|null}  $data
+     * @return array{created: array<int>, merged: array<int>, ids: array<int>}
+     *
+     * @throws DisplayException
+     */
+    private function assignToIp(Node $node, string $ip, array $ports, AllocationProtocol $protocol, array $data, ?Server $server): array
+    {
+        $existing = $this->findExisting($node, $ip, $ports);
+
+        $created = $merged = $ids = [];
+
+        foreach ($ports as $port) {
+            $current = $existing->get($port);
+
+            if ($current && $this->canMerge($current, $protocol)) {
+                $merged[] = $ids[] = $current->id;
+
+                continue;
+            }
+
+            $allocation = Allocation::query()->create([
+                'node_id' => $node->id,
+                'ip' => $ip,
+                'port' => $port,
+                'protocol' => $protocol->value,
+                'ip_alias' => array_get($data, 'allocation_alias'),
+                'server_id' => $server->id ?? null,
+                'is_locked' => array_get($data, 'is_locked', false),
+            ]);
+            $created[] = $ids[] = $allocation->id;
+        }
+
+        $merged = array_values(array_unique($merged));
+        $this->merge($merged, $data, $server);
+
+        return ['created' => $created, 'merged' => $merged, 'ids' => array_values(array_unique($ids))];
+    }
+
+    /**
+     * @param  array<int>  $ports
+     * @return Collection<int, Allocation>
+     */
+    private function findExisting(Node $node, string $ip, array $ports): Collection
+    {
+        $existing = collect();
+
+        foreach (array_chunk($ports, 500) as $chunk) {
+            $existing = $existing->concat(
+                Allocation::withoutGlobalScopes()->where('node_id', $node->id)->where('ip', $ip)->whereIn('port', $chunk)->lockForUpdate()->get(['id', 'port', 'protocol', 'server_id'])
+            );
+        }
+
+        return $existing->keyBy('port');
+    }
+
+    /**
+     * @param  array<int>  $ids
+     * @param  array{allocation_ip: string, allocation_ports: array<int|string>, allocation_alias?: string|null, is_locked?: bool, protocol?: AllocationProtocol|string|null}  $data
+     *
+     * @throws DisplayException
+     */
+    private function merge(array $ids, array $data, ?Server $server): void
+    {
+        if (empty($ids)) {
+            return;
+        }
+
+        $attributes = ['protocol' => AllocationProtocol::Both->value];
+        if ($server) {
+            $attributes += ['server_id' => $server->id, 'is_locked' => array_get($data, 'is_locked', false)];
+        }
+
+        $updated = Allocation::withoutGlobalScopes()
+            ->whereIn('id', $ids)
+            ->whereNull('server_id')
+            ->where('protocol', '!=', AllocationProtocol::Both->value)
+            ->update($attributes);
+
+        throw_if($updated !== count($ids), new DisplayException(trans('exceptions.allocations.merge_conflict')));
     }
 
     private function canMerge(Allocation $existing, AllocationProtocol $requested): bool
