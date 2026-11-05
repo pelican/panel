@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Application\Plugins;
 use App\Data\Api\Application\PluginData;
 use App\Enums\PluginStatus;
 use App\Exceptions\PanelException;
+use App\Helpers\ProcessEnv;
 use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Plugins\ImportFilePluginRequest;
 use App\Http\Requests\Api\Application\Plugins\ReadPluginRequest;
@@ -213,10 +214,17 @@ class PluginController extends ApplicationApiController
      */
     public function hub(UpdateHubCredentialsRequest $request): Response
     {
-        $this->writeToEnvironment([
+        $values = [
             'PANEL_PLUGIN_HUB_URL' => rtrim($request->string('hub_url')->toString(), '/'),
             'PANEL_PLUGIN_HUB_API_KEY' => $request->string('api_key')->toString(),
-        ]);
+        ];
+
+        // Values set in the server environment always win over .env, so saving them would do nothing.
+        if ($locked = ProcessEnv::only($values)) {
+            abort(409, trans('command/messages.environment.env_locked', ['key' => implode(', ', array_keys($locked))]));
+        }
+
+        $this->writeToEnvironment($values);
 
         // Plugin updates run on the queue; restart workers so they pick up the key.
         Artisan::call('queue:restart');

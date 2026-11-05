@@ -6,6 +6,7 @@ use App\Enums\TablerIcon;
 use App\Extensions\Avatar\AvatarService;
 use App\Extensions\Captcha\CaptchaService;
 use App\Extensions\OAuth\OAuthService;
+use App\Helpers\ProcessEnv;
 use App\Notifications\MailTested;
 use App\Traits\EnvironmentWriterTrait;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -17,6 +18,7 @@ use BladeUI\Icons\Factory as IconFactory;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
@@ -29,6 +31,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Concerns\InteractsWithHeaderActions;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\Callout;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Fieldset;
 use Filament\Schemas\Components\Group;
@@ -44,6 +47,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Enums\Width;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Notification as MailNotification;
 use Illuminate\Support\Str;
@@ -108,12 +112,26 @@ class Settings extends Page implements HasSchemas
     protected function getFormSchema(): array
     {
         return [
+            Callout::make(trans('admin/setting.env_read_only'))
+                ->warning()
+                ->visible(fn () => !$this->environmentIsWritable()),
             Tabs::make('Tabs')
                 ->columns()
                 ->persistTabInQueryString()
-                ->disabled(fn () => !user()?->can('update settings'))
-                ->tabs($this->getTabs()),
+                ->disabled(fn () => !user()?->can('update settings') || !$this->environmentIsWritable())
+                // Fields set by the real process environment can't be changed here, .env would never win.
+                ->tabs(Field::configureUsing(
+                    fn (Field $field) => $field
+                        ->disabled(fn () => ProcessEnv::has($field->getName()))
+                        ->hint(fn () => ProcessEnv::has($field->getName()) ? trans('admin/setting.env_locked', ['key' => $field->getName()]) : null),
+                    fn () => $this->getTabs(),
+                )),
         ];
+    }
+
+    protected function environmentIsWritable(): bool
+    {
+        return is_writable(App::environmentFilePath());
     }
 
     /**
@@ -961,8 +979,18 @@ class Settings extends Page implements HasSchemas
     {
         abort_unless(user()?->can('update settings'), 403);
 
+        if (!$this->environmentIsWritable()) {
+            Notification::make()
+                ->title(trans('admin/setting.save_failed'))
+                ->body(trans('admin/setting.env_read_only'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
         try {
-            $data = $this->form->getState();
+            $data = ProcessEnv::except($this->form->getState());
             unset($data['console_font']);
 
             $data = array_map(function ($value) {

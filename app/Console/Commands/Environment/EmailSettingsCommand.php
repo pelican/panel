@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Environment;
 
 use App\Exceptions\PanelException;
+use App\Helpers\ProcessEnv;
 use App\Traits\EnvironmentWriterTrait;
 use Illuminate\Console\Command;
 
@@ -61,7 +62,11 @@ class EmailSettingsCommand extends Command
             config('mail.from.name')
         );
 
-        $this->writeToEnvironment($this->variables);
+        foreach (array_keys(ProcessEnv::only($this->variables)) as $key) {
+            $this->warn(trans('command/messages.environment.env_locked', ['key' => $key]));
+        }
+
+        $this->writeToEnvironment(ProcessEnv::except($this->variables));
 
         $this->call('queue:restart');
 
