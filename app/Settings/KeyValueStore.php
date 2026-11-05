@@ -29,7 +29,9 @@ class KeyValueStore
     {
         // ponytail: memoized per request, one query per group; add a cache if it shows up in profiling
         return $this->groups[$group] ??= rescue(fn () => collect($this->repository->getPropertiesInGroup($group))
-            ->map(fn ($value, $key) => self::isSecret($key) && is_string($value) && filled($value) ? Crypt::decryptString($value) : $value)
+            // A secret that won't decrypt (e.g. APP_KEY changed) is reported and dropped on its own,
+            // so it can't take the rest of the group (like CAPTCHA_*_ENABLED) down with it.
+            ->map(fn ($value, $key) => self::isSecret($key) && is_string($value) && filled($value) ? rescue(fn () => Crypt::decryptString($value)) : $value)
             ->all(), [], false);
     }
 

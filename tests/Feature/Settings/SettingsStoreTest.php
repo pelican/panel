@@ -95,3 +95,19 @@ it('keeps the rest of a group readable when a secret is empty', function () {
     expect(setting('OAUTH_GITHUB_ENABLED'))->toBeTrue()
         ->and(setting('OAUTH_GITHUB_CLIENT_SECRET'))->toBe('');
 });
+
+it('drops only the secret that fails to decrypt', function () {
+    app(KeyValueStore::class)->set(['CAPTCHA_TURNSTILE_ENABLED' => 'true']);
+    DB::table('settings')->insert(['group' => 'extensions', 'name' => 'CAPTCHA_TURNSTILE_SECRET_KEY', 'payload' => json_encode('not-encrypted'), 'locked' => false]);
+    reloadSettings();
+
+    expect(setting('CAPTCHA_TURNSTILE_ENABLED'))->toBeTrue()
+        ->and(setting('CAPTCHA_TURNSTILE_SECRET_KEY'))->toBeNull();
+});
+
+it('keeps fractional guzzle timeouts', function () {
+    SettingsMap::save(['GUZZLE_CONNECT_TIMEOUT' => '0.5']);
+    reloadSettings();
+
+    expect(app(GeneralSettings::class)->guzzle_connect_timeout)->toBe(0.5);
+});
