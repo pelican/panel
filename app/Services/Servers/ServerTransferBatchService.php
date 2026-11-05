@@ -84,7 +84,7 @@ class ServerTransferBatchService
      */
     public function localBackups(Server $server): EloquentCollection
     {
-        return $server->backups->filter(fn (Backup $backup) => $this->backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema);
+        return $server->loadMissing('backups.backupHost')->backups->filter(fn (Backup $backup) => $this->backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema);
     }
 
     /**

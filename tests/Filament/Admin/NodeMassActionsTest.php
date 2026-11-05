@@ -50,6 +50,13 @@ function fakeNodeStates(array $states): void
     ])->values()->all())]);
 }
 
+/** A user remembers their node restrictions, so this signs them in afresh like the next request would. */
+function restrictAdminTo(Node $node): void
+{
+    test()->admin->roles->first()->nodes()->sync([$node->id]);
+    test()->actingAs(test()->admin->fresh());
+}
+
 beforeEach(function () {
     Bus::fake([AdvanceServerTransferBatch::class, SendServerPowerAction::class]);
 
@@ -99,7 +106,7 @@ it('refuses to act once access to the node is revoked', function (string $action
     $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => $action])
         ->set('selected', [(string) $server->id]);
 
-    $this->admin->roles->first()->nodes()->sync([Node::factory()->create()->id]);
+    restrictAdminTo(Node::factory()->create());
 
     $component->call('submit')->assertForbidden();
 
@@ -113,7 +120,7 @@ it('stops listing the servers of a node once access to it is revoked', function 
 
     $component = livewire(NodeMassActionTable::class, ['node' => $this->node, 'action' => 'stop']);
 
-    $this->admin->roles->first()->nodes()->sync([Node::factory()->create()->id]);
+    restrictAdminTo(Node::factory()->create());
 
     $component->call('$refresh')->assertForbidden();
 });
@@ -129,7 +136,7 @@ it('does not offer cancelling a batch once access to the node is revoked', funct
     $component = livewire(ServerTransferBatchesRelationManager::class, ['ownerRecord' => $this->node, 'pageClass' => EditNode::class])
         ->assertActionVisible(TestAction::make('cancel')->table($batch));
 
-    $this->admin->roles->first()->nodes()->sync([$target->id]);
+    restrictAdminTo($target);
 
     $component->assertActionHidden(TestAction::make('cancel')->table($batch));
     expect($batch->refresh()->status)->toBe(ServerTransferBatchStatus::Running);
@@ -183,7 +190,7 @@ it('does not show the IPs and ports of a target node the admin cannot access', f
 
     $select()->assertSee('10.9.9.9');
 
-    $this->admin->roles->first()->nodes()->sync([$this->node->id]);
+    restrictAdminTo($this->node);
 
     $select()->assertDontSee('10.9.9.9');
     $select()->set('data.default_ip', '10.9.9.8')
