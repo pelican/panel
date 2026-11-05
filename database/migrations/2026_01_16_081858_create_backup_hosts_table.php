@@ -13,13 +13,23 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('backup_hosts', function (Blueprint $table) {
-            $table->increments('id');
-            $table->string('name');
-            $table->string('schema');
-            $table->json('configuration')->nullable();
-            $table->timestamps();
-        });
+        // The disk column is dropped last, so once it's gone everything else already ran.
+        if (!Schema::hasColumn('backups', 'disk')) {
+            return;
+        }
+
+        if (!Schema::hasTable('backup_hosts')) {
+            Schema::create('backup_hosts', function (Blueprint $table) {
+                $table->increments('id');
+                $table->string('name');
+                $table->string('schema');
+                $table->json('configuration')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        // Nothing is written to this one here, so a table left from a failed run can be rebuilt.
+        Schema::dropIfExists('backup_host_node');
 
         Schema::create('backup_host_node', function (Blueprint $table) {
             $table->unsignedInteger('node_id');
@@ -33,9 +43,11 @@ return new class extends Migration
             $table->unique(['node_id']);
         });
 
-        Schema::table('backups', function (Blueprint $table) {
-            $table->unsignedInteger('backup_host_id')->nullable()->after('disk');
-        });
+        if (!Schema::hasColumn('backups', 'backup_host_id')) {
+            Schema::table('backups', function (Blueprint $table) {
+                $table->unsignedInteger('backup_host_id')->nullable()->after('disk');
+            });
+        }
 
         $oldDriver = env('APP_BACKUP_DRIVER', 'wings');
 
@@ -46,6 +58,7 @@ return new class extends Migration
                 'key' => env('AWS_ACCESS_KEY_ID'),
                 'secret' => env('AWS_SECRET_ACCESS_KEY'),
                 'bucket' => env('AWS_BACKUPS_BUCKET'),
+                // Pterodactyl stored S3 backups under the bucket name, so keep that prefix to find them.
                 'prefix' => env('AWS_BACKUPS_BUCKET', ''),
                 'endpoint' => env('AWS_ENDPOINT'),
                 'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
@@ -54,7 +67,7 @@ return new class extends Migration
             ];
         }
 
-        $backupHost = BackupHost::create([
+        $backupHost = BackupHost::query()->first() ?? BackupHost::create([
             'name' => $oldDriver === 's3' ? 'Remote' : 'Local',
             'schema' => $oldDriver,
             'configuration' => $oldConfiguration,
@@ -65,7 +78,9 @@ return new class extends Migration
         Schema::table('backups', function (Blueprint $table) {
             $table->unsignedInteger('backup_host_id')->nullable(false)->change();
 
-            $table->foreign('backup_host_id')->references('id')->on('backup_hosts');
+            if (!in_array(['backup_host_id'], array_column(Schema::getForeignKeys('backups'), 'columns'))) {
+                $table->foreign('backup_host_id')->references('id')->on('backup_hosts');
+            }
 
             $table->dropColumn('disk');
         });

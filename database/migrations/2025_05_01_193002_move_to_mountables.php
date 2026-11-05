@@ -12,75 +12,62 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('mountables', function (Blueprint $table) {
-            $table->unsignedInteger('mount_id');
+        $oldTables = ['mount_node' => 'node', 'mount_server' => 'server', 'egg_mount' => 'egg'];
 
-            $table->string('mountable_type');
-            $table->unsignedBigInteger('mountable_id');
-            $table->index(['mountable_id', 'mountable_type'], 'mountables_mountable_id_mountable_type_index');
+        // The old tables are only dropped after everything is copied, so if all of them are still here
+        // nothing was copied yet and the new table can be rebuilt from scratch.
+        if (count(array_filter(array_keys($oldTables), fn ($name) => Schema::hasTable($name))) === count($oldTables)) {
+            Schema::dropIfExists('mountables');
 
-            $table->foreign('mount_id')
-                ->references('id') // mount id
-                ->on('mounts')
-                ->onDelete('cascade');
+            Schema::create('mountables', function (Blueprint $table) {
+                $table->unsignedInteger('mount_id');
 
-            $table->primary(['mount_id', 'mountable_id', 'mountable_type'],
-                'mountables_mountable_type_primary');
-        });
+                $table->string('mountable_type');
+                $table->unsignedBigInteger('mountable_id');
+                $table->index(['mountable_id', 'mountable_type'], 'mountables_mountable_id_mountable_type_index');
 
-        Schema::table('mount_node', function (Blueprint $table) {
-            $table->dropForeign(['node_id']);
-            $table->dropForeign(['mount_id']);
-            $table->dropUnique(['node_id', 'mount_id']);
-        });
+                $table->foreign('mount_id')
+                    ->references('id') // mount id
+                    ->on('mounts')
+                    ->onDelete('cascade');
 
-        $inserts = [];
-        $nodeMounts = DB::table('mount_node')->get();
-        $nodeMounts->each(function ($mount) use (&$inserts) {
-            $inserts[] = [
-                'mount_id' => $mount->mount_id,
-                'mountable_type' => 'node',
-                'mountable_id' => $mount->node_id,
-            ];
-        });
+                $table->primary(['mount_id', 'mountable_id', 'mountable_type'],
+                    'mountables_mountable_type_primary');
+            });
 
-        Schema::table('mount_server', function (Blueprint $table) {
-            $table->dropForeign(['server_id']);
-            $table->dropForeign(['mount_id']);
-            $table->dropUnique(['server_id', 'mount_id']);
-        });
+            $inserts = [];
+            foreach ($oldTables as $name => $type) {
+                $column = "{$type}_id";
 
-        $serverMounts = DB::table('mount_server')->get();
-        $serverMounts->each(function ($mount) use (&$inserts) {
-            $inserts[] = [
-                'mount_id' => $mount->mount_id,
-                'mountable_type' => 'server',
-                'mountable_id' => $mount->server_id,
-            ];
-        });
+                Schema::table($name, function (Blueprint $table) use ($name, $column) {
+                    $foreignKeys = array_column(Schema::getForeignKeys($name), 'columns');
+                    foreach ([$column, 'mount_id'] as $foreign) {
+                        if (in_array([$foreign], $foreignKeys)) {
+                            $table->dropForeign([$foreign]);
+                        }
+                    }
+                    if (Schema::hasIndex($name, [$column, 'mount_id'], 'unique')) {
+                        $table->dropUnique([$column, 'mount_id']);
+                    }
+                });
 
-        Schema::table('egg_mount', function (Blueprint $table) {
-            $table->dropForeign(['egg_id']);
-            $table->dropForeign(['mount_id']);
-            $table->dropUnique(['egg_id', 'mount_id']);
-        });
+                DB::table($name)->get()->each(function ($mount) use (&$inserts, $type, $column) {
+                    $inserts[] = [
+                        'mount_id' => $mount->mount_id,
+                        'mountable_type' => $type,
+                        'mountable_id' => $mount->$column,
+                    ];
+                });
+            }
 
-        $eggMounts = DB::table('egg_mount')->get();
-        $eggMounts->each(function ($mount) use (&$inserts) {
-            $inserts[] = [
-                'mount_id' => $mount->mount_id,
-                'mountable_type' => 'egg',
-                'mountable_id' => $mount->egg_id,
-            ];
-        });
+            DB::transaction(function () use ($inserts) {
+                DB::table('mountables')->insert($inserts);
+            });
+        }
 
-        DB::transaction(function () use ($inserts) {
-            DB::table('mountables')->insert($inserts);
-        });
-
-        Schema::drop('mount_node');
-        Schema::drop('mount_server');
-        Schema::drop('egg_mount');
+        foreach (array_keys($oldTables) as $name) {
+            Schema::dropIfExists($name);
+        }
     }
 
     /**

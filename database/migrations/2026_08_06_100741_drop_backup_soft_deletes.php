@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasColumn('backups', 'deleted_at')) {
+            return;
+        }
+
         Backup::whereNotNull('deleted_at')->delete();
 
         Schema::table('backups', function (Blueprint $table) {
