@@ -196,7 +196,7 @@ it('does not query per row in the list layout', function () {
         DB::enableQueryLog();
         livewire(ListServers::class)->assertSuccessful();
 
-        return countQueriesExceptCanTarget();
+        return count(DB::getQueryLog());
     };
 
     $count(); // Warm the permission and settings caches.

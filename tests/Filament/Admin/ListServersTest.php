@@ -29,7 +29,7 @@ it('does not query per row for a non root admin', function () {
         DB::enableQueryLog();
         livewire(ListServers::class)->assertSuccessful();
 
-        return countQueriesExceptCanTarget();
+        return count(DB::getQueryLog());
     };
 
     createServerModel();
