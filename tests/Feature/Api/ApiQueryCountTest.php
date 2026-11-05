@@ -1,6 +1,9 @@
 <?php
 
+use App\Models\Allocation;
 use App\Models\ApiKey;
+use App\Models\Database;
+use App\Models\Egg;
 use App\Models\Node;
 use App\Models\Role;
 use App\Models\Server;
@@ -24,13 +27,14 @@ function countApiQueries(Closure $request): int
     return $count;
 }
 
-function useApplicationApiKey(): void
+/** @param  string[]  $resources */
+function useApplicationApiKey(array $resources = [Server::RESOURCE_NAME, Node::RESOURCE_NAME, Allocation::RESOURCE_NAME, User::RESOURCE_NAME, Egg::RESOURCE_NAME, Database::RESOURCE_NAME]): void
 {
     $user = User::factory()->create();
     $user->syncRoles(Role::getRootAdmin());
 
     $permissions = [];
-    foreach ([Server::RESOURCE_NAME, Node::RESOURCE_NAME, 'allocations', User::RESOURCE_NAME, 'eggs'] as $resource) {
+    foreach ($resources as $resource) {
         $permissions[$resource] = AdminAcl::READ;
     }
 
@@ -120,4 +124,18 @@ it('does not query per server on the remote server list', function () {
     }
 
     expect(countApiQueries($request))->toBe($baseline);
+});
+
+it('does not eager load includes the key cannot read', function () {
+    useApplicationApiKey([Egg::RESOURCE_NAME]);
+    createServerModel();
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $response = $this->getJson('/api/application/eggs?include=servers')->assertOk();
+    $queries = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    expect($queries->filter(fn (string $sql) => preg_match('/from ["`]servers["`]/', $sql)))->toBeEmpty()
+        ->and(collect($response->json('data'))->pluck('attributes.relationships.servers.object')->unique()->all())->toBe(['null_resource']);
 });

@@ -43,7 +43,7 @@ class AllocationController extends ApplicationApiController
      */
     public function index(GetAllocationsRequest $request, Node $node): array
     {
-        $includes = $this->parseIncludes();
+        $includes = $this->readableIncludes(['node' => Node::RESOURCE_NAME, 'server' => Server::RESOURCE_NAME]);
         $with = in_array('server', $includes) ? ['server'] : [];
         if (in_array('node', $includes)) {
             $with['node'] = fn ($query) => $query->withAllocatedResources();

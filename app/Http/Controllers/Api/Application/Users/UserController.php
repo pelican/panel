@@ -45,7 +45,7 @@ class UserController extends ApplicationApiController
      */
     public function index(GetUsersRequest $request): array
     {
-        $includes = array_intersect($this->parseIncludes(), UserData::$availableIncludes);
+        $includes = $this->readableIncludes(['servers' => Server::RESOURCE_NAME, 'roles' => Role::RESOURCE_NAME]);
 
         // UserData reads the roles to report root_admin.
         $users = QueryBuilder::for(User::query()->with(['roles', ...$includes]))
