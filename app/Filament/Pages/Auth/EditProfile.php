@@ -624,8 +624,8 @@ class EditProfile extends BaseEditProfile
                 ->icon(TablerIcon::Trash)
                 ->color('danger')
                 ->hidden(fn () => $this->getUser()->is_managed_externally)
-                ->disabled(fn () => $this->getUser()->servers()->exists())
-                ->tooltip(fn () => $this->getUser()->servers()->exists() ? trans('exceptions.users.has_servers') : trans('profile.delete_account'))
+                ->disabled(fn () => $this->accountDeletionBlockedReason() !== null)
+                ->tooltip(fn () => $this->accountDeletionBlockedReason() ?? trans('profile.delete_account'))
                 ->requiresConfirmation()
                 ->modalHeading(trans('profile.delete_account'))
                 ->modalDescription(trans('profile.delete_account_help'))
@@ -644,6 +644,12 @@ class EditProfile extends BaseEditProfile
                 ->action(function () {
                     $user = $this->getUser();
 
+                    if ($reason = $this->accountDeletionBlockedReason()) {
+                        Notification::make()->title($reason)->danger()->send();
+
+                        return;
+                    }
+
                     // Log out first so User::deleting doesn't treat this as an admin deleting themselves.
                     Filament::auth()->logout();
                     $user->delete();
@@ -661,6 +667,17 @@ class EditProfile extends BaseEditProfile
                 ->icon(TablerIcon::DeviceFloppy),
         ];
 
+    }
+
+    private function accountDeletionBlockedReason(): ?string
+    {
+        $user = $this->getUser();
+
+        return match (true) {
+            $user->servers()->exists() => trans('exceptions.users.has_servers'),
+            $user->isLastRootAdmin() => trans('profile.delete_account_last_admin'),
+            default => null,
+        };
     }
 
     protected function mutateFormDataBeforeSave(array $data): array

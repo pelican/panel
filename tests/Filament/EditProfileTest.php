@@ -3,6 +3,7 @@
 use App\Facades\Activity;
 use App\Filament\Pages\Auth\EditProfile;
 use App\Models\ApiKey;
+use App\Models\Role;
 use App\Models\User;
 use App\Models\UserSSHKey;
 use Filament\Facades\Filament;
@@ -133,4 +134,17 @@ it('blocks account deletion while the user owns a server', function () {
 
     livewire(EditProfile::class)
         ->assertActionDisabled('delete_account');
+});
+
+it('blocks account deletion for the last root admin', function () {
+    /** @var User $user */
+    $user = User::factory()->create(['password' => bcrypt('secret-password')]);
+    $user->syncRoles(Role::getRootAdmin());
+
+    $this->actingAs($user);
+
+    livewire(EditProfile::class)
+        ->assertActionDisabled('delete_account');
+
+    expect(User::query()->find($user->id))->not->toBeNull();
 });
