@@ -38,7 +38,7 @@ class EggController extends ApplicationApiController
      */
     public function index(GetEggsRequest $request): array
     {
-        $includes = array_intersect($this->parseIncludes(), EggData::$availableIncludes);
+        $includes = $this->readableIncludes(['servers' => Server::RESOURCE_NAME, 'variables' => Egg::RESOURCE_NAME]);
         $eggs = Egg::query()->with(['configFrom', 'scriptFrom', ...$includes])->get();
 
         if (in_array('servers', $includes)) {

@@ -8,7 +8,9 @@ use App\Http\Requests\Api\Application\DatabaseHosts\DeleteDatabaseHostRequest;
 use App\Http\Requests\Api\Application\DatabaseHosts\GetDatabaseHostRequest;
 use App\Http\Requests\Api\Application\DatabaseHosts\StoreDatabaseHostRequest;
 use App\Http\Requests\Api\Application\DatabaseHosts\UpdateDatabaseHostRequest;
+use App\Models\Database;
 use App\Models\DatabaseHost;
+use App\Models\Node;
 use App\Services\Databases\Hosts\HostCreationService;
 use App\Services\Databases\Hosts\HostUpdateService;
 use Exception;
@@ -38,7 +40,7 @@ class DatabaseHostController extends ApplicationApiController
      */
     public function index(GetDatabaseHostRequest $request): array
     {
-        $includes = array_intersect($this->parseIncludes(), DatabaseHostData::$availableIncludes);
+        $includes = $this->readableIncludes(['databases' => Database::RESOURCE_NAME, 'nodes' => Node::RESOURCE_NAME]);
         $with = array_diff($includes, ['nodes']);
         if (in_array('nodes', $includes)) {
             $with['nodes'] = fn ($query) => $query->withAllocatedResources();
