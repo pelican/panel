@@ -30,6 +30,14 @@ class Startup extends ServerFormPage
 
     protected static ?int $navigationSort = 10;
 
+    public function mount(): void
+    {
+        // Once per page load, not every time the variables repeater builds its query.
+        $this->getRecord()->ensureVariablesExist();
+
+        parent::mount();
+    }
+
     /**
      * @throws Exception
      */
@@ -121,11 +129,7 @@ class Startup extends ServerFormPage
                     ->schema([
                         Repeater::make('server_variables')
                             ->hiddenLabel()
-                            ->relationship('serverVariables', function (Builder $query, Server $server) {
-                                $server->ensureVariablesExist();
-
-                                return $query->where('egg_variables.user_viewable', true)->orderByPowerJoins('variable.sort');
-                            })
+                            ->relationship('serverVariables', fn (Builder $query) => $query->with('variable')->where('egg_variables.user_viewable', true)->orderByPowerJoins('variable.sort'))
                             ->grid()
                             ->disabled(fn (Server $server) => !user()?->can(SubuserPermission::StartupUpdate, $server))
                             ->reorderable(false)->addable(false)->deletable(false)

@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\Server;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
@@ -75,4 +76,47 @@ it('shows admin activity when hide admin activity is disabled', function () {
 
     livewire(ListActivities::class)
         ->assertCanSeeTableRecords([$adminLog]);
+});
+
+it('does not query per row', function () {
+    [$user, $server] = generateTestAccount();
+
+    $this->actingAs($user);
+    Filament::setTenant($server);
+
+    $count = function () {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        livewire(ListActivities::class)->assertSuccessful();
+
+        return count(DB::getQueryLog());
+    };
+
+    createServerActivity($server, User::factory()->create());
+    $count(); // Warm the permission and settings caches.
+    $baseline = $count();
+
+    foreach (range(1, 10) as $ignored) {
+        createServerActivity($server, User::factory()->create());
+    }
+
+    expect($count())->toBe($baseline);
+});
+
+it('lists only actors of this server in the user filter', function () {
+    [$user, $server] = generateTestAccount();
+    $otherServer = createServerModel();
+
+    $actor = User::factory()->create();
+    $stranger = User::factory()->create();
+    createServerActivity($server, $actor);
+    createServerActivity($server, null);
+    createServerActivity($otherServer, $stranger);
+
+    $this->actingAs($user);
+    Filament::setTenant($server);
+
+    $options = livewire(ListActivities::class)->instance()->getTable()->getFilter('actor_id')->getOptions();
+
+    expect($options)->toEqual([$actor->id => $actor->username]);
 });
