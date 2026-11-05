@@ -80,4 +80,7 @@ return [
     'no_api_keys' => 'No API Keys',
     'no_ssh_keys' => 'No SSH Keys',
     'activity_info' => 'Showing last 50 activity logs',
+    'delete_account' => 'Delete Account',
+    'delete_account_help' => 'This permanently deletes your account, API keys, SSH keys and server access. This cannot be undone.',
+    'delete_account_username' => 'Type your username to confirm',
 ];

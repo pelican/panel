@@ -93,3 +93,44 @@ it('deletes the user\'s own api key', function () {
 
     expect(ApiKey::query()->find($key->id))->toBeNull();
 });
+
+it('lets a user delete their own account with their current password', function () {
+    /** @var User $user */
+    $user = User::factory()->create(['password' => bcrypt('secret-password')]);
+    $subuserServer = createServerModel();
+    $subuserServer->subusers()->create(['user_id' => $user->id, 'permissions' => []]);
+
+    $this->actingAs($user);
+
+    livewire(EditProfile::class)
+        ->callAction('delete_account', ['current_password' => 'secret-password'])
+        ->assertHasNoActionErrors()
+        ->assertRedirect(Filament::getLoginUrl());
+
+    expect(User::query()->find($user->id))->toBeNull();
+    $this->assertGuest();
+});
+
+it('does not delete the account with a wrong password', function () {
+    /** @var User $user */
+    $user = User::factory()->create(['password' => bcrypt('secret-password')]);
+
+    $this->actingAs($user);
+
+    livewire(EditProfile::class)
+        ->callAction('delete_account', ['current_password' => 'wrong'])
+        ->assertHasActionErrors(['current_password']);
+
+    expect(User::query()->find($user->id))->not->toBeNull();
+});
+
+it('blocks account deletion while the user owns a server', function () {
+    /** @var User $user */
+    $user = User::factory()->create();
+    createServerModel(['owner_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    livewire(EditProfile::class)
+        ->assertActionDisabled('delete_account');
+});

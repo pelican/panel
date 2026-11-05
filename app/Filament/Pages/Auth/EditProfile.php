@@ -619,6 +619,40 @@ class EditProfile extends BaseEditProfile
                 ->tooltip(trans('filament-panels::auth/pages/edit-profile.actions.cancel.label'))
                 ->hiddenLabel()
                 ->icon(TablerIcon::ArrowLeft),
+            Action::make('delete_account')
+                ->hiddenLabel()
+                ->icon(TablerIcon::Trash)
+                ->color('danger')
+                ->hidden(fn () => $this->getUser()->is_managed_externally)
+                ->disabled(fn () => $this->getUser()->servers()->exists())
+                ->tooltip(fn () => $this->getUser()->servers()->exists() ? trans('exceptions.users.has_servers') : trans('profile.delete_account'))
+                ->requiresConfirmation()
+                ->modalHeading(trans('profile.delete_account'))
+                ->modalDescription(trans('profile.delete_account_help'))
+                ->schema(fn () => [
+                    $this->getUser()->password === null
+                        ? TextInput::make('username')
+                            ->label(trans('profile.delete_account_username'))
+                            ->required()
+                            ->in([$this->getUser()->username])
+                        : TextInput::make('current_password')
+                            ->label(trans('profile.current_password'))
+                            ->password()
+                            ->required()
+                            ->currentPassword(),
+                ])
+                ->action(function () {
+                    $user = $this->getUser();
+
+                    // Log out first so User::deleting doesn't treat this as an admin deleting themselves.
+                    Filament::auth()->logout();
+                    $user->delete();
+
+                    session()->invalidate();
+                    session()->regenerateToken();
+
+                    $this->redirect(Filament::getLoginUrl());
+                }),
             Action::make('save')
                 ->hiddenLabel()
                 ->action('save')
