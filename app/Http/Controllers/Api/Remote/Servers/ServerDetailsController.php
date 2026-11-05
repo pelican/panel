@@ -136,6 +136,7 @@ class ServerDetailsController extends Controller
         // Transfers only live in the memory of the daemon on both ends, so any involving
         // this node died with it and will never report back. Don't leave them blocking the server.
         ServerTransfer::query()
+            ->with('server')
             ->whereNull('successful')
             ->where(fn ($query) => $query->where('old_node', $node->id)->orWhere('new_node', $node->id))
             ->eachById(fn (ServerTransfer $transfer) => $transfer->markFailed());
