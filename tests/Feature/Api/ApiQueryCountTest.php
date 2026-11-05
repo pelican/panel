@@ -11,15 +11,14 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Counts the queries a request runs, so list endpoints can be checked for
- * queries that grow with the number of rows returned. Queries matching the
- * ignore pattern are left out of the count.
+ * queries that grow with the number of rows returned.
  */
-function countQueries(Closure $request, ?string $ignore = null): int
+function countApiQueries(Closure $request): int
 {
     DB::flushQueryLog();
     DB::enableQueryLog();
     $request();
-    $count = collect(DB::getQueryLog())->reject(fn (array $query) => $ignore && preg_match($ignore, $query['query']))->count();
+    $count = count(DB::getQueryLog());
     DB::disableQueryLog();
 
     return $count;
@@ -52,17 +51,14 @@ it('does not query per server on the client server list', function () {
     $this->actingAs($owner);
     $request = fn () => $this->getJson('/api/client?include=egg,subusers')->assertOk();
 
-    // User::can() still checks roles and node access per server, that's tracked separately.
-    $permissionChecks = '/node_role|exists\(select \* from "nodes"|select "id" from "roles"/';
-
     $request();
-    $baseline = countQueries($request, $permissionChecks);
+    $baseline = countApiQueries($request);
 
     foreach (range(1, 10) as $ignored) {
         $addServer();
     }
 
-    expect(countQueries($request, $permissionChecks))->toBe($baseline);
+    expect(countApiQueries($request))->toBe($baseline);
 });
 
 it('does not query per server on the application server list', function () {
@@ -72,13 +68,13 @@ it('does not query per server on the application server list', function () {
     $request = fn () => $this->getJson('/api/application/servers?include=allocations,user,node,egg,subusers,variables,databases')->assertOk();
 
     $request();
-    $baseline = countQueries($request);
+    $baseline = countApiQueries($request);
 
     foreach (range(1, 10) as $ignored) {
         createServerModel();
     }
 
-    expect(countQueries($request))->toBe($baseline);
+    expect(countApiQueries($request))->toBe($baseline);
 });
 
 it('does not query per node on the application node list', function () {
@@ -88,13 +84,13 @@ it('does not query per node on the application node list', function () {
     $request = fn () => $this->getJson('/api/application/nodes')->assertOk();
 
     $request();
-    $baseline = countQueries($request);
+    $baseline = countApiQueries($request);
 
     foreach (range(1, 10) as $ignored) {
         createServerModel();
     }
 
-    expect(countQueries($request))->toBe($baseline);
+    expect(countApiQueries($request))->toBe($baseline);
 });
 
 it('does not query per user on the application user list', function () {
@@ -103,11 +99,11 @@ it('does not query per user on the application user list', function () {
     $request = fn () => $this->getJson('/api/application/users')->assertOk();
 
     $request();
-    $baseline = countQueries($request);
+    $baseline = countApiQueries($request);
 
     User::factory()->count(10)->create();
 
-    expect(countQueries($request))->toBe($baseline);
+    expect(countApiQueries($request))->toBe($baseline);
 });
 
 it('does not query per server on the remote server list', function () {
@@ -117,11 +113,11 @@ it('does not query per server on the remote server list', function () {
     $request = fn () => $this->getJson('/api/remote/servers?per_page=50')->assertOk();
 
     $request();
-    $baseline = countQueries($request);
+    $baseline = countApiQueries($request);
 
     foreach (range(1, 10) as $ignored) {
         createServerModel(['node_id' => $node->id]);
     }
 
-    expect(countQueries($request))->toBe($baseline);
+    expect(countApiQueries($request))->toBe($baseline);
 });
