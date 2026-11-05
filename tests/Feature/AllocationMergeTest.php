@@ -146,5 +146,6 @@ it('keeps ports that can be merged when validating the ports of the create form'
     expect($valid('udp'))->toBe([30001, 30005])
         ->and($valid('tcp'))->toBe([30003, 30005])
         ->and($valid('both'))->toBe([30001, 30003, 30005])
-        ->and($valid(null))->toBe([30005]);
+        ->and($valid(null))->toBe([30005])
+        ->and($valid('invalid'))->toBe([30005]);
 });

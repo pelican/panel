@@ -897,15 +897,15 @@ class CreateServer extends CreateRecord
 
         $ports = collect();
 
-        $requested = $protocol instanceof AllocationProtocol ? $protocol : AllocationProtocol::tryFrom($protocol ?? '');
+        $requested = $protocol instanceof AllocationProtocol ? $protocol : (AllocationProtocol::tryFrom($protocol ?? 'both') ?? AllocationProtocol::Both);
 
         $existingPorts = $node
             ->allocations()
             ->where('ip', $ip)
-            ->when($requested, fn ($query) => $query->where(fn ($query) => $query
+            ->where(fn ($query) => $query
                 ->whereNotNull('server_id')
                 ->orWhere('protocol', AllocationProtocol::Both->value)
-                ->orWhere('protocol', $requested->value)))
+                ->orWhere('protocol', $requested->value))
             ->pluck('port')
             ->all();
 
