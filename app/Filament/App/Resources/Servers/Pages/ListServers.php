@@ -139,15 +139,13 @@ class ListServers extends ListRecords
             ->paginated($pageOptions)
             ->defaultPaginationPageOption($defaultPerPage)
             ->query(fn () => $baseQuery)
-            // Grid cards are lazy components that reload these on hydrate, so only list mode (power actions) gets transfer and the viewer's subuser.
-
+            // Grid cards are lazy components that reload these on hydrate, so only list mode gets transfer and the viewer's subuser.
             ->modifyQueryUsing(fn (Builder $query) => $query->with($usingGrid ? ['egg', 'node'] : [
                 'egg',
                 'node',
                 'transfer',
                 'subusers' => fn ($query) => $query->where('user_id', user()?->id),
             ]))
-
             ->poll($usingGrid ? null : '15s')
             ->columns($usingGrid ? $this->gridColumns() : $this->tableColumns())
             ->recordUrl(!$usingGrid ? (fn (Server $server) => Console::getUrl(panel: 'server', tenant: $server)) : null)
