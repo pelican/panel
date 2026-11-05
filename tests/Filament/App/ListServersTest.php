@@ -162,3 +162,22 @@ it('logs power activity so server webhooks fire', function () {
 
     $this->assertActivityFor('server:power.stop', $user, $server);
 });
+
+it('hides the server tabs when the user has no access to others\' servers', function (?string $tab) {
+    [$user, $server] = generateTestAccount();
+
+    $this->actingAs($user);
+
+    livewire(ListServers::class, ['activeTab' => $tab])
+        ->assertDontSee(trans('server/dashboard.tabs.other'))
+        ->assertCanSeeTableRecords([$server]);
+})->with([null, 'other', 'all']);
+
+it('shows the server tabs when the user is a subuser on another server', function () {
+    [$user] = generateTestAccount([SubuserPermission::ControlStart]);
+
+    $this->actingAs($user);
+
+    livewire(ListServers::class)
+        ->assertSee(trans('server/dashboard.tabs.other'));
+});

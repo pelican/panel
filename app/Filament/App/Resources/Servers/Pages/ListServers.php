@@ -147,7 +147,7 @@ class ListServers extends ListRecords
             ->contentGrid($usingGrid ? ['default' => 1, 'md' => 2] : null)
             ->emptyStateIcon(TablerIcon::BrandDocker)
             ->emptyStateDescription('')
-            ->emptyStateHeading(fn () => $this->activeTab === 'my' ? trans('server/dashboard.empty_own') : trans('server/dashboard.empty_other'))
+            ->emptyStateHeading(fn () => $this->showingOwnServers() ? trans('server/dashboard.empty_own') : trans('server/dashboard.empty_other'))
             ->persistFiltersInSession()
             ->filters([
                 SelectFilter::make('egg')
@@ -157,7 +157,7 @@ class ListServers extends ListRecords
                 SelectFilter::make('owner')
                     ->relationship('user', 'username', fn (Builder $query) => $query->whereIn('id', $baseQuery->pluck('owner_id')))
                     ->searchable()
-                    ->hidden(fn () => $this->activeTab === 'my')
+                    ->hidden(fn () => $this->showingOwnServers())
                     ->preload(),
             ]);
     }
@@ -182,11 +182,20 @@ class ListServers extends ListRecords
         user()?->setCustomization(CustomizationKey::ServersPerPage, $perPage);
     }
 
+    private function showingOwnServers(): bool
+    {
+        return $this->getCachedTabs() === [] || $this->activeTab === 'my';
+    }
+
     public function getTabs(): array
     {
         $all = user()?->accessibleServers();
         $my = (clone $all)->where('owner_id', user()?->id);
         $other = (clone $all)->whereNot('owner_id', user()?->id);
+
+        if (!$other->exists()) {
+            return [];
+        }
 
         return [
             'my' => Tab::make('my')
