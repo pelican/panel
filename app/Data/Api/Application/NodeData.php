@@ -25,20 +25,36 @@ final class NodeData extends ApiResource
 
     public static function fromModel(Node $model): static
     {
+        // Lists share one eager loaded node between many items, so relations an earlier item
+        // loaded for its includes and the preloaded sums below are kept out of the attributes.
         $attributes = collect($model->toArray())
+            ->except([...self::$availableIncludes, 'allocated_memory', 'allocated_disk', 'allocated_cpu'])
             ->mapWithKeys(fn ($value, $key) => [snake_case($key) => $value])
             ->toArray();
 
         $attributes[$model->getUpdatedAtColumn()] = self::formatTimestamp($model->updated_at);
         $attributes[$model->getCreatedAtColumn()] = self::formatTimestamp($model->created_at);
 
-        $resources = $model->servers()->select(['memory', 'disk', 'cpu'])->get();
+        // Node lists preload these sums, as allocated_* via Node::withAllocatedResources() or as
+        // servers_sum_* in FindViableNodesService. A single node queries them instead.
+        $loaded = $model->getAttributes();
+        $prefix = array_key_exists('allocated_memory', $loaded) ? 'allocated_' : (array_key_exists('servers_sum_memory', $loaded) ? 'servers_sum_' : null);
 
-        $attributes['allocated_resources'] = [
-            'memory' => $resources->sum('memory'),
-            'disk' => $resources->sum('disk'),
-            'cpu' => $resources->sum('cpu'),
-        ];
+        if ($prefix) {
+            $attributes['allocated_resources'] = [
+                'memory' => (int) $model->getAttribute($prefix . 'memory'),
+                'disk' => (int) $model->getAttribute($prefix . 'disk'),
+                'cpu' => (int) $model->getAttribute($prefix . 'cpu'),
+            ];
+        } else {
+            $resources = $model->servers()->select(['memory', 'disk', 'cpu'])->get();
+
+            $attributes['allocated_resources'] = [
+                'memory' => $resources->sum('memory'),
+                'disk' => $resources->sum('disk'),
+                'cpu' => $resources->sum('cpu'),
+            ];
+        }
 
         return new self($attributes);
     }

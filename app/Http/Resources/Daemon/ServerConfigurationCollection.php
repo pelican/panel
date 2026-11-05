@@ -27,10 +27,12 @@ class ServerConfigurationCollection extends ResourceCollection
         $configuration = Container::getInstance()->make(ServerConfigurationStructureService::class);
 
         return $this->collection->map(function (Server $server) use ($configuration, $egg) {
+            $settings = $configuration->handle($server);
+
             return [
                 'uuid' => $server->uuid,
-                'settings' => $configuration->handle($server),
-                'process_configuration' => $egg->handle($server),
+                'settings' => $settings,
+                'process_configuration' => $egg->handle($server, $settings),
             ];
         })->toArray();
     }

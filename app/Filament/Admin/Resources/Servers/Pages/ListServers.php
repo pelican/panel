@@ -37,6 +37,14 @@ class ListServers extends ListRecords
                 Group::make('user.username')->getDescriptionFromRecordUsing(fn (Server $server) => $server->user->email),
                 Group::make('egg.name')->getDescriptionFromRecordUsing(fn (Server $server) => str($server->egg->description)->limit(150)),
             ])
+            ->modifyQueryUsing(fn (Builder $query) => $query->with([
+                'allocations',
+                'egg',
+                'node',
+                'user.roles',
+                // ViewConsoleAction only looks for the viewer's own subuser.
+                'subusers' => fn ($query) => $query->where('user_id', user()?->id),
+            ]))
             ->columns([
                 TextColumn::make('condition')
                     ->label(trans('admin/server.condition'))

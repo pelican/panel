@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Enums\TablerIcon;
 use App\Models\Node;
+use App\Services\Helpers\SoftwareVersionService;
 use Filament\Support\Enums\IconSize;
 use Filament\Tables\View\Components\Columns\IconColumnComponent\IconComponent;
 use Illuminate\View\ComponentAttributeBag;
@@ -17,7 +18,7 @@ class NodeSystemInformation extends Component
     #[Locked]
     public Node $node;
 
-    public function render(): string
+    public function render(SoftwareVersionService $versionService): string
     {
         $systemInformation = $this->node->systemInformation();
         $exception = $systemInformation['exception'] ?? null;
@@ -29,10 +30,17 @@ class NodeSystemInformation extends Component
             $this->js('console.error(' . json_encode((string) $exception, $flags) . ');');
         }
 
-        $tooltip = json_encode($exception ? 'Error connecting to node! Check browser console for details.' : (string) $version, $flags);
+        $incompatible = !$exception && $version && !$versionService->isCompatibleWings($version);
+
+        $tooltip = match (true) {
+            (bool) $exception => 'Error connecting to node! Check browser console for details.',
+            $incompatible => $version . ' · ' . trans('admin/node.requires_wings', ['min' => config('panel.wings.min_version')]),
+            default => (string) $version,
+        };
+        $tooltip = json_encode($tooltip, $flags);
 
         $icon = $exception ? TablerIcon::HeartOff : TablerIcon::Heartbeat;
-        $color = $exception ? 'danger' : 'success';
+        $color = $exception ? 'danger' : ($incompatible ? 'warning' : 'success');
 
         return generate_icon_html($icon, attributes: (new ComponentAttributeBag())
             ->merge([

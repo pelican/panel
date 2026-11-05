@@ -1,11 +1,14 @@
 <?php
 
 use App\Enums\RolePermissionModels;
+use App\Enums\ServerState;
 use App\Filament\Admin\Resources\Users\Pages\CreateUser;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
+use App\Filament\Admin\Resources\Users\RelationManagers\ServersRelationManager;
 use App\Models\Role;
 use App\Models\User;
 use Filament\Actions\DeleteAction;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Spatie\Permission\Models\Permission;
 
@@ -89,4 +92,14 @@ it('non root admin without permission cannot create users', function () {
 
     $this->actingAs($user);
     livewire(CreateUser::class)->assertForbidden();
+});
+
+it('only offers suspend all when the user has unsuspended servers', function () {
+    [$user, $server] = generateTestAccount();
+    $server->forceFill(['status' => ServerState::Suspended])->saveQuietly();
+    createServerModel(); // Another user's unsuspended server.
+
+    livewire(ServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
+        ->assertActionHidden(TestAction::make('toggle_suspend')->table())
+        ->assertActionVisible(TestAction::make('toggle_unsuspend')->table());
 });

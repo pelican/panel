@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Application;
 
+use App\Data\Api\IncludeContext;
 use App\Data\Api\PanelResponse;
 use App\Http\Controllers\Controller;
 use Illuminate\Container\Container;
@@ -42,6 +43,41 @@ abstract class ApplicationApiController extends Controller
     {
         $this->response = $response;
         $this->request = $request;
+    }
+
+    /**
+     * Returns the parsed includes for this request.
+     *
+     * @return array<array-key, mixed>
+     */
+    protected function parseIncludes(): array
+    {
+        $includes = $this->request->query('include') ?? [];
+
+        if (!is_string($includes)) {
+            return $includes;
+        }
+
+        return array_map(function ($item) {
+            return trim($item);
+        }, explode(',', $includes));
+    }
+
+    /**
+     * The requested includes the API key may read, so list endpoints don't eager load
+     * relations the response will null out anyway.
+     *
+     * @param  array<string, string>  $resources  include name => ACL resource it needs
+     * @return string[]
+     */
+    protected function readableIncludes(array $resources): array
+    {
+        $context = new IncludeContext($this->request);
+
+        return array_values(array_filter(
+            array_intersect($this->parseIncludes(), array_keys($resources)),
+            fn (string $include) => $context->allowsAdmin($resources[$include]),
+        ));
     }
 
     /**

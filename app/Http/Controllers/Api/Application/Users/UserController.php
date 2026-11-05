@@ -11,6 +11,7 @@ use App\Http\Requests\Api\Application\Users\GetUsersRequest;
 use App\Http\Requests\Api\Application\Users\StoreUserRequest;
 use App\Http\Requests\Api\Application\Users\UpdateUserRequest;
 use App\Models\Role;
+use App\Models\Server;
 use App\Models\User;
 use App\Services\Users\UserCreationService;
 use App\Services\Users\UserUpdateService;
@@ -44,10 +45,17 @@ class UserController extends ApplicationApiController
      */
     public function index(GetUsersRequest $request): array
     {
-        $users = QueryBuilder::for(User::class)
+        $includes = $this->readableIncludes(['servers' => Server::RESOURCE_NAME, 'roles' => Role::RESOURCE_NAME]);
+
+        // UserData reads the roles to report root_admin.
+        $users = QueryBuilder::for(User::query()->with(['roles', ...$includes]))
             ->allowedFilters('email', 'uuid', 'username', 'external_id')
             ->allowedSorts('id', 'uuid')
             ->paginate($request->query('per_page') ?? 50);
+
+        if (in_array('servers', $includes)) {
+            Server::loadVariables($users->getCollection()->pluck('servers')->collapse());
+        }
 
         return $this->response->collection($users)
             ->transformWith(UserData::class)

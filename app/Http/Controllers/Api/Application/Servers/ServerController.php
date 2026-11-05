@@ -11,7 +11,12 @@ use App\Http\Requests\Api\Application\Servers\GetServerRequest;
 use App\Http\Requests\Api\Application\Servers\GetServersRequest;
 use App\Http\Requests\Api\Application\Servers\ServerWriteRequest;
 use App\Http\Requests\Api\Application\Servers\StoreServerRequest;
+use App\Models\Allocation;
+use App\Models\Database;
+use App\Models\Egg;
+use App\Models\Node;
 use App\Models\Server;
+use App\Models\User;
 use App\Services\Servers\ServerCreationService;
 use App\Services\Servers\ServerDeletionService;
 use Dedoc\Scramble\Attributes\Group;
@@ -43,10 +48,34 @@ class ServerController extends ApplicationApiController
      */
     public function index(GetServersRequest $request): array
     {
-        $servers = QueryBuilder::for(Server::class)
+        // Eager load the requested includes along with what their Data classes read.
+        $includes = $this->readableIncludes([
+            'allocations' => Allocation::RESOURCE_NAME,
+            'user' => User::RESOURCE_NAME,
+            'subusers' => User::RESOURCE_NAME,
+            'egg' => Egg::RESOURCE_NAME,
+            'variables' => Server::RESOURCE_NAME,
+            'node' => Node::RESOURCE_NAME,
+            'databases' => Database::RESOURCE_NAME,
+        ]);
+        $with = array_diff($includes, ['user', 'egg', 'node', 'variables']);
+        if (in_array('user', $includes)) {
+            $with[] = 'user.roles';
+        }
+        if (in_array('egg', $includes)) {
+            array_push($with, 'egg.configFrom', 'egg.scriptFrom');
+        }
+        if (in_array('node', $includes)) {
+            $with['node'] = fn ($query) => $query->withAllocatedResources();
+        }
+
+        $servers = QueryBuilder::for(Server::query()->with($with))
             ->allowedFilters('uuid', 'uuid_short', 'name', 'description', 'image', 'external_id')
             ->allowedSorts('id', 'uuid')
             ->paginate($request->query('per_page') ?? 50);
+
+        // ServerData reads every server's variables for its environment.
+        Server::loadVariables($servers->getCollection());
 
         return $this->response->collection($servers)
             ->transformWith(ServerData::class)

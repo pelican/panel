@@ -8,6 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // The node_id column is dropped last, so while it exists the join table can be rebuilt from it.
+        if (!Schema::hasColumn('database_hosts', 'node_id')) {
+            return;
+        }
+
+        Schema::dropIfExists('database_host_node');
+
         Schema::create('database_host_node', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('node_id');
@@ -28,7 +35,9 @@ return new class extends Migration
         DB::table('database_host_node')->insert($newJoinEntries->toArray());
 
         Schema::table('database_hosts', function (Blueprint $table) {
-            $table->dropForeign(['node_id']);
+            if (in_array(['node_id'], array_column(Schema::getForeignKeys('database_hosts'), 'columns'))) {
+                $table->dropForeign(['node_id']);
+            }
             $table->dropColumn('node_id');
         });
     }

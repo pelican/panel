@@ -137,7 +137,8 @@ class WebhookResource extends Resource
                     ->attribute('type'),
                 SelectFilter::make('server_id')
                     ->label(trans('admin/webhook.server'))
-                    ->options(Server::query()->pluck('name', 'id')->toArray()),
+                    ->options(fn () => Server::query()->pluck('name', 'id')->toArray()),
+
             ]);
     }
 

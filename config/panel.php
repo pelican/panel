@@ -21,6 +21,11 @@ return [
         'egg_index_url' => env('PANEL_EGG_INDEX_URL', 'https://raw.githubusercontent.com/pelican-eggs/pelican-eggs.github.io/refs/heads/main/content/pelican.json'),
     ],
 
+    'wings' => [
+        // Oldest Wings this Panel supports. Older nodes get a warning, nothing is blocked.
+        'min_version' => env('PANEL_WINGS_MIN_VERSION', '1.0.0'),
+    ],
+
     'client_features' => [
         'databases' => [
             'enabled' => env('PANEL_CLIENT_DATABASES_ENABLED', true),

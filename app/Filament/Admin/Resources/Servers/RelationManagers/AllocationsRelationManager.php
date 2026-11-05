@@ -25,6 +25,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\TextInputColumn;
 use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
@@ -44,6 +45,7 @@ class AllocationsRelationManager extends RelationManager
             ->recordTitleAttribute('address')
             ->recordTitle(fn (Allocation $allocation) => $allocation->address)
             ->inverseRelationship('server')
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['node']))
             ->columns([
                 TextColumn::make('ip')
                     ->label(trans('admin/server.ip_address'))

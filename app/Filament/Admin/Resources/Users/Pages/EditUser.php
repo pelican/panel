@@ -31,10 +31,13 @@ class EditUser extends EditRecord
     /** @return array<Action|ActionGroup> */
     protected function getDefaultHeaderActions(): array
     {
+        $hasServers = fn (User $user) => once(fn () => $user->servers()->exists());
+
         return [
             DeleteAction::make()
-                ->tooltip(fn (User $user) => user()?->id === $user->id ? trans('admin/user.self_delete') : ($user->servers()->count() > 0 ? trans('admin/user.has_servers') : trans('filament-actions::delete.single.modal.actions.delete.label')))
-                ->disabled(fn (User $user) => user()?->id === $user->id || $user->servers()->count() > 0),
+                ->tooltip(fn (User $user) => user()?->id === $user->id ? trans('admin/user.self_delete') : ($hasServers($user) ? trans('admin/user.has_servers') : trans('filament-actions::delete.single.modal.actions.delete.label')))
+                ->disabled(fn (User $user) => user()?->id === $user->id || $hasServers($user)),
+
             Action::make('save')
                 ->hiddenLabel()
                 ->action('save')

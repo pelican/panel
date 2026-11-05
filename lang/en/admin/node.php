@@ -123,6 +123,7 @@ return [
     'kernel' => 'Kernel',
     'unknown' => 'Unknown',
     'latest' => '(Latest: :version)',
+    'requires_wings' => 'requires Wings :min or newer',
     'node_uuid' => 'Node UUID',
     'node_id' => 'Node ID',
 

@@ -87,6 +87,8 @@ return [
             'bucket' => 'Bucket',
             'endpoint' => 'Endpoint',
             'use_path_style_endpoint' => 'Use Path Style Endpoint',
+            'use_presigned_requests' => 'Use Presigned Requests',
+            'use_presigned_requests_help' => 'Sign every request with query string auth. Needed by some providers like Hetzner.',
         ],
     ],
     'oauth' => [

@@ -111,7 +111,8 @@ class TasksRelationManager extends RelationManager
                 TextColumn::make('time_offset')
                     ->label(trans('server/schedule.tasks.time_offset'))
                     ->hidden(fn () => config('queue.default') === 'sync')
-                    ->state(fn (Task $task) => $task->isFirst() ? null : $task->time_offset)
+                    ->state(fn (Task $task) => $task->id === once(fn () => $schedule->firstTask()?->id) ? null : $task->time_offset)
+
                     ->suffix(fn ($state) => ' ' . trans_choice('server/schedule.tasks.seconds', $state))
                     ->placeholder(trans('server/schedule.tasks.first_task')),
                 IconColumn::make('continue_on_failure')

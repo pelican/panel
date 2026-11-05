@@ -77,6 +77,7 @@ class ApiKeyResource extends Resource
     public static function defaultTable(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['user.roles']))
             ->columns([
                 TextColumn::make('key')
                     ->label(trans('admin/apikey.table.key'))

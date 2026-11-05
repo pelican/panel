@@ -25,6 +25,7 @@ use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\TextInputColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * @method Node getOwnerRecord()
@@ -47,6 +48,7 @@ class AllocationsRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('address')
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['node', 'server.node']))
             ->checkIfRecordIsSelectableUsing(fn (Allocation $allocation) => $allocation->server_id === null)
             ->paginationPageOptions([10, 20, 50, 100, 200, 500])
             ->heading(null)
@@ -59,10 +61,15 @@ class AllocationsRelationManager extends RelationManager
                     ->toggledHiddenByDefault(),
                 SelectColumn::make('ip')
                     ->options(function (Allocation $allocation) {
-                        $ips = Allocation::where('port', $allocation->port)->pluck('ip');
+                        $ipsByPort = once(fn () => Allocation::query()
+                            ->where('node_id', $this->getOwnerRecord()->id)
+                            ->whereIn('port', $this->getTableRecords()->pluck('port'))
+                            ->toBase()
+                            ->get(['ip', 'port'])
+                            ->groupBy('port'));
 
                         return collect($this->getOwnerRecord()->ipAddresses())
-                            ->diff($ips)
+                            ->diff($ipsByPort->get($allocation->port, collect())->pluck('ip'))
                             ->unshift($allocation->ip)
                             ->unique()
                             ->mapWithKeys(fn (string $ip) => [$ip => $ip])

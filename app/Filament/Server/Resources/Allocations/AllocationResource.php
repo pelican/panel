@@ -46,9 +46,14 @@ class AllocationResource extends Resource
         /** @var Server $server */
         $server = Filament::getTenant();
 
+        // Same answer for every row: an allocation's node is always the server's node.
+        $canUpdateNode = fn () => once(fn () => user()?->can('update', $server->node));
+        $hasSpareAllocations = fn () => once(fn () => $server->allocations()->count() > 1);
+
         return $table
             ->columns([
                 TextColumn::make('ip')
+
                     ->label(trans('server/network.address'))
                     ->formatStateUsing(fn (Allocation $allocation) => $allocation->alias),
                 TextColumn::make('alias')
@@ -83,7 +88,8 @@ class AllocationResource extends Resource
             ])
             ->recordActions([
                 DetachAction::make()
-                    ->visible(fn (Allocation $allocation) => (!$allocation->is_locked || user()?->can('update', $allocation->node)) && $server->allocations()->count() > 1)
+                    ->visible(fn (Allocation $allocation) => (!$allocation->is_locked || $canUpdateNode()) && $hasSpareAllocations())
+
                     ->authorize(fn () => user()?->can(SubuserPermission::AllocationDelete, $server))
                     ->label(trans('server/network.delete'))
                     ->action(function (Allocation $allocation) use ($server) {

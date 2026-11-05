@@ -11,6 +11,7 @@ use App\Http\Requests\Api\Application\Eggs\GetEggRequest;
 use App\Http\Requests\Api\Application\Eggs\GetEggsRequest;
 use App\Http\Requests\Api\Application\Eggs\ImportEggRequest;
 use App\Models\Egg;
+use App\Models\Server;
 use App\Services\Eggs\Sharing\EggExporterService;
 use App\Services\Eggs\Sharing\EggImporterService;
 use Exception;
@@ -37,7 +38,14 @@ class EggController extends ApplicationApiController
      */
     public function index(GetEggsRequest $request): array
     {
-        return $this->response->collection(Egg::all())
+        $includes = $this->readableIncludes(['servers' => Server::RESOURCE_NAME, 'variables' => Egg::RESOURCE_NAME]);
+        $eggs = Egg::query()->with(['configFrom', 'scriptFrom', ...$includes])->get();
+
+        if (in_array('servers', $includes)) {
+            Server::loadVariables($eggs->pluck('servers')->collapse());
+        }
+
+        return $this->response->collection($eggs)
             ->transformWith(EggData::class)
             ->toArray();
     }

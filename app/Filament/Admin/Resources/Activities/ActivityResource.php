@@ -29,6 +29,7 @@ use Filament\Tables\Table;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 use Illuminate\Support\HtmlString;
@@ -153,7 +154,7 @@ class ActivityResource extends Resource
     {
         // Deliberately unscoped (and ignoring activity.hide_admin_activity):
         // this is the panel-wide audit view for admins holding "view activityLog".
-        return ActivityLog::with(['actor', 'apiKey'])
+        return ActivityLog::with(['actor' => fn (MorphTo $morphTo) => $morphTo->morphWith([User::class => ['roles']]), 'apiKey'])
             ->whereNotIn('event', ActivityLog::DISABLED_EVENTS);
     }
 

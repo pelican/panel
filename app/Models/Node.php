@@ -9,6 +9,7 @@ use App\Exceptions\Service\HasActiveServersException;
 use App\Repositories\Daemon\DaemonSystemRepository;
 use App\Traits\HasValidation;
 use Exception;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -508,6 +509,20 @@ class Node extends Model implements Validatable
     public function transferBatches(): HasMany
     {
         return $this->hasMany(ServerTransferBatch::class, 'old_node');
+    }
+
+    /**
+     * Preload the server resource sums the application API reports for each node, so
+     * listing nodes doesn't run a query per node. NodeData reads and strips them.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeWithAllocatedResources(Builder $query): Builder
+    {
+        return $query->withSum('servers as allocated_memory', 'memory')
+            ->withSum('servers as allocated_disk', 'disk')
+            ->withSum('servers as allocated_cpu', 'cpu');
     }
 
     /**
