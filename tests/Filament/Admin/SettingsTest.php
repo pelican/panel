@@ -1,5 +1,7 @@
 <?php
 
+use App\Extensions\Captcha\CaptchaService;
+use App\Extensions\OAuth\OAuthService;
 use App\Filament\Admin\Pages\Settings;
 use App\Models\Role;
 use Filament\Facades\Filament;
@@ -51,4 +53,27 @@ it('persists saved settings to the environment file', function () {
         @unlink("$path/.env");
         @rmdir($path);
     }
+});
+
+it('reads oauth and captcha keys from config', function () {
+    config()->set('extensions.OAUTH_GITHUB_ENABLED', true);
+    config()->set('extensions.CAPTCHA_TURNSTILE_ENABLED', true);
+
+    expect(app(OAuthService::class)->get('github')->isEnabled())->toBeTrue()
+        ->and(app(CaptchaService::class)->get('turnstile')->isEnabled())->toBeTrue();
+});
+
+it('collects oauth and captcha variables into the extensions config', function () {
+    $_ENV['OAUTH_EXAMPLE_ENABLED'] = 'true';
+    $_ENV['CAPTCHA_EXAMPLE_SITE_KEY'] = 'site-key';
+    $_ENV['UNRELATED_KEY'] = 'nope';
+
+    try {
+        $config = require config_path('extensions.php');
+    } finally {
+        unset($_ENV['OAUTH_EXAMPLE_ENABLED'], $_ENV['CAPTCHA_EXAMPLE_SITE_KEY'], $_ENV['UNRELATED_KEY']);
+    }
+
+    expect($config)->toMatchArray(['OAUTH_EXAMPLE_ENABLED' => true, 'CAPTCHA_EXAMPLE_SITE_KEY' => 'site-key'])
+        ->not->toHaveKey('UNRELATED_KEY');
 });
