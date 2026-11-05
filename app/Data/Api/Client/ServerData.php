@@ -135,6 +135,8 @@ final class ServerData extends ApiResource
                     return $context->null();
                 }
 
+                $server->loadMissing('subusers.user');
+
                 return $context->collection($server->subusers, SubuserData::class);
             },
         ];
