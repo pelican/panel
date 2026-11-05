@@ -43,10 +43,26 @@ class ServerController extends ApplicationApiController
      */
     public function index(GetServersRequest $request): array
     {
-        $servers = QueryBuilder::for(Server::class)
+        // Eager load the requested includes along with what their Data classes read.
+        $includes = array_intersect($this->parseIncludes(), ServerData::$availableIncludes);
+        $with = array_diff($includes, ['user', 'egg', 'node', 'variables']);
+        if (in_array('user', $includes)) {
+            $with[] = 'user.roles';
+        }
+        if (in_array('egg', $includes)) {
+            array_push($with, 'egg.configFrom', 'egg.scriptFrom');
+        }
+        if (in_array('node', $includes)) {
+            $with['node'] = fn ($query) => $query->withAllocatedResources();
+        }
+
+        $servers = QueryBuilder::for(Server::query()->with($with))
             ->allowedFilters('uuid', 'uuid_short', 'name', 'description', 'image', 'external_id')
             ->allowedSorts('id', 'uuid')
             ->paginate($request->query('per_page') ?? 50);
+
+        // ServerData reads every server's variables for its environment.
+        Server::loadVariables($servers->getCollection());
 
         return $this->response->collection($servers)
             ->transformWith(ServerData::class)

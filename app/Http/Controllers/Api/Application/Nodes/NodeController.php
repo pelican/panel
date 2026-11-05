@@ -42,7 +42,7 @@ class NodeController extends ApplicationApiController
      */
     public function index(GetNodesRequest $request): array
     {
-        $nodes = QueryBuilder::for(Node::class)
+        $nodes = QueryBuilder::for(Node::query()->withAllocatedResources())
             ->allowedFilters('uuid', 'name', 'fqdn', 'daemon_token_id')
             ->allowedSorts('id', 'uuid', 'memory', 'disk', 'cpu')
             ->paginate($request->query('per_page') ?? 50);
