@@ -6,6 +6,7 @@ use Dotenv\Dotenv;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -49,6 +50,9 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Cached groups have no TTL and would keep overlaying config after the table is gone.
+        Artisan::call('settings:clear-cache');
+
         Schema::dropIfExists('settings');
 
         Schema::create('settings', function (Blueprint $table) {
