@@ -8,7 +8,9 @@ use App\Models\Backup;
 use App\Models\BackupHost;
 use App\Models\User;
 use App\Repositories\Daemon\DaemonBackupRepository;
+use Aws\Credentials\CredentialsInterface;
 use Aws\S3\S3Client;
+use Aws\Signature\S3SignatureV4;
 use Carbon\CarbonImmutable;
 use Exception;
 use Filament\Forms\Components\TextInput;
@@ -16,6 +18,7 @@ use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\StateCasts\BooleanStateCast;
 use Illuminate\Support\Arr;
+use Psr\Http\Message\RequestInterface;
 
 final class S3BackupSchema extends BackupAdapterSchema
 {
@@ -28,6 +31,18 @@ final class S3BackupSchema extends BackupAdapterSchema
 
         if (!empty($config['key']) && !empty($config['secret'])) {
             $config['credentials'] = Arr::only($config, ['key', 'secret', 'token']);
+        }
+
+        // Some providers (e.g. Hetzner) only accept query string auth, so sign every request like a presigned url.
+        if (Arr::pull($config, 'use_presigned_requests')) {
+            $config['signature_provider'] = fn (string $version, string $service, string $region) => new class($service, $region) extends S3SignatureV4
+            {
+                /** @param ?string $signingService */
+                public function signRequest(RequestInterface $request, CredentialsInterface $credentials, $signingService = null): RequestInterface
+                {
+                    return $this->presign($request, $credentials, '+5 minutes');
+                }
+            };
         }
 
         return new S3Client($config);
@@ -96,6 +111,15 @@ final class S3BackupSchema extends BackupAdapterSchema
                 ->onColor('success')
                 ->offColor('danger')
                 ->live()
+                ->stateCast(new BooleanStateCast(false)),
+            Toggle::make('configuration.use_presigned_requests')
+                ->label(trans('admin/setting.backup.s3.use_presigned_requests'))
+                ->helperText(trans('admin/setting.backup.s3.use_presigned_requests_help'))
+                ->inline(false)
+                ->onIcon(TablerIcon::Check)
+                ->offIcon(TablerIcon::X)
+                ->onColor('success')
+                ->offColor('danger')
                 ->stateCast(new BooleanStateCast(false)),
         ];
     }
