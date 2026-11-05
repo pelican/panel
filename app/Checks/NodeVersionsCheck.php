@@ -42,6 +42,6 @@ class NodeVersionsCheck extends Check
 
         return $outdated === 0
             ? $result->ok(trans('admin/health.results.nodeversions.ok'))
-            : $result->failed(trans('admin/health.results.nodeversions.failed', ['outdated' => $outdated, 'all' => $all]));
+            : $result->warning(trans('admin/health.results.nodeversions.failed', ['outdated' => $outdated, 'all' => $all]));
     }
 }
