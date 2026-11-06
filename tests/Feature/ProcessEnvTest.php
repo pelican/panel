@@ -58,6 +58,23 @@ it('refuses hub credentials that the server environment already sets', function 
     expect(File::get("$this->envPath/.env"))->toBe("APP_NAME=Pelican\n");
 });
 
+it('saves the hub key when the server-set hub url matches', function () {
+    ProcessEnv::capture(['PANEL_PLUGIN_HUB_URL' => 'https://hub.example.test']);
+    config()->set('panel.plugin.hub_url', 'https://hub.example.test');
+
+    $user = User::factory()->create();
+    $user->syncRoles(Role::getRootAdmin());
+    $key = ApiKey::factory()->create(['user_id' => $user->id, 'key_type' => ApiKey::TYPE_APPLICATION, 'permissions' => [Plugin::RESOURCE_NAME => AdminAcl::READ | AdminAcl::WRITE]]);
+
+    $this->withHeader('Authorization', 'Bearer '.$key->identifier.$key->token)
+        ->putJson('/api/application/plugins/hub', ['hub_url' => 'https://hub.example.test/', 'api_key' => 'pnl_abc123XYZ'])
+        ->assertNoContent();
+
+    expect(File::get("$this->envPath/.env"))
+        ->toContain('PANEL_PLUGIN_HUB_API_KEY="pnl_abc123XYZ"')
+        ->not->toContain('PANEL_PLUGIN_HUB_URL');
+});
+
 it('skips mail settings that the server environment already sets', function () {
     ProcessEnv::capture(['MAIL_FROM_NAME' => 'Container']);
 
