@@ -994,28 +994,32 @@ class Settings extends Page implements HasSchemas
         }
 
         try {
-            $data = $this->toEnvironmentValues(ProcessEnv::except($this->form->getState()));
-            unset($data['console_font']);
+            $state = ProcessEnv::except($this->form->getState());
+            unset($state['console_font']);
+            $data = $this->toEnvironmentValues($state);
 
             // Refilling gives the values the page loaded with, so only real changes are logged.
             $this->form->fill();
-            $original = $this->toEnvironmentValues($this->form->getRawState());
+            $original = $this->form->getRawState();
 
             $this->writeToEnvironment($data);
 
-            // Raw form state mixes 1/true and []/'' with what the form saves, so compare as .env text.
             $asText = fn ($value) => match (true) {
                 is_array($value) => implode(',', array_filter($value)),
-                in_array($value, [true, 1, '1', 'true'], true) => 'true',
-                in_array($value, [false, 0, '0', 'false'], true) => 'false',
+                is_bool($value) => $value ? 'true' : 'false',
+                $value instanceof BackedEnum => (string) $value->value,
                 default => (string) $value,
             };
 
             $changes = [];
-            foreach ($data as $key => $value) {
-                [$old, $new] = [$asText($original[$key] ?? null), $asText($value)];
-                if ($old !== $new) {
-                    $changes[$key] = ['old' => AuditObserver::redact($key, $old), 'new' => AuditObserver::redact($key, $new)];
+            foreach ($state as $key => $value) {
+                $old = $original[$key] ?? null;
+                // Toggles load as 1/0 and save as true/false, so only they compare as booleans.
+                $same = is_bool($value) || is_bool($old)
+                    ? filter_var($old, FILTER_VALIDATE_BOOL) === filter_var($value, FILTER_VALIDATE_BOOL)
+                    : $asText($old) === $asText($value);
+                if (!$same) {
+                    $changes[$key] = ['old' => AuditObserver::redact($key, $asText($old)), 'new' => AuditObserver::redact($key, $asText($value))];
                 }
             }
 

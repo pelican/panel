@@ -171,8 +171,30 @@ it('logs only the changed settings with secrets masked', function () {
             && !array_key_exists('APP_DEBUG', $changes)
             && !array_key_exists('PANEL_USE_BINARY_PREFIX', $changes)
             && !array_key_exists('TRUSTED_PROXIES', $changes)
+            && !array_key_exists('APP_2FA_REQUIRED', $changes)
             && !str_contains(json_encode($changes), 'supersecretpw');
     });
+});
+
+it('logs text settings that only look like booleans', function () {
+    $path = sys_get_temp_dir().'/pelican-settings-text-'.getmypid();
+    @mkdir($path);
+    file_put_contents("$path/.env", '');
+    app()->useEnvironmentPath($path);
+    config()->set('app.name', '1');
+    config()->set('panel.filament.avatar-provider', 'gravatar');
+    config()->set('mail.default', 'log');
+    Event::fake(ActivityLogged::class);
+
+    try {
+        livewire(Settings::class)->fillForm(['APP_NAME' => 'true', 'GUZZLE_CONNECT_TIMEOUT' => 5])->call('save')->assertHasNoErrors();
+    } finally {
+        @unlink("$path/.env");
+        @rmdir($path);
+    }
+
+    Event::assertDispatched(ActivityLogged::class, fn (ActivityLogged $event) => $event->is('audit:settings.update')
+        && $event->model->properties['changes']['APP_NAME'] === ['old' => '1', 'new' => 'true']);
 });
 
 it('does not log a save that changes nothing', function () {
