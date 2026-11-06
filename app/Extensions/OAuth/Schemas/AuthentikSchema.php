@@ -25,7 +25,7 @@ final class AuthentikSchema extends OAuthSchema
     public function getServiceConfig(): array
     {
         return array_merge(parent::getServiceConfig(), [
-            'base_url' => env('OAUTH_AUTHENTIK_BASE_URL'),
+            'base_url' => config('extensions.OAUTH_AUTHENTIK_BASE_URL'),
         ]);
     }
 
@@ -57,27 +57,27 @@ final class AuthentikSchema extends OAuthSchema
                 ->required()
                 ->url()
                 ->autocomplete(false)
-                ->default(env('OAUTH_AUTHENTIK_BASE_URL')),
+                ->default(config('extensions.OAUTH_AUTHENTIK_BASE_URL')),
             TextInput::make('OAUTH_AUTHENTIK_DISPLAY_NAME')
                 ->label('Display Name')
                 ->placeholder('Display Name')
                 ->autocomplete(false)
-                ->default(env('OAUTH_AUTHENTIK_DISPLAY_NAME', 'Authentik')),
+                ->default(config('extensions.OAUTH_AUTHENTIK_DISPLAY_NAME', 'Authentik')),
             ColorPicker::make('OAUTH_AUTHENTIK_DISPLAY_COLOR')
                 ->label('Display Color')
                 ->placeholder('#fd4b2d')
-                ->default(env('OAUTH_AUTHENTIK_DISPLAY_COLOR', '#fd4b2d'))
+                ->default(config('extensions.OAUTH_AUTHENTIK_DISPLAY_COLOR', '#fd4b2d'))
                 ->hex(),
         ]);
     }
 
     public function getName(): string
     {
-        return (string) env('OAUTH_AUTHENTIK_DISPLAY_NAME', 'Authentik');
+        return (string) config('extensions.OAUTH_AUTHENTIK_DISPLAY_NAME', 'Authentik');
     }
 
     public function getHexColor(): string
     {
-        return (string) env('OAUTH_AUTHENTIK_DISPLAY_COLOR', '#fd4b2d');
+        return (string) config('extensions.OAUTH_AUTHENTIK_DISPLAY_COLOR', '#fd4b2d');
     }
 }
