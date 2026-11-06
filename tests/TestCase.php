@@ -2,6 +2,7 @@
 
 namespace App\Tests;
 
+use App\Helpers\ProcessEnv;
 use App\Tests\Seeders\EggSeeder;
 use Carbon\CarbonImmutable;
 use Exception;
@@ -39,6 +40,10 @@ abstract class TestCase extends BaseTestCase
         // Tests assert on the side effects of dispatched jobs, so the queue must run
         // inline even when the shell exports a real queue connection.
         config()->set('queue.default', 'sync');
+
+        // phpunit.xml and the shell put test values in the process environment; tests that
+        // need a variable locked by the server environment capture one explicitly.
+        ProcessEnv::capture([]);
 
         // CI runs the test jobs without building the frontend, so rendered views
         // must not require a Vite manifest.

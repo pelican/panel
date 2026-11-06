@@ -3,7 +3,9 @@
 use App\Extensions\Captcha\CaptchaService;
 use App\Extensions\OAuth\OAuthService;
 use App\Filament\Admin\Pages\Settings;
+use App\Helpers\ProcessEnv;
 use App\Models\Role;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 
 use function Pest\Livewire\livewire;
@@ -76,4 +78,63 @@ it('collects oauth and captcha variables into the extensions config', function (
 
     expect($config)->toMatchArray(['OAUTH_EXAMPLE_ENABLED' => true, 'CAPTCHA_EXAMPLE_SITE_KEY' => 'site-key'])
         ->not->toHaveKey('UNRELATED_KEY');
+});
+
+it('locks fields set in the server environment and never writes them', function () {
+    ProcessEnv::capture(['MAIL_HOST' => 'smtp.container.test', 'TRUSTED_PROXIES' => '10.0.0.1', ProcessEnv::FROM_FILE => 'TRUSTED_PROXIES']);
+
+    $path = sys_get_temp_dir().'/pelican-settings-lock-'.getmypid();
+    @mkdir($path);
+    file_put_contents("$path/.env", '');
+    app()->useEnvironmentPath($path);
+
+    try {
+        livewire(Settings::class)
+            ->assertFormFieldDisabled('MAIL_HOST')
+            ->assertFormFieldEnabled('TRUSTED_PROXIES')
+            ->fillForm([
+                'APP_NAME' => 'Locked Panel',
+                'FILAMENT_AVATAR_PROVIDER' => 'gravatar',
+                'MAIL_MAILER' => 'log',
+                'GUZZLE_CONNECT_TIMEOUT' => 5,
+            ])
+            ->call('save')
+            ->assertHasNoErrors();
+
+        expect(file_get_contents("$path/.env"))->toContain('APP_NAME="Locked Panel"')
+            ->not->toContain('MAIL_HOST=');
+    } finally {
+        @unlink("$path/.env");
+        @rmdir($path);
+    }
+});
+
+it('is read only when the environment file is not writable', function () {
+    $path = sys_get_temp_dir().'/pelican-settings-ro-'.getmypid();
+    @mkdir($path);
+    file_put_contents("$path/.env", "APP_NAME=Before\n");
+    chmod("$path/.env", 0444);
+    app()->useEnvironmentPath($path);
+
+    try {
+        livewire(Settings::class)
+            ->assertSee(trans('admin/setting.env_read_only'))
+            ->assertFormFieldDisabled('APP_NAME')
+            ->call('save')
+            ->assertNotified(trans('admin/setting.save_failed'));
+
+        expect(file_get_contents("$path/.env"))->toBe("APP_NAME=Before\n");
+    } finally {
+        chmod("$path/.env", 0644);
+        @unlink("$path/.env");
+        @rmdir($path);
+    }
+});
+
+it('locks the captcha toggle when the server environment enables it', function () {
+    ProcessEnv::capture(['CAPTCHA_TURNSTILE_ENABLED' => 'true']);
+    config()->set('extensions.CAPTCHA_TURNSTILE_ENABLED', true);
+
+    livewire(Settings::class)
+        ->assertActionDisabled(TestAction::make('disable_captcha_TURNSTILE')->schemaComponent('captcha_TURNSTILE_actions'));
 });
