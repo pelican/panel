@@ -6,6 +6,7 @@ use App\Extensions\OAuth\OAuthService;
 use App\Filament\Admin\Pages\Settings;
 use App\Helpers\ProcessEnv;
 use App\Models\Role;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Event;
 
@@ -214,4 +215,12 @@ it('does not log a save that changes nothing', function () {
     }
 
     Event::assertNotDispatched(ActivityLogged::class, fn (ActivityLogged $event) => $event->is('audit:settings.update'));
+});
+
+it('locks the captcha toggle when the server environment enables it', function () {
+    ProcessEnv::capture(['CAPTCHA_TURNSTILE_ENABLED' => 'true']);
+    config()->set('extensions.CAPTCHA_TURNSTILE_ENABLED', true);
+
+    livewire(Settings::class)
+        ->assertActionDisabled(TestAction::make('disable_captcha_TURNSTILE')->schemaComponent('captcha_TURNSTILE_actions'));
 });
