@@ -6,8 +6,10 @@ use App\Enums\TablerIcon;
 use App\Extensions\Avatar\AvatarService;
 use App\Extensions\Captcha\CaptchaService;
 use App\Extensions\OAuth\OAuthService;
+use App\Facades\Activity;
 use App\Helpers\ProcessEnv;
 use App\Notifications\MailTested;
+use App\Observers\AuditObserver;
 use App\Traits\EnvironmentWriterTrait;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
@@ -992,24 +994,39 @@ class Settings extends Page implements HasSchemas
         }
 
         try {
-            $data = ProcessEnv::except($this->form->getState());
-            unset($data['console_font']);
+            $state = ProcessEnv::except($this->form->getState());
+            unset($state['console_font']);
+            $data = $this->toEnvironmentValues($state);
 
-            $data = array_map(function ($value) {
-                // Convert bools to a string, so they are correctly written to the .env file
-                if (is_bool($value)) {
-                    return $value ? 'true' : 'false';
-                }
-
-                // Convert enum to its value
-                if ($value instanceof BackedEnum) {
-                    return $value->value;
-                }
-
-                return $value;
-            }, $data);
+            // Refilling gives the values the page loaded with, so only real changes are logged.
+            $this->form->fill();
+            $original = $this->form->getRawState();
 
             $this->writeToEnvironment($data);
+
+            $asText = fn ($value) => match (true) {
+                is_array($value) => implode(',', array_filter($value)),
+                is_bool($value) => $value ? 'true' : 'false',
+                $value instanceof BackedEnum => (string) $value->value,
+                default => (string) $value,
+            };
+
+            $changes = [];
+            foreach ($state as $key => $value) {
+                $old = $original[$key] ?? null;
+                // Toggles load as 1/0 and save as true/false, so only they compare as booleans.
+                if (is_bool($value) || is_bool($old)) {
+                    [$old, $value] = [filter_var($old, FILTER_VALIDATE_BOOL), filter_var($value, FILTER_VALIDATE_BOOL)];
+                }
+                [$old, $new] = [$asText($old), $asText($value)];
+                if ($old !== $new) {
+                    $changes[$key] = ['old' => AuditObserver::redact($key, $old), 'new' => AuditObserver::redact($key, $new)];
+                }
+            }
+
+            if ($changes !== []) {
+                Activity::event('audit:settings.update')->property(['changes' => $changes, 'count' => count($changes)])->log();
+            }
 
             Artisan::call('queue:restart');
 
@@ -1026,6 +1043,21 @@ class Settings extends Page implements HasSchemas
                 ->danger()
                 ->send();
         }
+    }
+
+    /**
+     * Bools and enums as they are written to the .env file.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function toEnvironmentValues(array $values): array
+    {
+        return array_map(fn ($value) => match (true) {
+            is_bool($value) => $value ? 'true' : 'false',
+            $value instanceof BackedEnum => $value->value,
+            default => $value,
+        }, $values);
     }
 
     /** @return array<Action|ActionGroup> */

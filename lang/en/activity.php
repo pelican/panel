@@ -126,6 +126,9 @@ return [
         'crashed' => 'Server crashed',
     ],
     'audit' => [
+        'settings' => [
+            'update' => 'Updated <b>:count</b> panel setting|Updated <b>:count</b> panel settings',
+        ],
         'apiKey' => [
             'create' => 'Created API key <b>:identifier</b>',
             'delete' => 'Deleted API key <b>:identifier</b>',
