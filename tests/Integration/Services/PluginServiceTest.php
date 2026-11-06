@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Helpers\HubCredentials;
 use App\Services\Helpers\PluginService;
+use App\Services\Helpers\ThemeService;
 use App\Tests\Integration\IntegrationTestCase;
 use Error;
 use Exception;
@@ -296,6 +297,32 @@ class PluginServiceTest extends IntegrationTestCase
             'leading dot' => ['.hidden'],
             'just dots' => ['..'],
             'contains space' => ['foo bar'],
+        ];
+    }
+
+    #[DataProvider('reservedIds')]
+    public function test_import_rejects_a_plugin_id_reserved_for_theme_options(string $id): void
+    {
+        $file = $this->makeUpload('theme.zip', [
+            'plugin.json' => $this->manifest($id),
+        ]);
+
+        try {
+            $this->service->downloadPluginFromFile($file);
+            $this->fail('Expected the import to be rejected for id: ' . $id);
+        } catch (Exception $e) {
+            $this->assertSame(trans('admin/plugin.notifications.import_reserved_id', ['id' => $id]), $e->getMessage());
+        }
+
+        $this->assertDirectoryDoesNotExist(plugin_path($id));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function reservedIds(): array
+    {
+        return [
+            'default' => [ThemeService::Default],
+            'none' => [ThemeService::None],
         ];
     }
 
