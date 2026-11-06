@@ -47,7 +47,7 @@
                     $cpuMax = \App\Enums\ServerResourceType::CPULimit->getResourceAmount($server) ?: 100;
                     $getState = fn() => $cpuCurrent;
                     $getMaxValue = fn() => $cpuMax;
-                    $getProgressLabel = fn () => $server->formatResource(App\Enums\ServerResourceType::CPU, 0) . ' / ' . $server->formatResource(App\Enums\ServerResourceType::CPULimit, 0);
+                    $getProgressLabel = fn () => format_number($cpuCurrent, precision: 0) . '% / ' . $server->formatResource(App\Enums\ServerResourceType::CPULimit, 0);
                 @endphp
 
                 @include('livewire.columns.progress-bar-column', [
