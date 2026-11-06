@@ -94,6 +94,27 @@ class ServerTransfer extends Model implements Validatable
     }
 
     /**
+     * Marks an unfinished transfer as failed and frees what it reserved on the new node.
+     * A transfer that already finished is left alone, its outcome is what actually happened.
+     */
+    public function markFailed(): void
+    {
+        $this->getConnection()->transaction(function () {
+            $updated = static::query()->whereKey($this->id)->whereNull('successful')->update(['successful' => false]);
+            $this->refresh();
+
+            if (!$updated) {
+                return;
+            }
+
+            $allocations = array_filter([$this->new_allocation, ...($this->new_additional_allocations ?? [])]);
+            if ($allocations) {
+                $this->server->releaseAllocations($allocations);
+            }
+        });
+    }
+
+    /**
      * Gets the server associated with a server transfer.
      */
     public function server(): BelongsTo

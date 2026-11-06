@@ -11,6 +11,7 @@ use App\Models\ActivityLog;
 use App\Models\Backup;
 use App\Models\Node;
 use App\Models\Server;
+use App\Models\ServerTransfer;
 use App\Services\Eggs\EggConfigurationService;
 use App\Services\Servers\ServerConfigurationStructureService;
 use Illuminate\Database\ConnectionInterface;
@@ -131,6 +132,14 @@ class ServerDetailsController extends Controller
                 ->whereIn('status', [ServerState::Installing, ServerState::RestoringBackup])
                 ->update(['status' => null]);
         });
+
+        // Transfers only live in the memory of the daemon on both ends, so any involving
+        // this node died with it and will never report back. Don't leave them blocking the server.
+        ServerTransfer::query()
+            ->with('server')
+            ->whereNull('successful')
+            ->where(fn ($query) => $query->where('old_node', $node->id)->orWhere('new_node', $node->id))
+            ->eachById(fn (ServerTransfer $transfer) => $transfer->markFailed());
 
         return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
     }
