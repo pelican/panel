@@ -1015,11 +1015,12 @@ class Settings extends Page implements HasSchemas
             foreach ($state as $key => $value) {
                 $old = $original[$key] ?? null;
                 // Toggles load as 1/0 and save as true/false, so only they compare as booleans.
-                $same = is_bool($value) || is_bool($old)
-                    ? filter_var($old, FILTER_VALIDATE_BOOL) === filter_var($value, FILTER_VALIDATE_BOOL)
-                    : $asText($old) === $asText($value);
-                if (!$same) {
-                    $changes[$key] = ['old' => AuditObserver::redact($key, $asText($old)), 'new' => AuditObserver::redact($key, $asText($value))];
+                if (is_bool($value) || is_bool($old)) {
+                    [$old, $value] = [filter_var($old, FILTER_VALIDATE_BOOL), filter_var($value, FILTER_VALIDATE_BOOL)];
+                }
+                [$old, $new] = [$asText($old), $asText($value)];
+                if ($old !== $new) {
+                    $changes[$key] = ['old' => AuditObserver::redact($key, $old), 'new' => AuditObserver::redact($key, $new)];
                 }
             }
 
