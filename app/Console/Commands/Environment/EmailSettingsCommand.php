@@ -44,7 +44,8 @@ class EmailSettingsCommand extends Command
                 'mandrill' => 'Mandrill',
                 'postmark' => 'Postmark',
             ],
-            config('mail.default', 'smtp'),
+            // config/mail.php falls back to log when MAIL_MAILER is unset, but this command sets up real delivery
+            config('mail.default') === 'log' ? 'smtp' : config('mail.default'),
         );
 
         $method = 'setup' . studly_case($this->variables['MAIL_MAILER']) . 'DriverVariables';
