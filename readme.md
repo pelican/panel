@@ -4,8 +4,6 @@
 
 **Fly High, Game On: Pelican's pledge for unrivaled game servers.**
 
-> Formerly `pelican-dev/panel`. The GitHub org was renamed to `pelican`, so you're in the right place.
-
 ![Total Downloads](https://img.shields.io/github/downloads/pelican/panel/total?style=flat&label=Total%20Downloads&labelColor=rgba(0%2C%2070%2C%20114%2C%201)&color=rgba(255%2C%20255%2C%20255%2C%201)) 
 ![Latest Release](https://img.shields.io/github/v/release/pelican/panel?style=flat&label=Latest%20Release&labelColor=rgba(0%2C%2070%2C%20114%2C%201)&color=rgba(255%2C%20255%2C%20255%2C%201))  
 
