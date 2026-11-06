@@ -479,7 +479,9 @@ class Settings extends Page implements HasSchemas
                         ->default(config('mail.mailers.smtp.scheme'))
                         ->live()
                         ->afterStateUpdated(function ($state, Set $set) {
-                            $set('MAIL_PORT', $state === 'smtps' ? 587 : 2525);
+                            if (!ProcessEnv::has('MAIL_PORT')) {
+                                $set('MAIL_PORT', $state === 'smtps' ? 587 : 2525);
+                            }
                         }),
                 ]),
             Section::make(trans('admin/setting.mail.mailgun.mailgun_title'))

@@ -219,12 +219,16 @@ class PluginController extends ApplicationApiController
             'PANEL_PLUGIN_HUB_API_KEY' => $request->string('api_key')->toString(),
         ];
 
-        // Values set in the server environment always win over .env, so saving them would do nothing.
-        if ($locked = ProcessEnv::only($values)) {
-            abort(409, trans('command/messages.environment.env_locked', ['key' => implode(', ', array_keys($locked))]));
+        // Values set in the server environment always win over .env, so only refuse ones that differ from them.
+        $current = [
+            'PANEL_PLUGIN_HUB_URL' => rtrim((string) config('panel.plugin.hub_url'), '/'),
+            'PANEL_PLUGIN_HUB_API_KEY' => (string) config('panel.plugin.hub_api_key'),
+        ];
+        if ($conflicts = array_diff_assoc(ProcessEnv::only($values), $current)) {
+            abort(409, trans('command/messages.environment.env_locked', ['key' => implode(', ', array_keys($conflicts))]));
         }
 
-        $this->writeToEnvironment($values);
+        $this->writeToEnvironment(ProcessEnv::except($values));
 
         // Plugin updates run on the queue; restart workers so they pick up the key.
         Artisan::call('queue:restart');
