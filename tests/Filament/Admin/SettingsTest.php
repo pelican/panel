@@ -5,6 +5,7 @@ use App\Extensions\OAuth\OAuthService;
 use App\Filament\Admin\Pages\Settings;
 use App\Helpers\ProcessEnv;
 use App\Models\Role;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 
 use function Pest\Livewire\livewire;
@@ -128,4 +129,12 @@ it('is read only when the environment file is not writable', function () {
         @unlink("$path/.env");
         @rmdir($path);
     }
+});
+
+it('locks the captcha toggle when the server environment enables it', function () {
+    ProcessEnv::capture(['CAPTCHA_TURNSTILE_ENABLED' => 'true']);
+    config()->set('extensions.CAPTCHA_TURNSTILE_ENABLED', true);
+
+    livewire(Settings::class)
+        ->assertActionDisabled(TestAction::make('disable_captcha_TURNSTILE')->schemaComponent('captcha_TURNSTILE_actions'));
 });

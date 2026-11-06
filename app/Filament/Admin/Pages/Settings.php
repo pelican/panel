@@ -329,17 +329,17 @@ class Settings extends Page implements HasSchemas
                     Actions::make([
                         Action::make("disable_captcha_$id")
                             ->visible(fn (Get $get) => $get("CAPTCHA_{$id}_ENABLED"))
-                            ->disabled(fn () => !user()?->can('update settings'))
+                            ->disabled(fn () => !user()?->can('update settings') || ProcessEnv::has("CAPTCHA_{$id}_ENABLED"))
                             ->label(trans('admin/setting.captcha.disable'))
                             ->color('danger')
                             ->action(fn (Set $set) => $set("CAPTCHA_{$id}_ENABLED", false)),
                         Action::make("enable_captcha_$id")
                             ->visible(fn (Get $get) => !$get("CAPTCHA_{$id}_ENABLED"))
-                            ->disabled(fn () => !user()?->can('update settings'))
+                            ->disabled(fn () => !user()?->can('update settings') || ProcessEnv::has("CAPTCHA_{$id}_ENABLED"))
                             ->label(trans('admin/setting.captcha.enable'))
                             ->color('success')
                             ->action(fn (Set $set) => $set("CAPTCHA_{$id}_ENABLED", true)),
-                    ])->columnSpan(1),
+                    ])->key("captcha_{$id}_actions")->columnSpan(1),
                     Group::make($schema->getSettingsForm())
                         ->visible(fn (Get $get) => $get("CAPTCHA_{$id}_ENABLED"))
                         ->columns(4)
@@ -567,13 +567,13 @@ class Settings extends Page implements HasSchemas
                     Actions::make([
                         Action::make('disable_oauth_' . $schema->getId())
                             ->visible(fn (Get $get) => $get($key))
-                            ->disabled(fn () => !user()?->can('update settings'))
+                            ->disabled(fn () => !user()?->can('update settings') || ProcessEnv::has($key))
                             ->label(trans('admin/setting.oauth.disable'))
                             ->color('danger')
                             ->action(fn (Set $set) => $set($key, false)),
                         Action::make('enable_oauth_'  . $schema->getId())
                             ->visible(fn (Get $get) => !$get($key))
-                            ->disabled(fn () => !user()?->can('update settings'))
+                            ->disabled(fn () => !user()?->can('update settings') || ProcessEnv::has($key))
                             ->label(trans('admin/setting.oauth.enable'))
                             ->color('success')
                             ->steps($schema->getSetupSteps())
