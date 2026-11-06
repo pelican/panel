@@ -47,6 +47,7 @@ Route::prefix('/nodes')->group(function () {
     Route::prefix('/{node:id}/allocations')->group(function () {
         Route::get('/', [Application\Nodes\AllocationController::class, 'index'])->name('api.application.allocations');
         Route::post('/', [Application\Nodes\AllocationController::class, 'store']);
+        Route::patch('/{allocation:id}', [Application\Nodes\AllocationController::class, 'update']);
         Route::delete('/{allocation:id}', [Application\Nodes\AllocationController::class, 'delete'])->name('api.application.allocations.view');
     });
 });

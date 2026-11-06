@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Contracts\Validatable;
+use App\Enums\AllocationProtocol;
 use App\Enums\ContainerStatus;
 use App\Enums\ServerResourceType;
 use App\Enums\ServerState;
@@ -244,6 +245,26 @@ class Server extends Model implements HasAvatar, Validatable
         return $allocations->groupBy('ip')->map(function ($item) {
             return $item->pluck('port');
         })->toArray();
+    }
+
+    /**
+     * @return array<string, array<int, string>>
+     */
+    public function getAllocationProtocols(): array
+    {
+        if (!$this->allocation) {
+            return [];
+        }
+
+        $protocols = [];
+
+        foreach ($this->allocations->where('node_id', $this->node_id) as $allocation) {
+            if ($allocation->protocol !== AllocationProtocol::Both) {
+                $protocols[$allocation->ip][$allocation->port] = $allocation->protocol->value;
+            }
+        }
+
+        return $protocols;
     }
 
     /**
