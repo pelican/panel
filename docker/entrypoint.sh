@@ -61,9 +61,11 @@ fi
 # create directories for volumes
 mkdir -p /pelican-data/database /pelican-data/storage/avatars /pelican-data/storage/fonts /pelican-data/storage/icons /pelican-data/plugins /var/www/html/storage/logs/supervisord 2>/dev/null
 
-# plugins used to live in a subpath of the pelican-data volume, carry them over to the plugins volume
-if [ -n "$(ls -A /pelican-data/plugins 2>/dev/null)" ] && [ -z "$(ls -A /var/www/html/plugins 2>/dev/null)" ]; then
-  cp -a /pelican-data/plugins/. /var/www/html/plugins/
+# plugins used to live in a subpath of the pelican-data volume, move them over to the plugins volume once.
+# the old directory is renamed afterwards so deleted plugins don't come back on the next start.
+# skipped when both paths are the same directory (a compose file that still mounts the subpath)
+if [ ! /pelican-data/plugins -ef /var/www/html/plugins ] && [ -n "$(ls -A /pelican-data/plugins 2>/dev/null)" ] && [ -z "$(ls -A /var/www/html/plugins 2>/dev/null)" ]; then
+  cp -a /pelican-data/plugins/. /var/www/html/plugins/ && mv /pelican-data/plugins "/pelican-data/plugins.migrated-$(date +%s)" && mkdir -p /pelican-data/plugins
 fi
 
 # if the app is installed then we need to run migrations on start. New installs will run migrations when you run the installer.
