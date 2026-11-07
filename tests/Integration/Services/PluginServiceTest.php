@@ -320,6 +320,28 @@ class PluginServiceTest extends IntegrationTestCase
         $this->assertDirectoryDoesNotExist(plugin_path('.test-replace-plugin.bak'));
     }
 
+    public function test_import_gives_the_new_files_a_fresh_modification_time(): void
+    {
+        $this->importedPlugins[] = 'test-mtime-plugin';
+
+        // Archives built with fixed timestamps (like the ones from the Hub) carry the same mtime from
+        // one version to the next. OPcache only recompiles a file whose mtime changed, so the
+        // imported files must not keep the archive's timestamp.
+        $fixed = mktime(0, 0, 0, 1, 1, 2020);
+        $upload = $this->makeUpload('test-mtime-plugin.zip', [
+            'test-mtime-plugin/plugin.json' => $this->manifest('test-mtime-plugin'),
+            'test-mtime-plugin/src/Example.php' => '<?php',
+        ], $fixed);
+
+        $before = time();
+        $this->service->downloadPluginFromFile($upload);
+
+        clearstatcache();
+        foreach (['plugin.json', 'src/Example.php'] as $file) {
+            $this->assertGreaterThanOrEqual($before, filemtime(plugin_path('test-mtime-plugin', $file)), "$file kept the archive timestamp");
+        }
+    }
+
     public function test_import_succeeds_when_the_id_matches_the_expected_id(): void
     {
         $this->importedPlugins[] = 'test-expected-plugin';
@@ -805,7 +827,7 @@ class PluginServiceTest extends IntegrationTestCase
      *
      * @param  array<string, string>  $entries
      */
-    private function makeUpload(string $clientName, array $entries): UploadedFile
+    private function makeUpload(string $clientName, array $entries, ?int $mtime = null): UploadedFile
     {
         $tmpDir = TemporaryDirectory::make();
         $this->uploadDirs[] = $tmpDir;
@@ -815,6 +837,10 @@ class PluginServiceTest extends IntegrationTestCase
         $zip->open($zipPath, ZipArchive::CREATE);
         foreach ($entries as $path => $contents) {
             $zip->addFromString($path, $contents);
+
+            if ($mtime !== null) {
+                $zip->setMtimeName($path, $mtime);
+            }
         }
         $zip->close();
 
