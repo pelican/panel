@@ -485,7 +485,32 @@ class PluginService
             File::deleteDirectory($rollback);
         }
 
+        $this->refreshOpcache($target);
+
         return $pluginName;
+    }
+
+    /**
+     * Make sure PHP serves the new files of a plugin, not the ones it compiled before.
+     *
+     * OPcache only notices a change when a file's modification time differs from the one it
+     * compiled. Archives often carry fixed timestamps (the Hub builds every zip with the same
+     * date), so an update can bring new code with the same mtime as the old one and PHP-FPM keeps
+     * running the old version until it restarts. Updates run in the queue worker, a separate
+     * process whose opcache_invalidate() cannot reach PHP-FPM, so give every file a new
+     * modification time: each process then recompiles it on its next request.
+     */
+    private function refreshOpcache(string $path): void
+    {
+        $now = time();
+
+        foreach (File::allFiles($path, true) as $file) {
+            @touch($file->getPathname(), $now);
+
+            if (function_exists('opcache_invalidate')) {
+                @opcache_invalidate($file->getPathname(), true);
+            }
+        }
     }
 
     /**
