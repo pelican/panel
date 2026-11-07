@@ -27,9 +27,9 @@ final class SteamSchema extends OAuthSchema
     {
         return [
             'client_id' => null,
-            'client_secret' => env('OAUTH_STEAM_CLIENT_SECRET'),
+            'client_secret' => config('extensions.OAUTH_STEAM_CLIENT_SECRET'),
             'allowed_hosts' => [
-                str_replace(['http://', 'https://'], '', env('APP_URL')),
+                str_replace(['http://', 'https://'], '', config('app.url')),
             ],
         ];
     }
@@ -45,7 +45,7 @@ final class SteamSchema extends OAuthSchema
                 ->password()
                 ->revealable()
                 ->autocomplete(false)
-                ->default(env('OAUTH_STEAM_CLIENT_SECRET')),
+                ->default(config('extensions.OAUTH_STEAM_CLIENT_SECRET')),
         ];
     }
 

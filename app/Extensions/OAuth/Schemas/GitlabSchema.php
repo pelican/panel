@@ -20,7 +20,7 @@ final class GitlabSchema extends OAuthSchema
     public function getServiceConfig(): array
     {
         return array_merge(parent::getServiceConfig(), [
-            'host' => env('OAUTH_GITLAB_HOST'),
+            'host' => config('extensions.OAUTH_GITLAB_HOST'),
         ]);
     }
 
@@ -33,7 +33,7 @@ final class GitlabSchema extends OAuthSchema
                 ->columnSpan(2)
                 ->url()
                 ->autocomplete(false)
-                ->default(env('OAUTH_GITLAB_HOST')),
+                ->default(config('extensions.OAUTH_GITLAB_HOST')),
         ]);
     }
 

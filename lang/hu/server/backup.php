@@ -12,6 +12,14 @@ return [
         'successful' => 'Sikeres',
         'failed' => 'Sikertelen',
     ],
+    'notifications' => [
+        'action' => 'Értesítési beállítások',
+        'toggle_manual' => 'Kézi mentési értesítések',
+        'helper_manual' => 'Kapjon értesítést és e-mailt, ha a szerver kézi mentése sikeresen befejeződik vagy meghiúsul.',
+        'toggle_scheduled' => 'Ütemezett mentési értesítések',
+        'helper_scheduled' => 'Kapjon értesítést és e-mailt, ha a szerver ütemezett mentése sikeresen befejeződik vagy meghiúsul.',
+        'saved' => 'Értesítési beállítások frissítve',
+    ],
     'actions' => [
         'create' => [
             'title' => 'Biztonsági másolat létrehozása',

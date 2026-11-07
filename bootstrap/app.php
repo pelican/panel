@@ -2,6 +2,7 @@
 
 use App\Console\Kernel;
 use App\Exceptions\Handler;
+use App\Helpers\ProcessEnv;
 use App\Http\Middleware\Activity\TrackAPIKey;
 use App\Http\Middleware\Api\Application\AuthenticateApplicationUser;
 use App\Http\Middleware\Api\AuthenticateIPAccess;
@@ -16,12 +17,13 @@ use App\Http\Middleware\RedirectIfAuthenticated;
 use App\Http\Middleware\SetSecurityHeaders;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery as IlluminatePreventRequestForgery;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 
-return Application::configure(basePath: dirname(__DIR__))
+$app = Application::configure(basePath: dirname(__DIR__))
     ->withProviders()
     ->withRouting(
         health: '/up',
@@ -75,3 +77,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ])
     ->withExceptions(function (Exceptions $exceptions) {})
     ->create();
+
+// Snapshot the real process environment before .env is loaded on top of it.
+$app->beforeBootstrapping(LoadEnvironmentVariables::class, fn () => ProcessEnv::capture());
+
+return $app;

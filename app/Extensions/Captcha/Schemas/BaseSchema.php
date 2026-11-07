@@ -23,8 +23,8 @@ abstract class BaseSchema
         $id = Str::upper($this->getId());
 
         return [
-            'site_key' => env("CAPTCHA_{$id}_SITE_KEY"),
-            'secret_key' => env("CAPTCHA_{$id}_SECRET_KEY"),
+            'site_key' => config("extensions.CAPTCHA_{$id}_SITE_KEY"),
+            'secret_key' => config("extensions.CAPTCHA_{$id}_SECRET_KEY"),
         ];
     }
 
@@ -44,7 +44,7 @@ abstract class BaseSchema
                 ->password()
                 ->revealable()
                 ->autocomplete(false)
-                ->default(env("CAPTCHA_{$id}_SITE_KEY")),
+                ->default(config("extensions.CAPTCHA_{$id}_SITE_KEY")),
             TextInput::make("CAPTCHA_{$id}_SECRET_KEY")
                 ->label(trans('admin/setting.captcha.secret_key'))
                 ->placeholder(trans('admin/setting.captcha.secret_key'))
@@ -53,7 +53,7 @@ abstract class BaseSchema
                 ->password()
                 ->revealable()
                 ->autocomplete(false)
-                ->default(env("CAPTCHA_{$id}_SECRET_KEY")),
+                ->default(config("extensions.CAPTCHA_{$id}_SECRET_KEY")),
         ];
     }
 }

@@ -14,6 +14,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class DatabasesRelationManager extends RelationManager
 {
@@ -53,6 +54,7 @@ class DatabasesRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('database')
             ->heading(null)
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['server.node']))
             ->columns([
                 TextColumn::make('database'),
                 TextColumn::make('username')

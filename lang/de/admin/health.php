@@ -42,6 +42,8 @@ return [
             'failed' => 'Installierte Version ist :currentVersion, die neueste Version ist allerdings :latestVersion',
             'up_to_date' => 'Aktuell',
             'outdated' => 'Veraltet',
+            'unknown' => 'Unbekannt',
+            'unavailable' => 'Die neueste Version konnte nicht von GitHub geladen werden',
         ],
         'schedule' => [
             'label' => 'Schedule',
@@ -51,6 +53,9 @@ return [
         ],
         'useddiskspace' => [
             'label' => 'Speicherplatz',
+        ],
+        'queue' => [
+            'label' => 'Warteschlange',
         ],
     ],
     'checks' => [

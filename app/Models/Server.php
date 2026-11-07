@@ -381,6 +381,25 @@ class Server extends Model implements HasAvatar, Validatable
         return $this->hasMany(ServerVariable::class);
     }
 
+    /**
+     * Fill the variables relation on many servers from two eager loads, since variables()
+     * joins on the server's own id and can't be eager loaded itself.
+     *
+     * @param  iterable<self>  $servers
+     */
+    public static function loadVariables(iterable $servers): void
+    {
+        $servers = Collection::make($servers)->loadMissing(['egg.variables', 'serverVariables']);
+
+        foreach ($servers as $server) {
+            $values = $server->serverVariables->pluck('variable_value', 'variable_id');
+
+            $server->setRelation('variables', $server->egg->variables->map(
+                fn (EggVariable $variable) => (clone $variable)->setAttribute('server_value', $values->get($variable->id))
+            ));
+        }
+    }
+
     public function ensureVariablesExist(): void
     {
         foreach ($this->eggVariables as $variable) {

@@ -11,6 +11,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class BackupsRelationManager extends RelationManager
 {
@@ -21,6 +22,7 @@ class BackupsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('name')
             ->heading(null)
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['server.node']))
             ->columns([
                 TextColumn::make('server.name')
                     ->label(trans('admin/server.name'))

@@ -12,6 +12,7 @@ return [
     'cron' => 'Cron',
     'status' => 'Stav',
     'schedule_status' => [
+        'new' => 'Nové',
         'inactive' => 'Neaktivní',
         'processing' => 'Zpracovávání',
         'active' => 'Aktivní',
@@ -29,7 +30,7 @@ return [
     'enabled' => 'Povolit rozvrh?',
     'enabled_hint' => 'Tento plán bude proveden automaticky, pokud je povoleno.',
 
-    'cron_body' => 'Mějte prosím na paměti, že vstupy cronu níže vždy předpokládají UTC.',
+    'cron_body' => 'Níže uvedená pole cronu používají vaše časové pásmo.',
     'cron_timezone' => 'Další spuštění ve Vašem časovém pásmu (:timezone): <b> :next_run </b>',
 
     'invalid' => 'Neplatný',
@@ -81,6 +82,7 @@ return [
         'first_task' => 'První úloha',
         'seconds' => 'Sekunda',
         'continue_on_failure' => 'Pokračovat při selhání',
+        'no_permission' => 'Nemáte oprávnění používat tuto akci úkolu.',
 
         'actions' => [
             'title' => 'Akce',

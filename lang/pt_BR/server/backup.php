@@ -12,6 +12,14 @@ return [
         'successful' => 'Bem-sucedido',
         'failed' => 'Falhou',
     ],
+    'notifications' => [
+        'action' => 'Configurações de Notificação',
+        'toggle_manual' => 'Notificações de Backup Manual',
+        'helper_manual' => 'Receber uma notificação e um e-mail quando um backup criado manualmente para este servidor completar ou falhar.',
+        'toggle_scheduled' => 'Notificações de Backup Agendado',
+        'helper_scheduled' => 'Receba uma notificação e um e-mail quando o backup agendado deste servidor for concluído ou falhar.',
+        'saved' => 'Configurações de notificação atualizadas',
+    ],
     'actions' => [
         'create' => [
             'title' => 'Criar Backup',

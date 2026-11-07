@@ -5,6 +5,7 @@ return [
     'node' => [
         'servers_attached' => 'Ein Node darf keine Server haben, die mit ihm verknüpft sind, um gelöscht zu werden.',
         'error_connecting' => 'Fehler beim Verbinden zu :node',
+        'not_viable' => 'Die Node :node hat nicht genügend freie Ressourcen, um diesen Server zu erstellen.',
         'daemon_off_config_updated' => 'Die Daemon-Konfiguration <strong>wurde aktualisiert</strong>, jedoch ist beim Versuch, die Konfigurationsdatei des Daemons automatisch zu aktualisieren, ein Fehler aufgetreten. Du musst die Konfigurationsdatei (config.yml) für den Daemon manuell aktualisieren, um diese Änderungen zu übernehmen.',
     ],
     'allocations' => [

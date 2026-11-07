@@ -12,8 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('nodes', function (Blueprint $table) {
-            $table->unsignedInteger('cpu')->default(0)->after('disk_overallocate');
-            $table->integer('cpu_overallocate')->default(0)->after('cpu');
+            if (!Schema::hasColumn('nodes', 'cpu')) {
+                $table->unsignedInteger('cpu')->default(0)->after('disk_overallocate');
+            }
+            if (!Schema::hasColumn('nodes', 'cpu_overallocate')) {
+                $table->integer('cpu_overallocate')->default(0)->after('cpu');
+            }
         });
     }
 

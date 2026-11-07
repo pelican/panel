@@ -41,6 +41,18 @@ return [
             'password_body' => 'Sua senha do SFTP é a mesma que senha que você usa para acessar este painel.',
         ],
     ],
+    'notifications' => [
+        'title' => 'Notificações',
+        'saved' => 'Configurações de notificação atualizadas',
+        'backup_manual' => [
+            'label' => 'Notificações de Backup Manual',
+            'helper' => 'Receber uma notificação e um e-mail quando um backup criado manualmente para este servidor completar ou falhar.',
+        ],
+        'backup_scheduled' => [
+            'label' => 'Notificações de Backup Agendado',
+            'helper' => 'Receba uma notificação e um e-mail quando o backup agendado deste servidor for concluído ou falhar.',
+        ],
+    ],
     'reinstall' => [
         'title' => 'Reinstalar Servidor',
         'body' => 'Reinstalar seu servidor irá pará-lo, e em seguida execute novamente o script de instalação que o configurou inicialmente.',

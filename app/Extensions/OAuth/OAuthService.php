@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Laravel\Socialite\Contracts\User as OAuthUser;
 use SocialiteProviders\Manager\SocialiteWasCalled;
+use Throwable;
 
 class OAuthService
 {
@@ -40,7 +41,15 @@ class OAuthService
         config()->set('services.' . $schema->getId(), array_merge($schema->getServiceConfig(), ['redirect' => '/auth/oauth/callback/' . $schema->getId()]));
 
         if ($schema->getSocialiteProvider()) {
-            Event::listen(fn (SocialiteWasCalled $event) => $event->extendSocialite($schema->getId(), $schema->getSocialiteProvider()));
+            Event::listen(function (SocialiteWasCalled $event) use ($schema) {
+                // A missing provider (e.g. plugin composer packages lost on a docker restart) must not
+                // break booting, otherwise `p:plugin:composer` can't run to reinstall it
+                try {
+                    $event->extendSocialite($schema->getId(), $schema->getSocialiteProvider());
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+            });
         }
 
         $this->schemas[$schema->getId()] = $schema;

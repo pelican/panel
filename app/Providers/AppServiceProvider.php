@@ -37,6 +37,7 @@ use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Filament\Auth\Http\Responses\Contracts\LoginResponse as LoginResponseContract;
 use Illuminate\Config\Repository;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Console\AboutCommand;
@@ -70,6 +71,9 @@ class AppServiceProvider extends ServiceProvider
         if ($app->runningInConsole() && empty(config('app.key'))) {
             $config->set('app.key', '');
         }
+
+        // Fail tests on lazy loads inside multi-row results, so N+1 queries get caught.
+        Model::preventLazyLoading($app->runningUnitTests());
 
         foreach ([
             Node::class, Egg::class, Mount::class, User::class, Server::class,

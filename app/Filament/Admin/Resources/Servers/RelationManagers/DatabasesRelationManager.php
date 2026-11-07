@@ -24,6 +24,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Exceptions\Halt;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * @method Server getOwnerRecord()
@@ -66,9 +67,12 @@ class DatabasesRelationManager extends RelationManager
 
     public function table(Table $table): Table
     {
+        $noHosts = fn () => once(fn () => !DatabaseHost::query()->exists());
+
         return $table
             ->heading(null)
             ->recordTitleAttribute('database')
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['server.node']))
             ->columns([
                 TextColumn::make('database'),
                 TextColumn::make('username')
@@ -113,10 +117,11 @@ class DatabasesRelationManager extends RelationManager
                 CreateAction::make()
                     ->hidden(fn () => $this->isReadOnly())
                     ->hiddenLabel()
-                    ->disabled(fn () => DatabaseHost::count() < 1)
-                    ->tooltip(fn () => DatabaseHost::count() < 1 ? trans('admin/server.no_db_hosts') : trans('admin/server.create_database'))
-                    ->color(fn () => DatabaseHost::count() < 1 ? 'danger' : 'primary')
-                    ->icon(fn () => DatabaseHost::count() < 1 ? TablerIcon::DatabaseX : TablerIcon::DatabasePlus)
+                    ->disabled($noHosts)
+                    ->tooltip(fn () => $noHosts() ? trans('admin/server.no_db_hosts') : trans('admin/server.create_database'))
+                    ->color(fn () => $noHosts() ? 'danger' : 'primary')
+                    ->icon(fn () => $noHosts() ? TablerIcon::DatabaseX : TablerIcon::DatabasePlus)
+
                     ->createAnother(false)
                     ->action(function (array $data, DatabaseManagementService $service, RandomWordService $randomWordService) {
                         $data['database'] ??= $randomWordService->word() . random_int(1, 420);

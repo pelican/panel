@@ -25,7 +25,7 @@ return [
         'environment' => [
             'label' => '環境',
             'ok' => '正常，已設定為 :actual',
-            'failed' => '環境已設定為 :actual，但預期為 :expected',
+            'failed' => '目前環境設定為 :actual，但預期應為 :expected',
         ],
         'nodeversions' => [
             'label' => '節點版本',
@@ -42,6 +42,8 @@ return [
             'failed' => '已安裝的版本為 :currentVersion，但最新版本為 :latestVersion',
             'up_to_date' => '已是最新版本',
             'outdated' => '已過時',
+            'unknown' => '未知',
+            'unavailable' => '無法從 GitHub 取得最新版本',
         ],
         'schedule' => [
             'label' => '排程',
@@ -51,6 +53,9 @@ return [
         ],
         'useddiskspace' => [
             'label' => '磁碟空間',
+        ],
+        'queue' => [
+            'label' => '佇列',
         ],
     ],
     'checks' => [

@@ -11,6 +11,7 @@ use Filament\Actions\EditAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ServersRelationManager extends RelationManager
 {
@@ -23,6 +24,12 @@ class ServersRelationManager extends RelationManager
             ->emptyStateDescription(trans('admin/egg.no_servers'))
             ->emptyStateHeading(trans('admin/egg.no_servers_help'))
             ->heading(trans('admin/egg.servers'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with([
+                'node',
+                'user.roles',
+                // ViewConsoleAction only looks for the viewer's own subuser.
+                'subusers' => fn ($query) => $query->where('user_id', user()?->id),
+            ]))
             ->columns([
                 TextColumn::make('user.username')
                     ->label(trans('admin/server.owner'))

@@ -27,6 +27,7 @@ class BackupCompleted extends Notification implements ShouldQueue
         $locale = $notifiable->language ?? 'en';
 
         return (new MailMessage())
+            ->subject(trans('mail.backup_completed.subject_' . ($this->backup->is_successful ? 'success' : 'failed'), locale: $locale))
             ->greeting(trans('mail.greeting', ['name' => $notifiable->username], $locale))
             ->line(trans('mail.backup_completed.body_' . ($this->backup->is_successful ? 'success' : 'failed'), locale: $locale))
             ->line(trans('mail.backup_completed.backup_name', ['name' => $this->backup->name], $locale))

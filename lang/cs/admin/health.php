@@ -25,7 +25,7 @@ return [
         'environment' => [
             'label' => 'Prostředí',
             'ok' => 'Ok, nastavte na :actual',
-            'failed' => 'Prostředí je nastaveno na :actual , Očekáváno :expected',
+            'failed' => 'Prostředí je nastaveno na :actual, očekáváno :expected',
         ],
         'nodeversions' => [
             'label' => 'Verze uzlu',
@@ -42,6 +42,8 @@ return [
             'failed' => 'Nainstalovaná verze je :currentVersion ale nejnovější je :latestversion',
             'up_to_date' => 'Aktuální',
             'outdated' => 'Neaktuální',
+            'unknown' => 'Neznámé',
+            'unavailable' => 'Nejnovější verzi se nepodařilo načíst z GitHubu',
         ],
         'schedule' => [
             'label' => 'Rozvrh',
@@ -51,6 +53,9 @@ return [
         ],
         'useddiskspace' => [
             'label' => 'Místo na disku',
+        ],
+        'queue' => [
+            'label' => 'Fronta',
         ],
     ],
     'checks' => [

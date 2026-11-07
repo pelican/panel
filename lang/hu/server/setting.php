@@ -42,6 +42,18 @@ return [
             'password_body' => 'Az SFTP jelszavad megeggyezik azzal a jelszóval amit a panel fiókodnál használsz.',
         ],
     ],
+    'notifications' => [
+        'title' => 'Értesítések',
+        'saved' => 'Értesítés Beállítások Frissítve',
+        'backup_manual' => [
+            'label' => 'Kézi Mentés Értesítések',
+            'helper' => 'Kapjon értesítést és e-mailt, ha a szerver kézi mentése sikeresen befejeződik vagy meghiúsul.',
+        ],
+        'backup_scheduled' => [
+            'label' => 'Ütemezett mentési értesítések',
+            'helper' => 'Kapjon értesítést és e-mailt, ha a szerver ütemezett mentése sikeresen befejeződik vagy meghiúsul.',
+        ],
+    ],
     'reinstall' => [
         'title' => 'Szerver újratelepítése',
         'body' => 'A szerver újratelepítése leállítja azt, majd újra futtatja a telepítő scriptet, amely eredetileg beállította.

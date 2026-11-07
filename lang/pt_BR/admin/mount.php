@@ -17,14 +17,19 @@ return [
     'no_mounts' => 'Sem Montagens',
     'eggs' => 'Eggs',
     'nodes' => 'Nodes',
+    'user_mountable' => 'Usuário Montável?',
+    'user_mountable_help' => 'Os usuários devem poder ativar ou desativar esta montagem em seus servidores?',
     'toggles' => [
         'writable' => 'Gravável',
         'read_only' => 'Somente Leitura',
+        'user_mountable' => 'Montável do Usuário',
+        'not_user_mountable' => 'Apenas Admin',
     ],
     'table' => [
         'name' => 'Nome',
         'all_eggs' => 'Todos os Eggs',
         'all_nodes' => 'Todos os Nodes',
         'read_only' => 'Somente Leitura',
+        'user_mountable' => 'Montável do Usuário',
     ],
 ];

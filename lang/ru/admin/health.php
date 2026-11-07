@@ -42,6 +42,8 @@ return [
             'failed' => 'Установленная версия :currentVersion, но последняя это :latestVersion',
             'up_to_date' => 'Актуальна',
             'outdated' => 'Устарела',
+            'unknown' => 'Неизвестно',
+            'unavailable' => 'Не удалось загрузить последнюю версию с GitHub',
         ],
         'schedule' => [
             'label' => 'Расписания',
@@ -51,6 +53,9 @@ return [
         ],
         'useddiskspace' => [
             'label' => 'Использование диска',
+        ],
+        'queue' => [
+            'label' => 'Очередь',
         ],
     ],
     'checks' => [

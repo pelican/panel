@@ -11,19 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('nodes', function (Blueprint $table) {
-            $table->string('daemonBase', 191)->default(null)->change();
-        });
+        // Each step checks whether it already ran, so a migration that failed halfway can be run again.
+        if (Schema::hasColumn('nodes', 'daemonBase')) {
+            Schema::table('nodes', function (Blueprint $table) {
+                $table->string('daemonBase', 191)->default(null)->change();
+            });
+        }
 
-        Schema::table('nodes', function (Blueprint $table) {
-            $table->renameColumn('daemonListen', 'daemon_listen');
-            $table->renameColumn('daemonBase', 'daemon_base');
-            $table->renameColumn('daemonSFTP', 'daemon_sftp');
-        });
-
-        Schema::table('servers', function (Blueprint $table) {
-            $table->renameColumn('uuidShort', 'uuid_short');
-        });
+        foreach (['nodes' => ['daemonListen' => 'daemon_listen', 'daemonBase' => 'daemon_base', 'daemonSFTP' => 'daemon_sftp'], 'servers' => ['uuidShort' => 'uuid_short']] as $tableName => $columns) {
+            foreach ($columns as $from => $to) {
+                if (Schema::hasColumn($tableName, $from)) {
+                    Schema::table($tableName, fn (Blueprint $table) => $table->renameColumn($from, $to));
+                }
+            }
+        }
     }
 
     /**

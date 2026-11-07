@@ -30,7 +30,7 @@ return [
     'enabled' => 'Activer la planification ?',
     'enabled_hint' => 'Ce calendrier sera exécuté automatiquement si activé.',
 
-    'cron_body' => 'N\'oubliez pas que les entrées cron ci-dessous utilisent toujours UTC.',
+    'cron_body' => 'Les entrées cron ci-dessous utilisent votre fuseau horaire.',
     'cron_timezone' => 'Prochaine exécution dans votre fuseau horaire (:timezone): <b> :next_run </b>',
 
     'invalid' => 'Invalide',
@@ -82,6 +82,7 @@ return [
         'first_task' => 'Première tâche',
         'seconds' => 'Secondes',
         'continue_on_failure' => 'Continuer en cas d\'échec',
+        'no_permission' => 'Vous n\'avez pas la permission d\'utiliser cette action.',
 
         'actions' => [
             'title' => 'Action',

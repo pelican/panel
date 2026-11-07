@@ -12,11 +12,7 @@ use SocialiteProviders\Steam\Provider;
 use function Pest\Livewire\livewire;
 
 beforeEach(function () {
-    $_SERVER['OAUTH_STEAM_ENABLED'] = 'true';
-});
-
-afterEach(function () {
-    unset($_SERVER['OAUTH_STEAM_ENABLED']);
+    config()->set('extensions.OAUTH_STEAM_ENABLED', true);
 });
 
 function fakeSteamUser(string $id): void

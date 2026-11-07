@@ -9,7 +9,6 @@ use App\Models\Server;
 use App\Models\Subuser;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -36,11 +35,15 @@ class ClientController extends ClientApiController
     {
         $user = $request->user();
 
-        // Only eager load the relationships that map to includes the resource honors.
-        $includes = array_values(array_intersect($this->parseIncludes(), ServerData::$availableIncludes));
+        // Eager load what ServerData and its default includes read for every server, the
+        // variables are loaded after paginating with Server::loadVariables().
+        $with = ['node', 'allocation', 'allocations', 'egg.configFrom', 'transfer', 'subusers'];
+        if (in_array('subusers', $this->parseIncludes())) {
+            $with[] = 'subusers.user.roles';
+        }
 
-        /** @var Builder<Model> $query */
-        $query = Server::query()->with(array_merge($includes, ['node']));
+        /** @var Builder<Server> $query */
+        $query = Server::query()->with($with);
 
         // Start the query builder and ensure we eager load any requested relationships from the request.
         $builder = QueryBuilder::for($query)->allowedFilters(
@@ -76,6 +79,8 @@ class ClientController extends ClientApiController
         }
 
         $servers = $builder->paginate(min($request->query('per_page', '50'), 100))->appends($request->query());
+
+        Server::loadVariables($servers->getCollection());
 
         return $this->response->transformWith(ServerData::class)->collection($servers)->toArray();
     }

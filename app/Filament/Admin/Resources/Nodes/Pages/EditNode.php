@@ -81,10 +81,13 @@ class EditNode extends EditRecord
     /** @return array<Action|Actions> */
     protected function getDefaultHeaderActions(): array
     {
+        $hasServers = fn (Node $node) => once(fn () => $node->servers()->exists());
+
         return [
             DeleteAction::make()
-                ->disabled(fn (Node $node) => $node->servers()->count() > 0)
-                ->tooltip(fn (Node $node) => $node->servers()->count() > 0 ? trans('admin/node.node_has_servers') : trans('filament-actions::delete.single.label')),
+                ->disabled($hasServers)
+                ->tooltip(fn (Node $node) => $hasServers($node) ? trans('admin/node.node_has_servers') : trans('filament-actions::delete.single.label')),
+
             Action::make('save')
                 ->hiddenLabel()
                 ->action('save')

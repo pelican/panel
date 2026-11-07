@@ -48,7 +48,7 @@ return [
             'ask_driver' => 'Quel pilote doit être utilisé pour envoyer des emails?',
             'ask_mail_from' => 'Adresse e-mail d\'où doivent provenir les e-mails',
             'ask_mail_name' => 'Nom à partir duquel les e-mails doivent venir',
-            'ask_encryption' => 'Méthode de chiffrement à utiliser',
+            'ask_scheme' => 'Schéma de messagerie',
         ],
     ],
 ];

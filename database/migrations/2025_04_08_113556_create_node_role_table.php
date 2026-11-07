@@ -11,6 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Not recorded yet, so a table left here is from an earlier run that failed halfway.
+        Schema::dropIfExists('node_role');
+
         Schema::create('node_role', function (Blueprint $table) {
             $table->unsignedInteger('node_id');
             $table->unsignedBigInteger('role_id');
