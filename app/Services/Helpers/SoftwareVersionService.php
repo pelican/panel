@@ -10,10 +10,6 @@ class SoftwareVersionService
     public function latestPanelVersionChangelog(): ?string
     {
         $key = 'panel:latest_version_changelog';
-        if (cache()->get($key) === 'error') {
-            cache()->forget($key);
-        }
-
         $changelog = cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
             try {
                 $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/panel/releases/latest')->throw()->json();
@@ -30,10 +26,6 @@ class SoftwareVersionService
     public function latestPanelVersion(): ?string
     {
         $key = 'panel:latest_version';
-        if (cache()->get($key) === 'error') {
-            cache()->forget($key);
-        }
-
         $version = cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
             try {
                 $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/panel/releases/latest')->throw()->json();
@@ -50,10 +42,6 @@ class SoftwareVersionService
     public function latestWingsVersion(): ?string
     {
         $key = 'wings:latest_version';
-        if (cache()->get($key) === 'error') {
-            cache()->forget($key);
-        }
-
         $version = cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
             try {
                 $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/wings/releases/latest')->throw()->json();
