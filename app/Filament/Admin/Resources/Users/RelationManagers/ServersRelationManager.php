@@ -2,36 +2,62 @@
 
 namespace App\Filament\Admin\Resources\Users\RelationManagers;
 
-use App\Enums\SubuserPermission;
-use App\Enums\TablerIcon;
+use App\Enums\ServerState;
+use App\Enums\SuspendAction;
+use App\Filament\Admin\Resources\Eggs\Pages\EditEgg;
 use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
-use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Filament\Components\Actions\ViewConsoleAction;
-use App\Filament\Server\Resources\Subusers\Pages\ListSubusers;
 use App\Models\Server;
+use App\Models\User;
+use App\Services\Servers\SuspensionService;
 use Filament\Actions\Action;
+use Filament\Actions\EditAction;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 
-/**
- * The servers a user can reach as a subuser of someone else's server. Many
- * accounts own no server at all and only exist as subusers: without this list
- * their user page reads as if they had no access anywhere.
- */
-class SubServersRelationManager extends RelationManager
+class ServersRelationManager extends RelationManager
 {
-    protected static string $relationship = 'subServers';
+    protected static string $relationship = 'servers';
 
     public function table(Table $table): Table
     {
+        /** @var User $user */
+        $user = $this->getOwnerRecord();
+
         return $table
-            ->heading(trans('admin/user.subuser_servers'))
+            ->heading(trans('admin/user.servers'))
+            ->headerActions([
+                Action::make('toggle_suspend')
+                    ->authorize(fn () => user()?->can('update server'))
+                    ->hidden(fn () => $user->servers()
+                        ->where(fn (Builder $query) => $query->whereNot('status', ServerState::Suspended)->orWhereNull('status'))
+                        ->count() === 0
+                    )
+
+                    ->label(trans('admin/server.suspend_all'))
+                    ->color('warning')
+                    ->action(function (SuspensionService $suspensionService) use ($user) {
+                        collect($user->servers)->filter(fn ($server) => !$server->isSuspended())
+                            ->each(fn ($server) => $suspensionService->handle($server, SuspendAction::Suspend));
+                    }),
+                Action::make('toggle_unsuspend')
+                    ->authorize(fn () => user()?->can('update server'))
+                    ->hidden(fn () => $user->servers()->where('status', ServerState::Suspended)->count() === 0)
+                    ->label(trans('admin/server.unsuspend_all'))
+                    ->color('primary')
+                    ->action(function (SuspensionService $suspensionService) use ($user) {
+                        collect($user->servers()->get())->filter(fn ($server) => $server->isSuspended())
+                            ->each(fn ($server) => $suspensionService->handle($server, SuspendAction::Unsuspend));
+                    }),
+            ])
             ->modifyQueryUsing(fn (Builder $query) => $query->with([
+                'allocations',
+                'egg',
                 'node',
-                'user',
                 // ViewConsoleAction only looks for the viewer's own subuser.
                 'subusers' => fn ($query) => $query->where('user_id', user()?->id),
             ]))
@@ -41,30 +67,48 @@ class SubServersRelationManager extends RelationManager
                     ->url(fn (Server $server) => user()?->can('update', $server) ? EditServer::getUrl(['record' => $server]) : null)
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('user.username')
-                    ->label(trans('admin/server.owner'))
-                    ->url(fn (Server $server) => user()?->can('update', $server->user) ? EditUser::getUrl(['record' => $server->user]) : null)
-                    ->searchable(),
                 TextColumn::make('node.name')
                     ->label(trans('admin/server.node'))
                     ->url(fn (Server $server) => user()?->can('update', $server->node) ? EditNode::getUrl(['record' => $server->node]) : null)
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('permissions')
-                    ->label(trans('admin/user.permissions'))
-                    ->state(fn (Server $server) => count((array) json_decode($server->getRelationValue('pivot')->permissions ?? '[]', true)))
-                    ->numeric(),
+                TextColumn::make('egg.name')
+                    ->label(trans('admin/server.egg'))
+                    ->url(fn (Server $server) => user()?->can('update', $server->egg) ? EditEgg::getUrl(['record' => $server->egg]) : null)
+                    ->searchable()
+                    ->sortable(),
+                SelectColumn::make('allocation_id')
+                    ->label(trans('admin/server.primary_allocation'))
+                    ->hidden(fn () => !user()?->can('update server')) // TODO: update to policy check (fn (Server $server) --> $server is empty)
+                    ->disabled(fn (Server $server) => $server->allocations->count() <= 1)
+                    ->options(fn (Server $server) => $server->allocations->mapWithKeys(fn ($allocation) => [$allocation->id => $allocation->address]))
+                    ->selectablePlaceholder(fn (Server $server) => $server->allocations->count() <= 1)
+                    ->placeholder(trans('admin/server.none'))
+                    ->sortable(),
+                TextColumn::make('allocation_id_readonly')
+                    ->label(trans('admin/server.primary_allocation'))
+                    ->hidden(fn () => user()?->can('update server')) // TODO: update to policy check (fn (Server $server) --> $server is empty)
+                    ->state(fn (Server $server) => $server->allocation->address ?? trans('admin/server.none')),
+                TextColumn::make('databases_count')
+                    ->counts('databases')
+                    ->label(trans('admin/server.databases'))
+                    ->numeric()
+                    ->sortable()
+                    ->toggleable()
+                    ->toggledHiddenByDefault(),
+                TextColumn::make('backups_count')
+                    ->counts('backups')
+                    ->label(trans('admin/server.backups'))
+                    ->numeric()
+                    ->sortable()
+                    ->toggleable()
+                    ->toggledHiddenByDefault(),
             ])
-            ->emptyStateHeading(trans('admin/user.no_subuser_servers'))
+            ->emptyStateHeading(trans('admin/server.no_servers'))
             ->recordActions([
                 ViewConsoleAction::make(),
-                Action::make('manage_subusers')
-                    ->label(trans('admin/user.manage_subusers'))
-                    ->icon(TablerIcon::Users)
-                    ->iconButton()
-                    ->tooltip(trans('admin/user.manage_subusers'))
-                    ->authorize(fn (Server $server) => user()?->canAccessTenant($server) && user()->can(SubuserPermission::UserRead, $server))
-                    ->url(fn (Server $server) => ListSubusers::getUrl(panel: 'server', tenant: $server)),
+                EditAction::make()
+                    ->url(fn (Server $server) => EditServer::getUrl(['record' => $server], panel: 'admin')),
             ]);
     }
 }
