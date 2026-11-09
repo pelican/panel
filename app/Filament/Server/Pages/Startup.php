@@ -65,6 +65,7 @@ class Startup extends ServerFormPage
                     ->formatStateUsing(fn (Server $server) => $server->startup)
                     ->afterStateUpdated(function ($state, Server $server, Set $set) {
                         abort_unless(user()?->can(SubuserPermission::StartupUpdate, $server), 403);
+                        abort_unless(in_array($state, $server->egg->startup_commands, true), 422);
                         $original = $server->startup;
                         $server->forceFill(['startup' => $state])->saveOrFail();
 
@@ -99,6 +100,7 @@ class Startup extends ServerFormPage
                     ->disabled(fn (Server $server) => !user()?->can(SubuserPermission::StartupDockerImage, $server))
                     ->afterStateUpdated(function ($state, Server $server) {
                         abort_unless(user()?->can(SubuserPermission::StartupDockerImage, $server), 403);
+                        abort_unless(in_array($state, $server->egg->docker_images, true), 422);
                         $original = $server->image;
                         $server->forceFill(['image' => $state])->saveOrFail();
 
