@@ -62,6 +62,16 @@ enum SubuserPermission: string
     case SettingsReinstall = 'settings.reinstall';
     case SettingsChangeIcon = 'settings.change-icon';
 
+    public static function fromPowerSignal(string $signal): ?self
+    {
+        return match ($signal) {
+            'start' => self::ControlStart,
+            'restart' => self::ControlRestart,
+            'stop', 'kill' => self::ControlStop,
+            default => null,
+        };
+    }
+
     /** @return string[] */
     public function split(): array
     {

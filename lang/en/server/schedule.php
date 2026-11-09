@@ -82,6 +82,7 @@ return [
         'first_task' => 'First Task',
         'seconds' => 'Second|Seconds',
         'continue_on_failure' => 'Continue On Failure',
+        'no_permission' => 'You do not have permission to use this task action.',
 
         'actions' => [
             'title' => 'Action',

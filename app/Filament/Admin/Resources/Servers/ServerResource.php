@@ -250,7 +250,7 @@ class ServerResource extends Resource
                                     'lg' => 1,
                                 ])
                                 ->hintAction(
-                                    Action::make('view_install_log')
+                                    Action::make('exclude_view_install_log')
                                         ->label(trans('admin/server.view_install_log'))
                                         //->visible(fn (Server $server) => $server->isFailedInstall())
                                         ->modalHeading('')
