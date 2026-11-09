@@ -11,7 +11,6 @@ use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Filament\Admin\Resources\Users\Pages\ListUsers;
 use App\Filament\Admin\Resources\Users\Pages\ViewUser;
 use App\Filament\Admin\Resources\Users\RelationManagers\ServersRelationManager;
-use App\Filament\Admin\Resources\Users\RelationManagers\SubServersRelationManager;
 use App\Models\ActivityLog;
 use App\Models\ApiKey;
 use App\Models\Role;
@@ -513,7 +512,6 @@ class UserResource extends Resource
     {
         return [
             ServersRelationManager::class,
-            SubServersRelationManager::class,
         ];
     }
 
