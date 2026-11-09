@@ -5,7 +5,6 @@ use App\Enums\ServerState;
 use App\Filament\Admin\Resources\Users\Pages\CreateUser;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Filament\Admin\Resources\Users\RelationManagers\ServersRelationManager;
-use App\Filament\Admin\Resources\Users\RelationManagers\SubServersRelationManager;
 use App\Models\Role;
 use App\Models\Subuser;
 use App\Models\User;
@@ -106,7 +105,7 @@ it('only offers suspend all when the user has unsuspended servers', function () 
         ->assertActionVisible(TestAction::make('toggle_unsuspend')->table());
 });
 
-it('lists the servers a user is a subuser of', function () {
+it('lists the servers a user owns or is a subuser of', function () {
     $user = User::factory()->create();
     $owned = createServerModel(['owner_id' => $user->id]);
     $shared = createServerModel();
@@ -116,17 +115,9 @@ it('lists the servers a user is a subuser of', function () {
     // Another user's access must not show up.
     Subuser::query()->create(['user_id' => User::factory()->create()->id, 'server_id' => $notShared->id, 'permissions' => ['control.console']]);
 
-    livewire(SubServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
-        ->assertCanSeeTableRecords([$shared])
-        ->assertCanNotSeeTableRecords([$owned, $notShared])
-        ->assertTableColumnStateSet('permissions', 2, $shared);
-});
-
-it('shows an empty list for a user who is nobody\'s subuser', function () {
-    $user = User::factory()->create();
-    createServerModel(['owner_id' => $user->id]);
-
-    livewire(SubServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
-        ->assertCountTableRecords(0)
-        ->assertSee(trans('admin/user.no_subuser_servers'));
+    livewire(ServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
+        ->assertCanSeeTableRecords([$owned, $shared])
+        ->assertCanNotSeeTableRecords([$notShared])
+        ->assertTableColumnStateSet('access', trans('admin/server.owner'), $owned)
+        ->assertTableColumnStateSet('access', trans('admin/user.subuser'), $shared);
 });
