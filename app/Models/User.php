@@ -373,10 +373,9 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         return $this->hasMany(Subuser::class);
     }
 
-    /** @return BelongsToMany<Server, $this> */
     public function subServers(): BelongsToMany
     {
-        return $this->belongsToMany(Server::class, 'subusers')->withPivot('permissions');
+        return $this->belongsToMany(Server::class, 'subusers');
     }
 
     /** @return HasMany<ServerUserSettings, $this> */
