@@ -125,4 +125,58 @@ return [
         ],
         'crashed' => 'Server crashed',
     ],
+    'audit' => [
+        'settings' => [
+            'update' => 'Updated <b>:count</b> panel setting|Updated <b>:count</b> panel settings',
+        ],
+        'apiKey' => [
+            'create' => 'Created API key <b>:identifier</b>',
+            'delete' => 'Deleted API key <b>:identifier</b>',
+        ],
+        'backupHost' => [
+            'create' => 'Created backup host <b>:name</b>',
+            'update' => 'Updated backup host <b>:name</b>',
+            'delete' => 'Deleted backup host <b>:name</b>',
+        ],
+        'databaseHost' => [
+            'create' => 'Created database host <b>:name</b>',
+            'update' => 'Updated database host <b>:name</b>',
+            'delete' => 'Deleted database host <b>:name</b>',
+        ],
+        'role' => [
+            'create' => 'Created role <b>:name</b>',
+            'update' => 'Updated role <b>:name</b>',
+            'delete' => 'Deleted role <b>:name</b>',
+        ],
+        'webhook' => [
+            'create' => 'Created webhook <b>:endpoint</b>',
+            'update' => 'Updated webhook <b>:endpoint</b>',
+            'delete' => 'Deleted webhook <b>:endpoint</b>',
+        ],
+        'user' => [
+            'create' => 'Created user <b>:username</b>',
+            'update' => 'Updated user <b>:username</b>',
+            'delete' => 'Deleted user <b>:username</b>',
+        ],
+        'egg' => [
+            'create' => 'Created egg <b>:name</b>',
+            'update' => 'Updated egg <b>:name</b>',
+            'delete' => 'Deleted egg <b>:name</b>',
+        ],
+        'mount' => [
+            'create' => 'Created mount <b>:name</b>',
+            'update' => 'Updated mount <b>:name</b>',
+            'delete' => 'Deleted mount <b>:name</b>',
+        ],
+        'node' => [
+            'create' => 'Created node <b>:name</b>',
+            'update' => 'Updated node <b>:name</b>',
+            'delete' => 'Deleted node <b>:name</b>',
+        ],
+        'server' => [
+            'create' => 'Created server <b>:name</b>',
+            'update' => 'Updated server <b>:name</b>',
+            'delete' => 'Deleted server <b>:name</b>',
+        ],
+    ],
 ];

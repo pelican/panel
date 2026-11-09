@@ -29,12 +29,11 @@ class TransferServerService
         private readonly BackupAdapterService $backupService
     ) {}
 
-    /** @param  string[]  $backup_uuids */ // TODO: add backup uuids to ServerTransfer model
-    private function notify(ServerTransfer $transfer, UnencryptedToken $token, array $backup_uuids = []): void
+    private function notify(ServerTransfer $transfer, UnencryptedToken $token): void
     {
         // Make sure only wings backups of the current server are forwarded in the wings request
         $backups = Backup::where('server_id', $transfer->server_id)
-            ->whereIn('uuid', $backup_uuids)
+            ->whereIn('uuid', $transfer->backup_uuids ?? [])
             ->with('backupHost')
             ->get()
             ->filter(fn (Backup $backup) => $this->backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema)
@@ -82,12 +81,13 @@ class TransferServerService
         $server->validateTransferState();
 
         /** @var ServerTransfer $transfer */
-        $transfer = $this->connection->transaction(function () use ($server, $node_id, $allocation_id, $additional_allocations) {
+        $transfer = $this->connection->transaction(function () use ($server, $node_id, $allocation_id, $additional_allocations, $backup_uuids) {
             // Create a new ServerTransfer entry.
             $transfer = ServerTransfer::create([
                 'server_id' => $server->id,
                 'old_node' => $server->node_id,
                 'new_node' => $node_id,
+                'backup_uuids' => $backup_uuids,
             ]);
 
             if ($server->allocation_id) {
@@ -113,7 +113,7 @@ class TransferServerService
             ->handle($transfer->newNode, $server->uuid);
 
         // Notify the source node of the pending outgoing transfer.
-        $this->notify($transfer, $token, $backup_uuids);
+        $this->notify($transfer, $token);
     }
 
     /**

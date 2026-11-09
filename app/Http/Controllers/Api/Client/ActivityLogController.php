@@ -4,7 +4,8 @@ namespace App\Http\Controllers\Api\Client;
 
 use App\Data\Api\Client\ActivityLogData;
 use App\Http\Requests\Api\Client\ClientApiRequest;
-use App\Models\ActivityLog;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -19,11 +20,11 @@ class ActivityLogController extends ClientApiController
      */
     public function __invoke(ClientApiRequest $request): array
     {
-        $activity = QueryBuilder::for($request->user()->activity())
+        $activity = QueryBuilder::for($request->user()->activity()->visibleEvents())
             ->allowedFilters(AllowedFilter::partial('event'))
             ->allowedSorts('timestamp')
-            ->with('actor')
-            ->whereNotIn('activity_logs.event', ActivityLog::DISABLED_EVENTS)
+            // UserData reads the actor's roles to report root_admin.
+            ->with(['actor' => fn (MorphTo $actor) => $actor->morphWith([User::class => ['roles']])])
             ->paginate(min($request->query('per_page', '25'), 100))
             ->appends($request->query());
 

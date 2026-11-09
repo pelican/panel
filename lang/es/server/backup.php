@@ -12,6 +12,14 @@ return [
         'successful' => 'Completado',
         'failed' => 'Fallido',
     ],
+    'notifications' => [
+        'action' => 'Ajustes de notificaciones',
+        'toggle_manual' => 'Notificaciones de copia de seguridad manual',
+        'helper_manual' => 'Recibir una notificación y correo electrónico cuando una copia de seguridad creada manualmente para este servidor se complete o falle.',
+        'toggle_scheduled' => 'Notificaciones de copias de seguridad programadas',
+        'helper_scheduled' => 'Recibir una notificación y correo electrónico cuando una copia de seguridad programada de este servidor se complete o falle.',
+        'saved' => 'Ajustes de notificaciones actualizados',
+    ],
     'actions' => [
         'create' => [
             'title' => 'Crear copia de seguridad',

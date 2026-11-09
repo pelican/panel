@@ -6,6 +6,10 @@ return [
     'installation_failed' => 'Instalace serveru selhala',
     'reinstallation_completed' => 'Reinstalace serveru dokončena',
     'reinstallation_failed' => 'Reinstalace serveru selhala',
+    'backup_completed' => 'Záloha dokončena',
+    'backup_failed' => 'Záloha selhala',
+    'backup_body' => 'Záloha ":name" pro server ":server"',
+    'view_backups' => 'Zobrazit zálohy',
     'failed' => 'Selhalo',
     'user_added' => [
         'title' => 'Přidáno na server',

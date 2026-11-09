@@ -14,6 +14,7 @@ use App\Http\Requests\Api\Application\Allocations\GetAllocationsRequest;
 use App\Http\Requests\Api\Application\Allocations\StoreAllocationRequest;
 use App\Models\Allocation;
 use App\Models\Node;
+use App\Models\Server;
 use App\Services\Allocations\AssignmentService;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Database\Eloquent\Builder;
@@ -42,7 +43,13 @@ class AllocationController extends ApplicationApiController
      */
     public function index(GetAllocationsRequest $request, Node $node): array
     {
-        $allocations = QueryBuilder::for($node->allocations())
+        $includes = $this->readableIncludes(['node' => Node::RESOURCE_NAME, 'server' => Server::RESOURCE_NAME]);
+        $with = in_array('server', $includes) ? ['server'] : [];
+        if (in_array('node', $includes)) {
+            $with['node'] = fn ($query) => $query->withAllocatedResources();
+        }
+
+        $allocations = QueryBuilder::for($node->allocations()->with($with))
             ->allowedFilters(
                 AllowedFilter::exact('ip'),
                 AllowedFilter::exact('port'),
@@ -56,6 +63,10 @@ class AllocationController extends ApplicationApiController
                 }),
             )
             ->paginate($request->query('per_page') ?? 50);
+
+        if (in_array('server', $includes)) {
+            Server::loadVariables($allocations->getCollection()->pluck('server')->filter());
+        }
 
         return $this->response->collection($allocations)
             ->transformWith(AllocationData::class)

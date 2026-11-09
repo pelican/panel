@@ -6,6 +6,7 @@ return [
     'delete' => '削除',
     'error_something_went_wrong_generating_the_passkey' => 'パスキーの生成中にエラーが発生しました',
     'invalid' => '無効なパスキー',
+    'invalid_origin' => 'パスキーは :domain に紐づけられているため、そのアドレスでパネルを開いた場合にのみ利用できます。',
     'last_used' => '最終使用日時',
     'name' => '名前',
     'name_placeholder' => 'マイパスキー',

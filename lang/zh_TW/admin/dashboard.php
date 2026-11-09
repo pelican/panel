@@ -17,7 +17,12 @@ return [
         'intro-update-available' => [
             'heading' => '有可用的更新',
             'content' => ':latestVersion 現已推出！請閱讀我們的文件來更新您的面板。',
+            'content_container' => ':latestVersion 目前已經可以使用！取得新的映像檔並重新建立容器來更新你的面板。',
             'button_changelog' => '最新消息',
+        ],
+        'intro-version-unavailable' => [
+            'heading' => '無法檢查版本',
+            'content' => '目前使用的版本為 :version。無法從 GitHub 獲取最新版本，因此無法確認可用的更新。',
         ],
         'intro-no-update' => [
             'heading' => '您的面板已是最新版本',

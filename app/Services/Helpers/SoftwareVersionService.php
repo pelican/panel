@@ -82,6 +82,11 @@ class SoftwareVersionService
         return $version === 'develop' || $latest === null || version_compare($version, $latest, '>=');
     }
 
+    public function isCompatibleWings(string $version): bool
+    {
+        return $version === 'develop' || version_compare($version, config('panel.wings.min_version'), '>=');
+    }
+
     /**
      * The version for display purposes, e.g. "1.2.3" or "canary (0a1b2c3)". Never use this for comparisons.
      */

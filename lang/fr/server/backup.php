@@ -12,6 +12,14 @@ return [
         'successful' => 'Succès',
         'failed' => 'Échec',
     ],
+    'notifications' => [
+        'action' => 'Paramètres de notification',
+        'toggle_manual' => 'Notifications de sauvegarde manuelle',
+        'helper_manual' => 'Recevoir une notification et un e-mail lorsqu\'une sauvegarde créée manuellement pour ce serveur se termine ou échoue.',
+        'toggle_scheduled' => 'Notifications de sauvegarde planifiées',
+        'helper_scheduled' => 'Recevoir une notification et un courriel lorsqu\'une sauvegarde planifiée de ce serveur se termine ou échoue.',
+        'saved' => 'Paramètres de notification mis à jour',
+    ],
     'actions' => [
         'create' => [
             'title' => 'Créer une sauvegarde',

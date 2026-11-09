@@ -6,6 +6,7 @@ return [
     'delete' => 'Eliminar',
     'error_something_went_wrong_generating_the_passkey' => 'Algo salió mal al generar la llave de acceso',
     'invalid' => 'Llave de acceso inválida',
+    'invalid_origin' => 'Las claves de acceso están vinculadas a :domain, así que solo funcionan cuando el panel está abierto en esa dirección.',
     'last_used' => 'Último uso',
     'name' => 'Nombre',
     'name_placeholder' => 'Mi llave de acceso',

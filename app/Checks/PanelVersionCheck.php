@@ -33,7 +33,7 @@ class PanelVersionCheck extends Check
 
         return $isLatest
             ? $result->ok(trans('admin/health.results.panelversion.ok'))
-            : $result->failed(trans('admin/health.results.panelversion.failed', [
+            : $result->warning(trans('admin/health.results.panelversion.failed', [
                 'currentVersion' => $currentVersion,
                 'latestVersion' => $latestVersion,
             ]));

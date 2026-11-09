@@ -112,6 +112,12 @@ return [
     ],
 
     /*
+     * Secret for the /health JSON endpoint used by external monitors. The endpoint is disabled
+     * while this is empty. Send it as a bearer token or the ?token= query parameter.
+     */
+    'endpoint_secret' => env('HEALTH_ENDPOINT_SECRET'),
+
+    /*
      * You can set a theme for the local results page
      *
      * - light: light mode

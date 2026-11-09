@@ -11,4 +11,5 @@ return [
     'no_configuration' => 'Keine zusätzliche Konfiguration gebraucht',
     'no_backup_hosts' => 'Keine Sicherungssysteme',
     'local_backups_only' => 'Alle Sicherungen werden lokal auf dem jeweiligen Knoten erstellt',
+    'delete_help' => 'Der Backup-Host hat Backups',
 ];

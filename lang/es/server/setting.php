@@ -41,6 +41,18 @@ return [
             'password_body' => 'Tu contraseña SFTP es la misma que la contraseña que usas para acceder a este panel.',
         ],
     ],
+    'notifications' => [
+        'title' => 'Notificaciones',
+        'saved' => 'Ajustes de notificaciones actualizados',
+        'backup_manual' => [
+            'label' => 'Notificaciones de copia de seguridad manual',
+            'helper' => 'Recibir una notificación y correo electrónico cuando una copia de seguridad creada manualmente para este servidor se complete o falle.',
+        ],
+        'backup_scheduled' => [
+            'label' => 'Notificaciones de copias de seguridad programadas',
+            'helper' => 'Recibir una notificación y correo electrónico cuando una copia de seguridad programada de este servidor se complete o falle.',
+        ],
+    ],
     'reinstall' => [
         'title' => 'Reinstalar servidor',
         'body' => 'La reinstalación de tu servidor lo detendrá y luego volverá a ejecutar el script de instalación que lo configuró inicialmente.',

@@ -48,6 +48,7 @@ use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Colors\Color;
 use Filament\Tables\Columns\IconColumn;
@@ -409,6 +410,8 @@ class UserResource extends Resource
                                             if ($apiKey) {
                                                 $apiKey->delete();
 
+                                                // The audit:apiKey.delete row stays out of the owner's feed, so
+                                                // this is the one they see, same as deleting it themselves.
                                                 Activity::event('user:api-key.delete')
                                                     ->actor(user())
                                                     ->subject($user)
@@ -433,7 +436,7 @@ class UserResource extends Resource
                             TextEntry::make('no_api_keys')
                                 ->state(trans('profile.no_api_keys'))
                                 ->hiddenLabel()
-                                ->visible(fn (User $user) => !$user->apiKeys()->exists()),
+                                ->visible(fn (Get $get) => blank($get('api_keys'))),
                         ]),
                     Section::make(trans('profile.ssh_keys'))->columnSpan(2)
                         ->schema([
@@ -477,7 +480,7 @@ class UserResource extends Resource
                             TextEntry::make('no_ssh_keys')
                                 ->state(trans('profile.no_ssh_keys'))
                                 ->hiddenLabel()
-                                ->visible(fn (User $user) => !$user->sshKeys()->exists()),
+                                ->visible(fn (Get $get) => blank($get('ssh_keys'))),
                         ]),
                 ]),
             Tab::make('activity')
@@ -492,8 +495,9 @@ class UserResource extends Resource
                         ->deletable(false)
                         ->addable(false)
                         ->relationship(null, function (Builder $query) {
-                            $query->orderByDesc('timestamp');
+                            $query->with('actor')->orderByDesc('timestamp')->limit(50);
                         })
+
                         ->schema([
                             TextEntry::make('log')
                                 ->hiddenLabel()

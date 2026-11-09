@@ -106,7 +106,7 @@ return [
     'misc' => [
         'auto_allocation' => [
             'title' => 'Création automatique de l\'allocation',
-            'helper' => 'Activer/désactiver si les utilisateurs peuvent créer des allocations via la zone client.',
+            'helper' => 'Activer/désactiver si les utilisateurs peuvent créer des allocations via la zone client. Les serveurs ont d\'abord besoin d\'une allocation primaire.',
             'question' => 'Autoriser les utilisateurs à créer des allocations ?',
             'create_new' => 'Créer de nouvelles allocations si aucune n\'est disponible ?',
             'create_new_help' => 'Lorsqu\'elle est activée, cette option crée de nouvelles affectations. Lorsqu\'elle est désactivée, elle n\'attribue que des ressources issues d\'allocations non attribuées existantes. Les deux options tiennent compte de la plage de ports ci-dessous.',

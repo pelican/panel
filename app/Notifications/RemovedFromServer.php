@@ -26,6 +26,7 @@ class RemovedFromServer extends Notification implements ShouldQueue
         $locale = $notifiable->language ?? 'en';
 
         return (new MailMessage())
+            ->subject(trans('mail.removed_from_server.subject', locale: $locale))
             ->error()
             ->greeting(trans('mail.greeting', ['name' => $notifiable->username], $locale))
             ->line(trans('mail.removed_from_server.body', locale: $locale))

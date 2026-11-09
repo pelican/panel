@@ -17,7 +17,12 @@ return [
         'intro-update-available' => [
             'heading' => 'Update verfügbar',
             'content' => ':latestVersion ist jetzt verfügbar! Lesen Sie unsere Dokumentation, um Ihr Panel zu aktualisieren.',
+            'content_container' => ':latestVersion ist jetzt verfügbar! Ziehen Sie das neueste Abbild und erstellen Sie den Container neu, für ein Panel update.',
             'button_changelog' => 'Was ist neu?',
+        ],
+        'intro-version-unavailable' => [
+            'heading' => 'Versionsprüfung nicht verfügbar',
+            'content' => 'Sie verwenden derzeit :version. Die neueste Version konnte nicht von GitHub abgerufen werden. Es ist also unbekannt, ob ein Update verfügbar ist.',
         ],
         'intro-no-update' => [
             'heading' => 'Ihr Panel ist aktuell',

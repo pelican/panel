@@ -18,6 +18,10 @@ return new class extends Migration
             });
         }
 
+        if (!Schema::hasColumn('servers', 'oom_disabled')) {
+            return;
+        }
+
         DB::table('servers')->select(['id', 'oom_disabled'])->cursor()->each(function ($server) {
             DB::table('servers')->where('id', $server->id)->update(['oom_killer' => !$server->oom_disabled]);
         });

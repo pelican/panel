@@ -9,6 +9,9 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Not recorded yet, so a table left here is from an earlier run that failed halfway.
+        Schema::dropIfExists('server_user_settings');
+
         Schema::create('server_user_settings', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('user_id');

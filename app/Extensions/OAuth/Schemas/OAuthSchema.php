@@ -28,8 +28,8 @@ abstract class OAuthSchema implements OAuthSchemaInterface
         $id = Str::upper($this->getId());
 
         return [
-            'client_id' => env("OAUTH_{$id}_CLIENT_ID"),
-            'client_secret' => env("OAUTH_{$id}_CLIENT_SECRET"),
+            'client_id' => config("extensions.OAUTH_{$id}_CLIENT_ID"),
+            'client_secret' => config("extensions.OAUTH_{$id}_CLIENT_SECRET"),
         ];
     }
 
@@ -49,7 +49,7 @@ abstract class OAuthSchema implements OAuthSchemaInterface
                 ->password()
                 ->revealable()
                 ->autocomplete(false)
-                ->default(env("OAUTH_{$id}_CLIENT_ID")),
+                ->default(config("extensions.OAUTH_{$id}_CLIENT_ID")),
             TextInput::make("OAUTH_{$id}_CLIENT_SECRET")
                 ->label(trans('admin/setting.oauth.client_secret'))
                 ->placeholder(trans('admin/setting.oauth.client_secret'))
@@ -58,7 +58,7 @@ abstract class OAuthSchema implements OAuthSchemaInterface
                 ->password()
                 ->revealable()
                 ->autocomplete(false)
-                ->default(env("OAUTH_{$id}_CLIENT_SECRET")),
+                ->default(config("extensions.OAUTH_{$id}_CLIENT_SECRET")),
             Toggle::make("OAUTH_{$id}_SHOULD_CREATE_MISSING_USERS")
                 ->label(trans('admin/setting.oauth.create_missing_users'))
                 ->columnSpan(2)
@@ -69,7 +69,7 @@ abstract class OAuthSchema implements OAuthSchemaInterface
                 ->offColor('danger')
                 ->formatStateUsing(fn ($state) => (bool) $state)
                 ->afterStateUpdated(fn ($state, Set $set) => $set("OAUTH_{$id}_SHOULD_CREATE_MISSING_USERS", (bool) $state))
-                ->default(env("OAUTH_{$id}_SHOULD_CREATE_MISSING_USERS")),
+                ->default(config("extensions.OAUTH_{$id}_SHOULD_CREATE_MISSING_USERS")),
             Toggle::make("OAUTH_{$id}_SHOULD_LINK_MISSING_USERS")
                 ->label(trans('admin/setting.oauth.link_missing_users'))
                 ->columnSpan(2)
@@ -80,7 +80,7 @@ abstract class OAuthSchema implements OAuthSchemaInterface
                 ->offColor('danger')
                 ->formatStateUsing(fn ($state) => (bool) $state)
                 ->afterStateUpdated(fn ($state, Set $set) => $set("OAUTH_{$id}_SHOULD_LINK_MISSING_USERS", (bool) $state))
-                ->default(env("OAUTH_{$id}_SHOULD_LINK_MISSING_USERS")),
+                ->default(config("extensions.OAUTH_{$id}_SHOULD_LINK_MISSING_USERS")),
         ];
     }
 
@@ -120,20 +120,20 @@ abstract class OAuthSchema implements OAuthSchemaInterface
 
     public function isEnabled(): bool
     {
-        return (bool) env($this->getConfigKey(), false);
+        return (bool) config("extensions.{$this->getConfigKey()}", false);
     }
 
     public function shouldCreateMissingUser(OAuthUser $user): bool
     {
         $id = Str::upper($this->getId());
 
-        return (bool) env("OAUTH_{$id}_SHOULD_CREATE_MISSING_USERS", false);
+        return (bool) config("extensions.OAUTH_{$id}_SHOULD_CREATE_MISSING_USERS", false);
     }
 
     public function shouldLinkMissingUser(User $user, OAuthUser $oauthUser): bool
     {
         $id = Str::upper($this->getId());
 
-        return (bool) env("OAUTH_{$id}_SHOULD_LINK_MISSING_USERS", false);
+        return (bool) config("extensions.OAUTH_{$id}_SHOULD_LINK_MISSING_USERS", false);
     }
 }

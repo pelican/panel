@@ -136,7 +136,7 @@ class SftpAuthenticationController extends Controller
      */
     protected function validateSftpAccess(User $user, Server $server): void
     {
-        if ($user->cannot('update server', $server) && $server->owner_id !== $user->id) {
+        if ($user->cannot('update', $server) && $server->owner_id !== $user->id) {
             $permissions = $this->permissions->handle($server, $user);
 
             if (!in_array(SubuserPermission::FileSftp->value, $permissions)) {

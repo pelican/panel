@@ -26,6 +26,7 @@ class AccountCreated extends Notification implements ShouldQueue
         $locale = $notifiable->language ?? 'en';
 
         $message = (new MailMessage())
+            ->subject(trans('mail.account_created.subject', locale: $locale))
             ->greeting(trans('mail.greeting', ['name' => $notifiable->username], $locale))
             ->line(trans('mail.account_created.body', ['app' => config('app.name')], $locale))
             ->line(trans('mail.account_created.username', ['username' => $notifiable->username], $locale))

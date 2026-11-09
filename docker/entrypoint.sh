@@ -34,7 +34,10 @@ if [ -f /pelican-data/.env ]; then
     # strip quotes and carriage returns so values from quoted or
     # Windows-edited .env files export cleanly
     export "$(echo "$LINE" | tr -d "\r\"'")"
+    # tell the panel this came from .env, so it isn't treated as container env and locked
+    PANEL_ENV_FROM_FILE="${PANEL_ENV_FROM_FILE:-} ${VAR}"
   done
+  export PANEL_ENV_FROM_FILE
 else
   echo ".env vars don't exist."
   # webroot .env is symlinked to this path

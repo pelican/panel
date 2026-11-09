@@ -22,7 +22,7 @@ RUN composer install --no-dev --no-interaction --no-autoloader --no-scripts
 # ================================
 # Stage 1-2: Yarn Install
 # ================================
-FROM --platform=$TARGETOS/$TARGETARCH node:22-alpine AS yarn
+FROM --platform=$BUILDPLATFORM node:22-alpine AS yarn
 
 WORKDIR /build
 
@@ -45,7 +45,7 @@ RUN composer dump-autoload --optimize
 # ================================
 # Stage 2-2: Build Frontend Assets
 # ================================
-FROM --platform=$TARGETOS/$TARGETARCH yarn AS yarnbuild
+FROM --platform=$BUILDPLATFORM yarn AS yarnbuild
 
 WORKDIR /build
 

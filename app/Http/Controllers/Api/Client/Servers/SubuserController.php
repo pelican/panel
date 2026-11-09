@@ -47,7 +47,7 @@ class SubuserController extends ClientApiController
      */
     public function index(GetSubuserRequest $request, Server $server): array
     {
-        return $this->response->collection($server->subusers)
+        return $this->response->collection($server->subusers->loadMissing('user.roles'))
             ->transformWith(SubuserData::class)
             ->toArray();
     }

@@ -239,10 +239,11 @@ class ServerResource extends Resource
                             ToggleButtons::make('condition')
                                 ->label(trans('admin/server.server_status'))
                                 ->formatStateUsing(fn (Server $server) => $server->condition)
-                                ->options(fn ($state) => [$state->value => $state->getLabel()])
-                                ->colors(fn ($state) => [$state->value => $state->getColor()])
-                                ->icons(fn ($state) => [$state->value => $state->getIcon()])
+                                ->options(fn (Server $server) => [$server->condition->value => $server->condition->getLabel()])
+                                ->colors(fn (Server $server) => [$server->condition->value => $server->condition->getColor()])
+                                ->icons(fn (Server $server) => [$server->condition->value => $server->condition->getIcon()])
                                 ->stateCast(new ServerConditionStateCast())
+                                ->dehydrated(false)
                                 ->columnSpan([
                                     'default' => 2,
                                     'sm' => 1,
@@ -772,7 +773,7 @@ class ServerResource extends Resource
                                 $server->ensureVariablesExist();
                             }
 
-                            return $query->orderByPowerJoins('variable.sort');
+                            return $query->with('variable')->orderByPowerJoins('variable.sort');
                         })
                         ->grid()
                         ->mutateRelationshipDataBeforeSaveUsing(function (array $data): array {
@@ -929,7 +930,7 @@ class ServerResource extends Resource
                                                     $selectedBackupUuids = Arr::get($data, 'backups', []);
                                                     $transfer->handle($server, Arr::get($data, 'node_id'), Arr::get($data, 'allocation_id'), Arr::get($data, 'allocation_additional', []), $selectedBackupUuids);
 
-                                                    $server->backups
+                                                    $server->loadMissing('backups.backupHost')->backups
                                                         ->whereNotIn('uuid', $selectedBackupUuids)
                                                         ->each(function ($backup) use ($backupService) {
                                                             $schema = $backupService->get($backup->backupHost->schema);
@@ -1035,13 +1036,13 @@ class ServerResource extends Resource
                     CheckboxList::make('backups')
                         ->label(trans('admin/server.backups'))
                         ->bulkToggleable()
-                        ->options(fn (Server $server) => $server->backups->filter(fn ($backup) => $backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema)->mapWithKeys(fn ($backup) => [$backup->uuid => $backup->name]))
-                        ->columns(fn (Server $record) => (int) ceil($record->backups->filter(fn ($backup) => $backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema)->count() / 4)),
+                        ->options(fn (Server $server) => $server->loadMissing('backups.backupHost')->backups->filter(fn ($backup) => $backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema)->mapWithKeys(fn ($backup) => [$backup->uuid => $backup->name]))
+                        ->columns(fn (Server $record) => (int) ceil($record->loadMissing('backups.backupHost')->backups->filter(fn ($backup) => $backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema)->count() / 4)),
                     Text::make('backup_helper')
                         ->columnSpanFull()
                         ->content(trans('admin/server.warning_backups')),
                 ])
-                ->hidden(fn (Server $server, BackupAdapterService $backupService) => $server->backups->filter(fn ($backup) => $backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema)->count() === 0),
+                ->hidden(fn (Server $server, BackupAdapterService $backupService) => $server->loadMissing('backups.backupHost')->backups->filter(fn ($backup) => $backupService->get($backup->backupHost->schema) instanceof WingsBackupSchema)->count() === 0),
         ];
     }
 }

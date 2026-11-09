@@ -2,9 +2,13 @@
 
 namespace App\Tests\Integration\Installer;
 
+use App\Jobs\InstallEgg;
 use App\Livewire\Installer\PanelInstaller;
 use App\Livewire\Installer\Steps\DatabaseStep;
 use App\Tests\Integration\IntegrationTestCase;
+use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use ReflectionMethod;
 
@@ -96,5 +100,43 @@ class PanelInstallerTest extends IntegrationTestCase
         $this->assertSame('pelican-password', $resolver->invoke(null, 'mariadb', ''));
         $this->assertSame('pelican-password', $resolver->invoke(null, 'mariadb', null));
         $this->assertSame('entered-password', $resolver->invoke(null, 'mariadb', 'entered-password'));
+    }
+
+    public function test_no_egg_notification_is_sent_when_no_eggs_are_selected(): void
+    {
+        config()->set('app.installed', false);
+
+        Http::fake();
+        Queue::fake();
+
+        Livewire::test(PanelInstaller::class)
+            ->set('data.eggs', ['minecraft' => [], 'rust' => []])
+            ->instance()
+            ->installEggs();
+
+        Queue::assertNothingPushed();
+        Notification::assertNotNotified(trans('installer.egg.background_install_started'));
+    }
+
+    public function test_selected_eggs_are_queued_and_counted_in_the_notification(): void
+    {
+        config()->set('app.installed', false);
+
+        Http::fake();
+        Queue::fake();
+
+        Livewire::test(PanelInstaller::class)
+            ->set('data.eggs', ['minecraft' => ['https://eggs.example.test/paper.json', 'https://eggs.example.test/forge.json'], 'rust' => []])
+            ->instance()
+            ->installEggs();
+
+        Queue::assertPushed(InstallEgg::class, 2);
+        Notification::assertNotified(
+            Notification::make()
+                ->title(trans('installer.egg.background_install_started'))
+                ->body(trans('installer.egg.background_install_description', ['count' => 2]))
+                ->success()
+                ->persistent()
+        );
     }
 }

@@ -9,33 +9,42 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('nodes', function (Blueprint $table) {
-            $table->text('tags')->nullable();
-        });
-
-        DB::table('nodes')->update(['tags' => '[]']);
-
-        $nodesWithLocations = DB::table('nodes')
-            ->select(['nodes.id', 'locations.short'])
-            ->join('locations', 'locations.id', '=', 'nodes.location_id')
-            ->get();
-
-        foreach ($nodesWithLocations as $node) {
-            DB::table('nodes')
-                ->where('id', $node->id)
-                ->update(['tags' => json_encode([$node->short])]);
+        // Each step checks whether it already ran, so a migration that failed halfway can be run again.
+        if (!Schema::hasColumn('nodes', 'tags')) {
+            Schema::table('nodes', function (Blueprint $table) {
+                $table->text('tags')->nullable();
+            });
         }
 
-        Schema::table('nodes', function (Blueprint $table) {
-            $table->dropForeign(['location_id']);
-            $table->dropColumn('location_id');
-        });
+        if (Schema::hasColumn('nodes', 'location_id')) {
+            DB::table('nodes')->update(['tags' => '[]']);
 
-        Schema::drop('locations');
+            $nodesWithLocations = DB::table('nodes')
+                ->select(['nodes.id', 'locations.short'])
+                ->join('locations', 'locations.id', '=', 'nodes.location_id')
+                ->get();
 
-        Schema::table('api_keys', function (Blueprint $table) {
-            $table->dropColumn('r_locations');
-        });
+            foreach ($nodesWithLocations as $node) {
+                DB::table('nodes')
+                    ->where('id', $node->id)
+                    ->update(['tags' => json_encode([$node->short])]);
+            }
+
+            Schema::table('nodes', function (Blueprint $table) {
+                if (in_array(['location_id'], array_column(Schema::getForeignKeys('nodes'), 'columns'))) {
+                    $table->dropForeign(['location_id']);
+                }
+                $table->dropColumn('location_id');
+            });
+        }
+
+        Schema::dropIfExists('locations');
+
+        if (Schema::hasColumn('api_keys', 'r_locations')) {
+            Schema::table('api_keys', function (Blueprint $table) {
+                $table->dropColumn('r_locations');
+            });
+        }
     }
 
     // Not really reversible, but...

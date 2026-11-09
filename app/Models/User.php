@@ -164,6 +164,9 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
      */
     protected $hidden = ['password', 'remember_token', 'mfa_app_secret', 'mfa_app_recovery_codes', 'oauth'];
 
+    /** @var array<string, int[]|null> */
+    protected array $restrictedNodeIdsCache = [];
+
     /**
      * Default values for specific fields in the database.
      */
@@ -294,6 +297,8 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
     /**
      * Returns all the activity logs where this user is the subject — not to
      * be confused by activity logs where this user is the _actor_.
+     *
+     * @return MorphToMany<ActivityLog, $this>
      */
     public function activity(): MorphToMany
     {
@@ -340,13 +345,28 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
             return Node::query();
         }
 
-        // Check if there are no restrictions from any role
-        $roleIds = $this->roles()->pluck('id');
-        if (!NodeRole::whereIn('role_id', $roleIds)->exists()) {
-            return Node::query();
+        $nodeIds = $this->restrictedNodeIds();
+
+        return $nodeIds === null ? Node::query() : Node::whereIn('id', $nodeIds);
+    }
+
+    /**
+     * Node ids the user's roles are limited to, or null when no role restricts nodes.
+     * Cached per role set, since policies call this once per row.
+     *
+     * @return int[]|null
+     */
+    protected function restrictedNodeIds(): ?array
+    {
+        $roleIds = $this->roles->pluck('id')->sort()->values()->all();
+        $key = implode(',', $roleIds);
+
+        if (!array_key_exists($key, $this->restrictedNodeIdsCache)) {
+            $nodeIds = NodeRole::whereIn('role_id', $roleIds)->distinct()->pluck('node_id')->all();
+            $this->restrictedNodeIdsCache[$key] = $nodeIds === [] ? null : $nodeIds;
         }
 
-        return Node::whereHas('roles', fn (Builder $builder) => $builder->whereIn('roles.id', $roleIds));
+        return $this->restrictedNodeIdsCache[$key];
     }
 
     public function subusers(): HasMany
@@ -409,7 +429,12 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
 
     protected function hasPermission(Server $server, string $permission = ''): bool
     {
-        if ($this->canned('update', $server) || $server->owner_id === $this->id) {
+        if ($server->owner_id === $this->id) {
+            return true;
+        }
+
+        // Admins with "update server" get every permission. This is the expensive check, so share it across permissions.
+        if (Context::remember("users.$this->id.servers.$server->id:update", fn () => $this->canned('update', $server))) {
             return true;
         }
 
@@ -470,7 +495,7 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
 
     public function isAdmin(): bool
     {
-        return $this->isRootAdmin() || ($this->roles()->count() >= 1 && $this->getAllPermissions()->count() >= 1);
+        return $this->isRootAdmin() || ($this->roles->isNotEmpty() && $this->getAllPermissions()->count() >= 1);
     }
 
     public function canAccessPanel(Panel $panel): bool
@@ -510,7 +535,9 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
 
         // Make sure the user can only target accessible nodes
         if ($model instanceof Node) {
-            return $this->accessibleNodes()->where('id', $model->id)->exists();
+            $nodeIds = $this->restrictedNodeIds();
+
+            return $nodeIds === null || in_array($model->id, $nodeIds);
         }
 
         return false;
@@ -518,7 +545,8 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
 
     public function getTenants(Panel $panel): array|Collection
     {
-        return $this->accessibleServers()->get();
+        // The tenant switcher reads each server's egg icon.
+        return $this->accessibleServers()->with('egg')->get();
     }
 
     public function canAccessTenant(Model $tenant): bool

@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Environment;
 
 use App\Exceptions\PanelException;
+use App\Helpers\ProcessEnv;
 use App\Traits\EnvironmentWriterTrait;
 use Illuminate\Console\Command;
 
@@ -43,7 +44,8 @@ class EmailSettingsCommand extends Command
                 'mandrill' => 'Mandrill',
                 'postmark' => 'Postmark',
             ],
-            env('MAIL_MAILER', env('MAIL_DRIVER', 'smtp')),
+            // config/mail.php falls back to log when MAIL_MAILER is unset, but this command sets up real delivery
+            config('mail.default') === 'log' ? 'smtp' : config('mail.default'),
         );
 
         $method = 'setup' . studly_case($this->variables['MAIL_MAILER']) . 'DriverVariables';
@@ -61,7 +63,11 @@ class EmailSettingsCommand extends Command
             config('mail.from.name')
         );
 
-        $this->writeToEnvironment($this->variables);
+        foreach (array_keys(ProcessEnv::only($this->variables)) as $key) {
+            $this->warn(trans('command/messages.environment.env_locked', ['key' => $key]));
+        }
+
+        $this->writeToEnvironment(ProcessEnv::except($this->variables));
 
         $this->call('queue:restart');
 

@@ -1,10 +1,13 @@
 <?php
 
 use App\Enums\RolePermissionModels;
+use App\Extensions\BackupAdapter\Schemas\S3BackupSchema;
 use App\Filament\Admin\Resources\BackupHosts\Pages\CreateBackupHost;
 use App\Filament\Admin\Resources\BackupHosts\Pages\EditBackupHost;
 use App\Models\BackupHost;
 use App\Models\Role;
+use Aws\MockHandler;
+use Aws\Result;
 use Filament\Actions\DeleteAction;
 use Filament\Facades\Filament;
 use Spatie\Permission\Models\Permission;
@@ -75,3 +78,41 @@ it('non root admin without permission cannot create backup hosts', function () {
     $this->actingAs($user);
     livewire(CreateBackupHost::class)->assertForbidden();
 });
+
+it('stores the presigned requests toggle on an s3 backup host', function () {
+    livewire(CreateBackupHost::class)
+        ->fillForm([
+            'name' => 'Hetzner Host',
+            'schema' => 's3',
+            'configuration.region' => 'fsn1',
+            'configuration.key' => 'test-key',
+            'configuration.secret' => 'test-secret',
+            'configuration.bucket' => 'test-bucket',
+            'configuration.endpoint' => 'https://fsn1.your-objectstorage.com',
+            'configuration.use_presigned_requests' => true,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect(BackupHost::where('name', 'Hetzner Host')->firstOrFail()->configuration['use_presigned_requests'])->toBeTrue();
+});
+
+it('signs s3 requests with query string auth only when presigned requests are enabled', function (bool $presigned) {
+    $backupHost = BackupHost::factory()->make(['schema' => 's3', 'configuration' => [
+        'region' => 'us-east-1',
+        'key' => 'test-key',
+        'secret' => 'test-secret',
+        'bucket' => 'test-bucket',
+        'endpoint' => 'https://s3.example.com',
+        'use_presigned_requests' => $presigned,
+    ]]);
+
+    $client = (fn () => $this->createClient($backupHost))->call(app(S3BackupSchema::class));
+    $client->getHandlerList()->setHandler($mock = new MockHandler([new Result()]));
+
+    $client->deleteObject(['Bucket' => 'test-bucket', 'Key' => 'backup.tar.gz']);
+
+    $request = $mock->getLastRequest();
+    expect(str_contains($request->getUri()->getQuery(), 'X-Amz-Signature='))->toBe($presigned)
+        ->and($request->hasHeader('Authorization'))->toBe(!$presigned);
+})->with([true, false]);
