@@ -9,7 +9,7 @@
         "ext-mbstring": "*",
         "ext-pdo": "*",
         "ext-zip": "*",
-        "aws/aws-sdk-php": "^3.402",
+        "aws/aws-sdk-php": "^3.403",
         "calebporzio/sushi": "^2.5",
         "charrafimed/global-search-modal": "^5.0",
         "dedoc/scramble": "^0.13",
@@ -35,8 +35,8 @@
         "socialiteproviders/discord": "^4.2",
         "socialiteproviders/steam": "^4.6",
         "spatie/laravel-data": "^4.23",
-        "spatie/laravel-health": "^1.40",
-        "spatie/laravel-permission": "^8.3",
+        "spatie/laravel-health": "^1.41",
+        "spatie/laravel-permission": "^8.5",
         "spatie/laravel-query-builder": "^7.3",
         "spatie/temporary-directory": "^2.4",
         "symfony/http-client": "^7.4",
@@ -46,7 +46,7 @@
         "webmozart/assert": "^2.5"
     },
     "require-dev": {
-        "barryvdh/laravel-ide-helper": "^3.7",
+        "barryvdh/laravel-ide-helper": "^3.8",
         "fakerphp/faker": "^1.24",
         "larastan/larastan": "^3.10",
         "laravel/pail": "^1.2.7",
