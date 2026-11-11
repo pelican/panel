@@ -9,62 +9,44 @@ class SoftwareVersionService
 {
     public function latestPanelVersionChangelog(): ?string
     {
-        $key = 'panel:latest_version_changelog';
-        if (cache()->get($key) === 'error') {
-            cache()->forget($key);
-        }
-
-        $changelog = cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
-            try {
-                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/panel/releases/latest')->throw()->json();
-
-                return $response['body'];
-            } catch (Exception) {
-                return 'error';
-            }
-        });
-
-        return $changelog === 'error' ? null : $changelog;
+        return $this->latestRelease('panel')['body'] ?? null;
     }
 
     public function latestPanelVersion(): ?string
     {
-        $key = 'panel:latest_version';
-        if (cache()->get($key) === 'error') {
-            cache()->forget($key);
-        }
+        $tag = $this->latestRelease('panel')['tag_name'] ?? null;
 
-        $version = cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
-            try {
-                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/panel/releases/latest')->throw()->json();
-
-                return trim($response['tag_name'], 'v');
-            } catch (Exception) {
-                return 'error';
-            }
-        });
-
-        return $version === 'error' ? null : $version;
+        return $tag === null ? null : trim($tag, 'v');
     }
 
     public function latestWingsVersion(): ?string
     {
-        $key = 'wings:latest_version';
-        if (cache()->get($key) === 'error') {
-            cache()->forget($key);
+        $tag = $this->latestRelease('wings')['tag_name'] ?? null;
+
+        return $tag === null ? null : trim($tag, 'v');
+    }
+
+    /**
+     * Failures are cached briefly so a GitHub outage costs one timeout every few minutes instead of one per call.
+     *
+     * @return ?array<string, mixed>
+     */
+    private function latestRelease(string $repo): ?array
+    {
+        $key = "$repo:latest_release";
+        $release = cache()->get($key);
+
+        if ($release === null) {
+            try {
+                $release = Http::timeout(5)->connectTimeout(1)->get("https://api.github.com/repos/pelican/$repo/releases/latest")->throw()->json();
+                cache()->put($key, $release, now()->addMinutes(config('panel.cdn.cache_time', 60)));
+            } catch (Exception) {
+                $release = 'error';
+                cache()->put($key, $release, now()->addMinutes(5));
+            }
         }
 
-        $version = cache()->remember($key, now()->addMinutes(config('panel.cdn.cache_time', 60)), function () {
-            try {
-                $response = Http::timeout(5)->connectTimeout(1)->get('https://api.github.com/repos/pelican/wings/releases/latest')->throw()->json();
-
-                return trim($response['tag_name'], 'v');
-            } catch (Exception) {
-                return 'error';
-            }
-        });
-
-        return $version === 'error' ? null : $version;
+        return is_array($release) ? $release : null;
     }
 
     public function isLatestPanel(): bool
