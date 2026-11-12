@@ -143,6 +143,78 @@ it('backs up sqlite including transactions that are still in the WAL file', func
     }
 });
 
+it('reports an update whose process died instead of showing it as running forever', function (string $state, ?string $step, int $minutesAgo, string $expected) {
+    $status = storage_path('app/private/update/status.json');
+    File::ensureDirectoryExists(dirname($status));
+    File::put($status, json_encode(['state' => $state, 'step' => $step, 'updated_at' => now()->subMinutes($minutesAgo)->toAtomString()]));
+
+    $service = app(PanelUpdateService::class);
+
+    expect($service->status()['state'])->toBe($expected);
+    if ($expected !== $state) {
+        expect($service->status()['message'])->toBe(trans('admin/update.progress.stopped'));
+    }
+})->with([
+    'queued, still starting' => [PanelUpdateService::STATE_QUEUED, null, 0, PanelUpdateService::STATE_QUEUED],
+    'queued, never started' => [PanelUpdateService::STATE_QUEUED, null, 5, PanelUpdateService::STATE_FAILED],
+    'died before touching the install' => [PanelUpdateService::STATE_RUNNING, 'dependencies', 0, PanelUpdateService::STATE_FAILED],
+    'died after maintenance mode' => [PanelUpdateService::STATE_RUNNING, 'swap', 0, PanelUpdateService::STATE_ROLLBACK_FAILED],
+]);
+
+it('keeps showing a running update while its process holds the lock', function () {
+    $status = storage_path('app/private/update/status.json');
+    File::ensureDirectoryExists(dirname($status));
+    File::put($status, json_encode(['state' => PanelUpdateService::STATE_RUNNING, 'step' => 'swap', 'updated_at' => now()->subHour()->toAtomString()]));
+
+    $lock = fopen(storage_path('app/private/update/update.lock'), 'c');
+    flock($lock, LOCK_EX);
+
+    try {
+        expect(app(PanelUpdateService::class)->status()['state'])->toBe(PanelUpdateService::STATE_RUNNING);
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+});
+
+it('restores the sqlite database when a rollback happens after migrations ran', function () {
+    $directory = sys_get_temp_dir() . '/panel-update-restore-' . Str::random(8);
+    File::ensureDirectoryExists($directory);
+    $database = "$directory/live.sqlite";
+    touch($database);
+
+    config()->set('database.connections.update_test', ['driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true]);
+    $default = config('database.default');
+    config()->set('database.default', 'update_test');
+    Process::fake();
+
+    try {
+        DB::statement('CREATE TABLE things (name TEXT)');
+        DB::table('things')->insert(['name' => 'before the update']);
+
+        $service = app(PanelUpdateService::class);
+        $backup = (new ReflectionMethod($service, 'backupDatabase'))->invoke($service, "$directory/backup", false);
+
+        // What a migration of the new release would have done.
+        DB::table('things')->update(['name' => 'changed by a migration']);
+        DB::statement('CREATE TABLE added_by_the_update (id INTEGER)');
+        DB::purge('update_test');
+
+        $restored = (new ReflectionMethod($service, 'rollback'))->invoke($service, [], [], "$directory/release", "$directory/backup/code", $backup, true);
+        DB::purge('update_test');
+
+        expect($restored)->toBeTrue()
+            ->and(DB::table('things')->value('name'))->toBe('before the update')
+            ->and(DB::getSchemaBuilder()->hasTable('added_by_the_update'))->toBeFalse();
+
+        Process::assertRan(fn ($process) => in_array('up', (array) $process->command, true));
+    } finally {
+        DB::purge('update_test');
+        config()->set('database.default', $default);
+        File::deleteDirectory($directory);
+    }
+});
+
 it('resolves DB_URL so backups and restores reach the panel database', function () {
     config()->set('database.default', 'mysql');
     config()->set('database.connections.mysql.url', 'mysql://panel:secret@db.internal:3307/pelican');
@@ -329,12 +401,21 @@ it('shows the progress of a running update', function () {
     File::ensureDirectoryExists(dirname($status));
     File::put($status, json_encode(['state' => 'running', 'step' => 'download', 'from' => '1.0.0', 'to' => '1.1.0', 'log' => ['==> Download']]));
 
-    expect(UpdateProgressWidget::canView())->toBeTrue();
+    // A running update holds the lock, without it the status is reported as a process that died.
+    $lock = fopen(storage_path('app/private/update/update.lock'), 'c');
+    flock($lock, LOCK_EX);
 
-    Livewire::test(UpdateProgressWidget::class)
-        ->assertOk()
-        ->assertSee(trans('admin/update.progress.heading'))
-        ->assertSee(trans('admin/update.progress.steps.download'));
+    try {
+        expect(UpdateProgressWidget::canView())->toBeTrue();
+
+        Livewire::test(UpdateProgressWidget::class)
+            ->assertOk()
+            ->assertSee(trans('admin/update.progress.heading'))
+            ->assertSee(trans('admin/update.progress.steps.download'));
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
 });
 
 it('refuses to start an update for admins who are not root admins', function () use ($passingPreflight) {

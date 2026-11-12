@@ -271,6 +271,10 @@ class PanelUpdateService
             return false;
         }
 
+        // Whoever owns the install, so a run as root can hand back what it creates.
+        $owner = @fileowner(base_path('public'));
+        $group = @filegroup(base_path('public'));
+
         $from = $this->versionService->currentComparableVersion() ?? 'canary';
         $staging = $this->workPath('staging');
         $release = join_paths($staging, 'release');
@@ -314,8 +318,6 @@ class PanelUpdateService
 
             // Resolve everything that is needed after the swap while the old files are still in place.
             $php = $this->phpCli();
-            $owner = @fileowner(base_path('public'));
-            $group = @filegroup(base_path('public'));
             $configCached = file_exists(base_path('bootstrap/cache/config.php'));
 
             $this->step('maintenance');
@@ -376,6 +378,16 @@ class PanelUpdateService
 
             return false;
         } finally {
+            // Run as root, everything this wrote under storage is root's, and the web user couldn't launch,
+            // dismiss or log anymore. The state directory goes last since chowning logs to its status file.
+            $workPath = $this->workPath();
+            $this->fixOwnership(array_values(array_unique(array_filter([
+                'storage/logs',
+                'storage/framework',
+                str_starts_with($workPath, $this->statePath()) ? null : Str::after($workPath, base_path() . DIRECTORY_SEPARATOR),
+                Str::after($this->statePath(), base_path() . DIRECTORY_SEPARATOR),
+            ]))), $owner, $group);
+
             flock($lock, LOCK_UN);
             fclose($lock);
         }
@@ -383,6 +395,33 @@ class PanelUpdateService
 
     /** @return null|array<string, mixed> */
     public function status(): ?array
+    {
+        $status = $this->readStatus();
+        $state = $status['state'] ?? null;
+
+        if (!in_array($state, [self::STATE_QUEUED, self::STATE_RUNNING], true) || $this->lockHeld()) {
+            return $status;
+        }
+
+        // The update holds the lock for its whole run, so running without it means the process died. A queued update
+        // gets a moment to start, the launch command can't tell whether the detached process came up.
+        if ($state === self::STATE_QUEUED && strtotime($status['updated_at'] ?? '') > now()->subMinutes(2)->getTimestamp()) {
+            return $status;
+        }
+
+        // Before maintenance mode nothing live was touched. After it, the panel may be down or half swapped.
+        $touchedLive = $state === self::STATE_RUNNING && !in_array($status['step'] ?? null, ['preflight', 'download', 'dependencies'], true);
+
+        return [
+            ...$status,
+            'state' => $touchedLive ? self::STATE_ROLLBACK_FAILED : self::STATE_FAILED,
+            'message' => trans('admin/update.progress.stopped'),
+            'finished_at' => $status['updated_at'] ?? null,
+        ];
+    }
+
+    /** @return null|array<string, mixed> */
+    private function readStatus(): ?array
     {
         $path = $this->statePath('status.json');
         if (!is_file($path)) {
@@ -394,6 +433,22 @@ class PanelUpdateService
         return is_array($status) ? $status : null;
     }
 
+    private function lockHeld(): bool
+    {
+        $lock = @fopen($this->statePath('update.lock'), 'c');
+        if ($lock === false) {
+            return false;
+        }
+
+        $free = flock($lock, LOCK_EX | LOCK_NB);
+        if ($free) {
+            flock($lock, LOCK_UN);
+        }
+        fclose($lock);
+
+        return !$free;
+    }
+
     public function dismissStatus(): void
     {
         @unlink($this->statePath('status.json'));
@@ -401,21 +456,12 @@ class PanelUpdateService
 
     public function isBusy(): bool
     {
-        $lock = @fopen($this->statePath('update.lock'), 'c');
-        if ($lock !== false) {
-            $free = flock($lock, LOCK_EX | LOCK_NB);
-            if ($free) {
-                flock($lock, LOCK_UN);
-            }
-            fclose($lock);
-
-            if (!$free) {
-                return true;
-            }
+        if ($this->lockHeld()) {
+            return true;
         }
 
         // Launched but the process hasn't taken the lock yet.
-        $status = $this->status();
+        $status = $this->readStatus();
 
         return ($status['state'] ?? null) === self::STATE_QUEUED
             && strtotime($status['updated_at'] ?? '') > now()->subMinutes(2)->getTimestamp();
@@ -908,7 +954,7 @@ class PanelUpdateService
         $line = $this->redact($line);
         ($this->output)($line . PHP_EOL);
 
-        $status = $this->status() ?? [];
+        $status = $this->readStatus() ?? [];
         $log = [...($status['log'] ?? []), '[' . date('H:i:s') . '] ' . $line];
         $this->writeStatus(['log' => array_slice($log, -self::LOG_LINES)]);
     }
@@ -933,7 +979,7 @@ class PanelUpdateService
         $path = $this->statePath('status.json');
         File::ensureDirectoryExists(dirname($path));
 
-        $status = [...($replace ? [] : $this->status() ?? []), ...$changes, 'updated_at' => date(DATE_ATOM)];
+        $status = [...($replace ? [] : $this->readStatus() ?? []), ...$changes, 'updated_at' => date(DATE_ATOM)];
 
         // Write and rename so a poll never reads half a file.
         $temporary = $path . '.' . getmypid() . '.tmp';

@@ -17,7 +17,7 @@ return [
             'Runs the database migrations.',
             'Clears and rebuilds the caches, restarts the queue workers and brings the panel back online.',
         ],
-        'rollback' => 'If any step fails, the old files and database are restored and the panel comes back online on :from.',
+        'rollback' => 'If a step fails, the old files and database are restored and the panel comes back online on :from. If the database can\'t be restored, for example because its backup was skipped, the panel stays in maintenance mode until you restore it from your own backup.',
         'warnings' => 'Warnings',
         'plugins' => 'Update anyway. These enabled plugins don\'t support :version and will be marked incompatible: :plugins',
         'no_backup' => 'I have my own database backup. No database dump tool (mysqldump, mariadb-dump or pg_dump) was found, so the updater can\'t back up or restore the database.',
@@ -33,6 +33,7 @@ return [
             'failed' => 'The update to :to failed. Everything was rolled back to :from.',
             'rollback_failed' => 'The update to :to failed and could not be rolled back. The panel is still in maintenance mode, check the log and the backups.',
         ],
+        'stopped' => 'The update process stopped unexpectedly. Check storage/logs/panel-update.log for what happened.',
         'steps' => [
             'preflight' => 'Checking requirements',
             'download' => 'Downloading and verifying the release',
