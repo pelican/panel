@@ -31,10 +31,12 @@ class ServersRelationManager extends RelationManager
         return $table
             ->heading(trans('admin/user.accessible_servers'))
             // Owned servers and the ones shared with the user as a subuser.
-            ->query(fn () => Server::query()->where(fn (Builder $query) => $query
-                ->where('owner_id', $user->id)
-                ->orWhereHas('subusers', fn (Builder $query) => $query->where('user_id', $user->id))
-            ))
+            ->query(fn () => Server::query()
+                ->whereIn('node_id', user()?->accessibleNodes()->pluck('id'))
+                ->where(fn (Builder $query) => $query
+                    ->where('owner_id', $user->id)
+                    ->orWhereHas('subusers', fn (Builder $query) => $query->where('user_id', $user->id))
+                ))
             ->headerActions([
                 Action::make('toggle_suspend')
                     ->authorize(fn () => user()?->can('update server'))
@@ -94,7 +96,7 @@ class ServersRelationManager extends RelationManager
                 SelectColumn::make('allocation_id')
                     ->label(trans('admin/server.primary_allocation'))
                     ->hidden(fn () => !user()?->can('update server')) // TODO: update to policy check (fn (Server $server) --> $server is empty)
-                    ->disabled(fn (Server $server) => $server->allocations->count() <= 1)
+                    ->disabled(fn (Server $server) => $server->allocations->count() <= 1 || !user()?->can('update', $server))
                     ->options(fn (Server $server) => $server->allocations->mapWithKeys(fn ($allocation) => [$allocation->id => $allocation->address]))
                     ->selectablePlaceholder(fn (Server $server) => $server->allocations->count() <= 1)
                     ->placeholder(trans('admin/server.none'))

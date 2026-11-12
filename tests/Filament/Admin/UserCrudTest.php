@@ -121,3 +121,24 @@ it('lists the servers a user owns or is a subuser of', function () {
         ->assertTableColumnStateSet('access', trans('admin/server.owner'), $owned)
         ->assertTableColumnStateSet('access', trans('admin/user.subuser'), $shared);
 });
+
+it('hides servers on nodes a restricted admin cannot access', function () {
+    $user = User::factory()->create();
+    $visible = createServerModel(['owner_id' => $user->id]);
+    $hiddenOwned = createServerModel(['owner_id' => $user->id]);
+    $hiddenShared = createServerModel();
+    Subuser::query()->create(['user_id' => $user->id, 'server_id' => $hiddenShared->id, 'permissions' => ['control.console']]);
+
+    $role = Role::factory()->create(['name' => 'Node Admin', 'guard_name' => 'web']);
+    $role->givePermissionTo(collect([RolePermissionModels::User, RolePermissionModels::Server])
+        ->flatMap(fn (RolePermissionModels $model) => [$model->viewAny(), $model->view(), $model->update()])
+        ->map(fn (string $permission) => Permission::findOrCreate($permission, 'web')));
+    $role->nodes()->sync([$visible->node_id]);
+    [$admin] = generateTestAccount();
+    $admin->syncRoles($role);
+    $this->actingAs($admin->fresh());
+
+    livewire(ServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
+        ->assertCanSeeTableRecords([$visible])
+        ->assertCanNotSeeTableRecords([$hiddenOwned, $hiddenShared]);
+});
