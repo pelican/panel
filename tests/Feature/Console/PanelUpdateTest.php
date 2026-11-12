@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Helpers\PanelUpdateService;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\SoftwareVersionService;
+use Filament\Actions\Testing\TestAction;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -261,3 +262,19 @@ it('hides the update from admins who are not root admins', function () {
     expect(fn () => (new UpdateProgressWidget())->dismiss(app(PanelUpdateService::class)))
         ->toThrow(HttpException::class);
 });
+
+it('opens the update modal and starts the update', function () use ($passingPreflight) {
+    Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.1.0', 'body' => 'Release notes'])]);
+
+    $service = updateServiceWithPreflight($passingPreflight);
+    $service->shouldReceive('launch')->once()->andReturn('secret');
+
+    $admin = User::factory()->create();
+    $admin->syncRoles(Role::getRootAdmin());
+    $this->actingAs($admin);
+
+    Livewire::test(UpdateWidget::class)
+        ->callAction(TestAction::make('update_now')->schemaComponent('update-available', schema: 'form'))
+        ->assertHasNoActionErrors()
+        ->assertRedirect();
+})->skip(fn () => is_running_in_docker(), 'Docker installs update by recreating the container');

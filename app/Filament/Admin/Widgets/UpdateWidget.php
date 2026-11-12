@@ -8,6 +8,8 @@ use App\Services\Helpers\PanelUpdateService;
 use App\Services\Helpers\SoftwareVersionService;
 use Exception;
 use Filament\Actions\Action;
+use Filament\Actions\Concerns\InteractsWithActions;
+use Filament\Actions\Contracts\HasActions;
 use Filament\Forms\Components\Checkbox;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
@@ -16,8 +18,11 @@ use Filament\Schemas\Schema;
 use Illuminate\Foundation\Http\MaintenanceModeBypassCookie;
 use Illuminate\Support\Facades\Cookie;
 
-class UpdateWidget extends FormWidget
+class UpdateWidget extends FormWidget implements HasActions
 {
+    // Needed to mount the update_now action's confirmation modal, the other header actions are only links.
+    use InteractsWithActions;
+
     protected static ?int $sort = 0;
 
     private SoftwareVersionService $softwareVersionService;
@@ -67,6 +72,7 @@ class UpdateWidget extends FormWidget
                             ->state(trans('admin/dashboard.sections.intro-no-update.content', ['version' => $this->softwareVersionService->currentPanelVersion()])),
                     ])
                 : Section::make(trans('admin/dashboard.sections.intro-update-available.heading'))
+                    ->key('update-available')
                     ->icon(TablerIcon::InfoCircle)
                     ->iconColor('warning')
                     ->schema([
@@ -155,7 +161,7 @@ class UpdateWidget extends FormWidget
                     ->body(trans('admin/update.notifications.started_body'))
                     ->send();
 
-                $this->redirect(Dashboard::getUrl());
+                $this->redirect(Dashboard::getUrl(panel: 'admin'));
             });
     }
 }
