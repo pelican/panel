@@ -9,7 +9,6 @@ use Closure;
 use Exception;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Process\ProcessResult;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -90,7 +89,10 @@ class PanelUpdateService
         $warnings = [];
         $current = $this->versionService->currentComparableVersion();
 
-        if (is_running_in_docker()) {
+        if (PHP_OS_FAMILY === 'Windows') {
+            // The updater relies on sh, setsid, tar and chown.
+            $errors[] = trans('admin/update.preflight.windows');
+        } elseif (is_running_in_docker()) {
             $errors[] = trans('admin/update.preflight.docker');
         } elseif ($current === null) {
             $errors[] = trans('admin/update.preflight.canary');
@@ -107,7 +109,7 @@ class PanelUpdateService
         if (!function_exists('proc_open')) {
             $errors[] = trans('admin/update.preflight.proc_open');
         } else {
-            foreach (['php' => $this->phpCli(), 'composer' => $this->binary('composer'), 'tar' => $this->tar()] as $name => $path) {
+            foreach (['php' => $this->phpCli(), 'composer' => $this->binary('composer'), 'tar' => $this->binary('tar')] as $name => $path) {
                 if ($path === null) {
                     $errors[] = trans('admin/update.preflight.binary', ['binary' => $name]);
                 }
@@ -128,10 +130,6 @@ class PanelUpdateService
 
         if ($this->pluginsNeedAssetBuild() && $this->binary('yarn') === null) {
             $warnings[] = trans('admin/update.preflight.no_yarn');
-        }
-
-        if ($this->isWindows() && ($this->databaseConfig()['driver'] ?? null) === 'sqlite') {
-            $warnings[] = trans('admin/update.preflight.windows_sqlite');
         }
 
         return [
@@ -202,19 +200,11 @@ class PanelUpdateService
         ], replace: true);
 
         $command = [$this->phpCli(), base_path('artisan'), 'p:update', '--from-request', '--no-interaction'];
-        $log = storage_path('logs/panel-update.log');
+        $prefix = array_values(array_filter([$this->binary('setsid'), $this->binary('nohup')]));
+        $shell = implode(' ', array_map('escapeshellarg', [...$prefix, ...$command]))
+            . ' >> ' . escapeshellarg(storage_path('logs/panel-update.log')) . ' 2>&1 < /dev/null &';
 
-        if ($this->isWindows()) {
-            // `start /B` returns right away and leaves the update running on its own.
-            $shell = 'start "" /B ' . implode(' ', array_map(fn ($argument) => '"' . $argument . '"', $command))
-                . ' >> "' . $log . '" 2>&1 < NUL';
-            $result = Process::path(base_path())->env($this->processEnv())->run($shell);
-        } else {
-            $prefix = array_values(array_filter([$this->binary('setsid'), $this->binary('nohup')]));
-            $shell = implode(' ', array_map('escapeshellarg', [...$prefix, ...$command]))
-                . ' >> ' . escapeshellarg($log) . ' 2>&1 < /dev/null &';
-            $result = Process::path(base_path())->env($this->processEnv())->run(['sh', '-c', $shell]);
-        }
+        $result = Process::path(base_path())->env($this->processEnv())->run(['sh', '-c', $shell]);
 
         if ($result->failed()) {
             $reason = trim($result->errorOutput() ?: $result->output()) ?: 'exit code ' . $result->exitCode();
@@ -319,10 +309,6 @@ class PanelUpdateService
             $databaseBackup = $this->backupDatabase($backup, $skipDatabaseBackup);
 
             $this->step('swap');
-            // An open sqlite file stops Windows from moving the database directory, and nothing below needs a connection.
-            foreach (array_keys(DB::getConnections()) as $connection) {
-                DB::disconnect($connection);
-            }
             $this->swap($release, $codeBackup, $swapped, $carried);
 
             $this->step('migrate');
@@ -443,14 +429,12 @@ class PanelUpdateService
      */
     private function stage(string $archive, string $release, string $target): void
     {
-        $tar = (string) $this->tar();
+        $tar = (string) $this->binary('tar');
         File::ensureDirectoryExists($release);
 
         $entries = preg_split('/\R/', trim($this->runProcess([$tar, '-tzf', $archive], timeout: 120, quiet: true)->output())) ?: [];
         foreach ($entries as $entry) {
-            $parts = preg_split('#[/\\\\]#', $entry) ?: [];
-            $unsafe = str_starts_with($entry, '/') || str_starts_with($entry, '\\') || preg_match('/^[a-z]:/i', $entry) || in_array('..', $parts, true);
-            throw_if($unsafe, new Exception("The release archive contains an unsafe path: $entry"));
+            throw_if(str_starts_with($entry, '/') || in_array('..', explode('/', $entry), true), new Exception("The release archive contains an unsafe path: $entry"));
         }
 
         $this->runProcess([$tar, '-xzf', $archive, '-C', $release], timeout: 300);
@@ -483,13 +467,13 @@ class PanelUpdateService
             // vite picks up plugin assets from plugins/*, so point the release at the live plugins for the build.
             $plugins = join_paths($release, 'plugins');
             File::deleteDirectory($plugins);
-            $this->linkDirectory(base_path('plugins'), $plugins);
+            throw_unless(@symlink(base_path('plugins'), $plugins), new Exception('Could not link the plugins into the release.'));
 
             try {
                 $this->runProcess([$yarn, 'install'], $release, 900);
                 $this->runProcess([$yarn, 'build'], $release, 900);
             } finally {
-                $this->unlinkDirectory($plugins);
+                @unlink($plugins);
                 File::deleteDirectory(join_paths($release, 'node_modules'));
             }
         }
@@ -748,64 +732,7 @@ class PanelUpdateService
     private function move(string $from, string $to): void
     {
         File::ensureDirectoryExists(dirname($to));
-
-        // Windows refuses to rename while another process (antivirus, the search indexer) briefly holds a file open.
-        $attempts = $this->isWindows() ? 10 : 1;
-        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-            if (@rename($from, $to)) {
-                return;
-            }
-
-            if ($attempt < $attempts) {
-                usleep(500_000);
-            }
-        }
-
-        throw new Exception("Could not move $from to $to." . ($this->isWindows() ? ' Close any programs that have files from the panel open and try again.' : ''));
-    }
-
-    /**
-     * A symlink on Linux, a junction on Windows since symlinks there need admin rights or developer mode.
-     *
-     * @throws Exception
-     */
-    private function linkDirectory(string $target, string $link): void
-    {
-        $linked = $this->isWindows()
-            ? $this->runProcess(['cmd', '/c', 'mklink', '/J', $link, $target], throw: false, quiet: true)->successful()
-            : @symlink($target, $link);
-
-        throw_unless($linked, new Exception('Could not link the plugins into the release.'));
-    }
-
-    private function unlinkDirectory(string $link): void
-    {
-        // Removing a junction with rmdir only removes the link, never the files it points to.
-        if ($this->isWindows()) {
-            @rmdir($link);
-        } else {
-            @unlink($link);
-        }
-    }
-
-    private function isWindows(): bool
-    {
-        return PHP_OS_FAMILY === 'Windows';
-    }
-
-    /**
-     * Windows ships bsdtar in System32. Prefer it over a GNU tar from Git or MSYS, which reads `C:\…` as a remote host.
-     */
-    private function tar(): ?string
-    {
-        if ($this->isWindows()) {
-            $system = join_paths((string) (getenv('SystemRoot') ?: 'C:\\Windows'), 'System32', 'tar.exe');
-            if (is_file($system)) {
-                return $system;
-            }
-        }
-
-        return $this->binary('tar');
+        throw_unless(@rename($from, $to), new Exception("Could not move $from to $to."));
     }
 
     private function pluginsNeedAssetBuild(): bool
@@ -913,15 +840,10 @@ class PanelUpdateService
     /** @return array<string, string> */
     private function processEnv(): array
     {
-        $env = ['COMPOSER_NO_INTERACTION' => '1'];
+        $path = array_filter([...explode(PATH_SEPARATOR, (string) getenv('PATH')), ...self::BIN_DIRS]);
+        $env = ['PATH' => implode(PATH_SEPARATOR, array_unique($path)), 'COMPOSER_NO_INTERACTION' => '1'];
 
-        // Windows already has its own Path, and setting PATH as well would give the child two of them.
-        if (!$this->isWindows()) {
-            $path = array_filter([...explode(PATH_SEPARATOR, (string) getenv('PATH')), ...self::BIN_DIRS]);
-            $env['PATH'] = implode(PATH_SEPARATOR, array_unique($path));
-        }
-
-        if (!getenv('HOME') && !getenv('COMPOSER_HOME') && !getenv('APPDATA')) {
+        if (!getenv('HOME') && !getenv('COMPOSER_HOME')) {
             $env['COMPOSER_HOME'] = $this->workPath('composer');
         }
 
@@ -934,11 +856,6 @@ class PanelUpdateService
             return PHP_BINARY;
         }
 
-        // On Windows the web server runs php-cgi.exe, php.exe of the same version sits next to it.
-        if ($this->isWindows() && is_file($cli = join_paths(dirname(PHP_BINARY), 'php.exe'))) {
-            return $cli;
-        }
-
         // Under FPM, PHP_BINARY is php-fpm. Prefer the CLI of the same version over whatever `php` points to.
         return $this->binary('php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION)
             ?? ((new PhpExecutableFinder())->find(false) ?: null)
@@ -947,17 +864,7 @@ class PanelUpdateService
 
     private function binary(string $name): ?string
     {
-        $dirs = self::BIN_DIRS;
-        if ($this->isWindows()) {
-            // Herd and Composer-Setup put composer here, and the web server's Path doesn't always include them.
-            $dirs = array_values(array_filter([
-                getenv('USERPROFILE') ? join_paths((string) getenv('USERPROFILE'), '.config', 'herd', 'bin') : null,
-                getenv('ProgramData') ? join_paths((string) getenv('ProgramData'), 'ComposerSetup', 'bin') : null,
-                getenv('APPDATA') ? join_paths((string) getenv('APPDATA'), 'Composer', 'vendor', 'bin') : null,
-            ]));
-        }
-
-        return (new ExecutableFinder())->find($name, null, $dirs);
+        return (new ExecutableFinder())->find($name, null, self::BIN_DIRS);
     }
 
     private function step(string $step): void
@@ -1001,12 +908,7 @@ class PanelUpdateService
         // Write and rename so a poll never reads half a file.
         $temporary = $path . '.' . getmypid() . '.tmp';
         file_put_contents($temporary, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
-        // Windows can't replace a file another request is reading at that moment, so fall back to overwriting it.
-        if (!@rename($temporary, $path)) {
-            @copy($temporary, $path);
-            @unlink($temporary);
-        }
+        @rename($temporary, $path);
     }
 
     private function statePath(string ...$paths): string

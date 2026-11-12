@@ -46,12 +46,17 @@ it('refuses to update canary builds', function () {
 
     expect(app(PanelUpdateService::class)->preflight('1.1.0')['errors'])
         ->toContain(trans('admin/update.preflight.canary'));
-})->skip(fn () => is_running_in_docker(), 'Docker installs are refused before the version is checked');
+})->skip(fn () => PHP_OS_FAMILY === 'Windows' || is_running_in_docker(), 'Windows and Docker installs are refused before the version is checked');
 
 it('refuses a target that is not newer', function (string $target) {
     expect(app(PanelUpdateService::class)->preflight($target)['errors'])
         ->toContain(trans('admin/update.preflight.not_newer', ['current' => '1.0.0', 'target' => $target]));
-})->with(['1.0.0', '0.9.0'])->skip(fn () => is_running_in_docker(), 'Docker installs are refused before the version is checked');
+})->with(['1.0.0', '0.9.0'])->skip(fn () => PHP_OS_FAMILY === 'Windows' || is_running_in_docker(), 'Windows and Docker installs are refused before the version is checked');
+
+it('refuses to update on Windows', function () {
+    expect(app(PanelUpdateService::class)->preflight('1.1.0')['errors'])
+        ->toContain(trans('admin/update.preflight.windows'));
+})->skip(PHP_OS_FAMILY !== 'Windows', 'Only applies to Windows');
 
 it('only checks when asked to', function () use ($passingPreflight) {
     updateServiceWithPreflight($passingPreflight);

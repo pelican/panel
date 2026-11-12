@@ -45,7 +45,7 @@ return [
         ],
     ],
     'preflight' => [
-        'windows_sqlite' => 'Stop the queue worker before updating. Windows can\'t move the database folder while another process has the SQLite database open.',
+        'windows' => 'Automatic updates need a Linux server. Follow the Update Guide instead.',
         'docker' => 'Docker installs update by pulling the new image and recreating the container.',
         'canary' => 'Canary builds can\'t be updated automatically.',
         'no_target' => 'The latest version could not be determined.',
