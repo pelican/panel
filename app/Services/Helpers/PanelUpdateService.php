@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\PhpExecutableFinder;
@@ -329,6 +330,7 @@ class PanelUpdateService
             $this->artisan(['queue:restart'], throw: false);
 
             $this->step('backup');
+            $this->waitForQueueJobs();
             $databaseBackup = $this->backupDatabase($backup, $skipDatabaseBackup);
             $this->backupPluginMetadata($backup);
 
@@ -620,6 +622,8 @@ class PanelUpdateService
             // A plain copy misses committed transactions still in the -wal file, VACUUM INTO writes a consistent snapshot.
             @unlink($file);
             DB::connection()->statement('VACUUM INTO ?', [$file]);
+            // Close it while its -wal and -shm still exist, a restore removes them and must not race an open handle.
+            DB::purge();
             throw_unless(is_file($file) && filesize($file) > 0, new Exception('Could not back up the sqlite database.'));
             $this->log("Database backed up to $file");
 
@@ -723,6 +727,54 @@ class PanelUpdateService
         }
 
         $this->log('Swapped in ' . count($swapped) . ' release entries.');
+    }
+
+    /**
+     * In maintenance mode workers don't start new jobs, but queue:restart doesn't wait for the ones already running.
+     * A job that writes after the database backup would be lost if the update has to roll back.
+     *
+     * @throws Exception
+     */
+    private function waitForQueueJobs(int $timeoutSeconds = 120): void
+    {
+        $deadline = time() + $timeoutSeconds;
+        $logged = false;
+
+        while (($running = $this->runningQueueJobs()) > 0) {
+            throw_if(time() >= $deadline, new Exception("$running queue jobs are still running, try the update again once they are done."));
+
+            if (!$logged) {
+                $this->log("Waiting for $running running queue jobs to finish.");
+                $logged = true;
+            }
+
+            sleep(2);
+        }
+    }
+
+    /**
+     * Jobs a worker is processing right now. Drivers that can't tell, like sync, report none.
+     */
+    private function runningQueueJobs(): int
+    {
+        $name = config('queue.default');
+        $config = config("queue.connections.$name", []);
+
+        try {
+            return match ($config['driver'] ?? null) {
+                // A reservation older than retry_after belongs to a worker that died, nobody is running that job.
+                'database' => DB::connection($config['connection'] ?? null)->table($config['table'] ?? 'jobs')
+                    ->where('reserved_at', '>', time() - (int) ($config['retry_after'] ?? 90))
+                    ->count(),
+                // The reserved set is scored by when the reservation expires.
+                'redis' => (int) Redis::connection($config['connection'] ?? null)->zcount('queues:' . ($config['queue'] ?? 'default') . ':reserved', (string) time(), '+inf'),
+                default => 0,
+            };
+        } catch (Throwable $exception) {
+            $this->log('Could not check for running queue jobs: ' . $exception->getMessage());
+
+            return 0;
+        }
     }
 
     /**

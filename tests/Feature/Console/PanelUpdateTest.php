@@ -36,10 +36,18 @@ function updateServiceWithPreflight(array $preflight): PanelUpdateService
 beforeEach(function () {
     cache()->flush();
     config()->set('app.version', '1.0.0');
+
+    // The updater keeps its status, locks and backups in storage, keep the install's own out of reach. It stays on
+    // the install's filesystem, otherwise workPath() would fall back to a directory in the install itself.
+    $this->originalStoragePath = storage_path();
+    $this->updateStoragePath = storage_path('framework/testing/panel-update-' . Str::random(8));
+    File::ensureDirectoryExists($this->updateStoragePath);
+    app()->useStoragePath($this->updateStoragePath);
 });
 
 afterEach(function () {
-    app(PanelUpdateService::class)->dismissStatus();
+    app()->useStoragePath($this->originalStoragePath);
+    File::deleteDirectory($this->updateStoragePath);
 });
 
 it('refuses to update canary builds', function () {
@@ -73,7 +81,7 @@ it('treats a recently queued update as running until its process takes the lock'
 it('keeps the newest backups by date rather than by version', function () {
     $service = app(PanelUpdateService::class);
     $backups = (new ReflectionMethod($service, 'workPath'))->invoke($service, 'backups');
-    File::deleteDirectory($backups);
+    expect($backups)->toStartWith($this->updateStoragePath);
 
     // Oldest to newest. Sorted as strings, 1.10.0 would come before 1.7.0 and get pruned.
     foreach (['1.7.0_20260101_000000', '1.8.0_20260201_000000', '1.9.0_20260301_000000', '1.10.0_20260401_000000'] as $name) {
@@ -239,6 +247,25 @@ it('puts plugin metadata back when it rolls back', function () {
         app()->setBasePath($original);
         File::deleteDirectory($root);
     }
+});
+
+it('waits for running queue jobs before backing up the database', function () {
+    config()->set('queue.default', 'database');
+    config()->set('queue.connections.database', ['driver' => 'database', 'table' => 'jobs', 'queue' => 'default', 'retry_after' => 90]);
+
+    $service = app(PanelUpdateService::class);
+    $wait = fn () => (new ReflectionMethod($service, 'waitForQueueJobs'))->invoke($service, 0);
+    (new ReflectionProperty($service, 'output'))->setValue($service, fn () => null);
+
+    DB::table('jobs')->insert(['queue' => 'default', 'payload' => '{}', 'attempts' => 1, 'reserved_at' => time() - 10, 'available_at' => time(), 'created_at' => time()]);
+    expect($wait)->toThrow(Exception::class, 'queue jobs are still running');
+
+    // A reservation older than retry_after belongs to a worker that died.
+    DB::table('jobs')->update(['reserved_at' => time() - 600]);
+    $wait();
+
+    DB::table('jobs')->delete();
+    $wait();
 });
 
 it('resolves DB_URL so backups and restores reach the panel database', function () {
