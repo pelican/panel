@@ -266,6 +266,10 @@ it('waits for running queue jobs before backing up the database', function () {
 
     DB::table('jobs')->delete();
     $wait();
+
+    // An unknown queue state must not count as an idle queue.
+    config()->set('queue.connections.database.table', 'missing_jobs_table');
+    expect($wait)->toThrow(Exception::class, 'Could not check for running queue jobs');
 });
 
 it('resolves DB_URL so backups and restores reach the panel database', function () {

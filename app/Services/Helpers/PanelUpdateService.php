@@ -738,14 +738,26 @@ class PanelUpdateService
     private function waitForQueueJobs(int $timeoutSeconds = 120): void
     {
         $deadline = time() + $timeoutSeconds;
-        $logged = false;
+        $logged = [];
 
-        while (($running = $this->runningQueueJobs()) > 0) {
-            throw_if(time() >= $deadline, new Exception("$running queue jobs are still running, try the update again once they are done."));
+        while (true) {
+            // A failed check means the queue state is unknown, which is not the same as no jobs: retry, then give up.
+            try {
+                $running = $this->runningQueueJobs();
+                $problem = $running > 0 ? "$running queue jobs are still running" : null;
+            } catch (Throwable $exception) {
+                $problem = 'Could not check for running queue jobs: ' . $exception->getMessage();
+            }
 
-            if (!$logged) {
-                $this->log("Waiting for $running running queue jobs to finish.");
-                $logged = true;
+            if ($problem === null) {
+                return;
+            }
+
+            throw_if(time() >= $deadline, new Exception("$problem. Try the update again once the queue is idle."));
+
+            if (!isset($logged[$problem])) {
+                $this->log("$problem, waiting.");
+                $logged[$problem] = true;
             }
 
             sleep(2);
@@ -754,27 +766,23 @@ class PanelUpdateService
 
     /**
      * Jobs a worker is processing right now. Drivers that can't tell, like sync, report none.
+     *
+     * @throws Throwable when the queue backend can't be inspected
      */
     private function runningQueueJobs(): int
     {
         $name = config('queue.default');
         $config = config("queue.connections.$name", []);
 
-        try {
-            return match ($config['driver'] ?? null) {
-                // A reservation older than retry_after belongs to a worker that died, nobody is running that job.
-                'database' => DB::connection($config['connection'] ?? null)->table($config['table'] ?? 'jobs')
-                    ->where('reserved_at', '>', time() - (int) ($config['retry_after'] ?? 90))
-                    ->count(),
-                // The reserved set is scored by when the reservation expires.
-                'redis' => (int) Redis::connection($config['connection'] ?? null)->zcount('queues:' . ($config['queue'] ?? 'default') . ':reserved', (string) time(), '+inf'),
-                default => 0,
-            };
-        } catch (Throwable $exception) {
-            $this->log('Could not check for running queue jobs: ' . $exception->getMessage());
-
-            return 0;
-        }
+        return match ($config['driver'] ?? null) {
+            // A reservation older than retry_after belongs to a worker that died, nobody is running that job.
+            'database' => DB::connection($config['connection'] ?? null)->table($config['table'] ?? 'jobs')
+                ->where('reserved_at', '>', time() - (int) ($config['retry_after'] ?? 90))
+                ->count(),
+            // The reserved set is scored by when the reservation expires.
+            'redis' => (int) Redis::connection($config['connection'] ?? null)->zcount('queues:' . ($config['queue'] ?? 'default') . ':reserved', (string) time(), '+inf'),
+            default => 0,
+        };
     }
 
     /**
