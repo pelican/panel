@@ -215,6 +215,32 @@ it('restores the sqlite database when a rollback happens after migrations ran', 
     }
 });
 
+it('puts plugin metadata back when it rolls back', function () {
+    $original = base_path();
+    $root = sys_get_temp_dir() . '/panel-update-plugins-' . Str::random(8);
+    File::ensureDirectoryExists("$root/plugins/example");
+    File::put("$root/plugins/example/plugin.json", '{"meta":{"status":"enabled"}}');
+
+    app()->setBasePath($root);
+    Process::fake();
+
+    try {
+        $service = app(PanelUpdateService::class);
+        (new ReflectionMethod($service, 'backupPluginMetadata'))->invoke($service, "$root/backup");
+
+        // What the new release does when it boots and finds the plugin incompatible.
+        File::put("$root/plugins/example/plugin.json", '{"meta":{"status":"incompatible"}}');
+
+        $restored = (new ReflectionMethod($service, 'rollback'))->invoke($service, [], [], "$root/release", "$root/backup/code", null, false);
+
+        expect($restored)->toBeTrue()
+            ->and(File::get("$root/plugins/example/plugin.json"))->toBe('{"meta":{"status":"enabled"}}');
+    } finally {
+        app()->setBasePath($original);
+        File::deleteDirectory($root);
+    }
+});
+
 it('resolves DB_URL so backups and restores reach the panel database', function () {
     config()->set('database.default', 'mysql');
     config()->set('database.connections.mysql.url', 'mysql://panel:secret@db.internal:3307/pelican');

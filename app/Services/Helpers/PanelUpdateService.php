@@ -274,6 +274,9 @@ class PanelUpdateService
         // Whoever owns the install, so a run as root can hand back what it creates.
         $owner = @fileowner(base_path('public'));
         $group = @filegroup(base_path('public'));
+        // storage can belong to the php-fpm user while the code belongs to someone else.
+        $storageOwner = @fileowner(storage_path());
+        $storageGroup = @filegroup(storage_path());
 
         $from = $this->versionService->currentComparableVersion() ?? 'canary';
         $staging = $this->workPath('staging');
@@ -327,6 +330,7 @@ class PanelUpdateService
 
             $this->step('backup');
             $databaseBackup = $this->backupDatabase($backup, $skipDatabaseBackup);
+            $this->backupPluginMetadata($backup);
 
             $this->step('swap');
             $this->swap($release, $codeBackup, $swapped, $carried);
@@ -386,7 +390,7 @@ class PanelUpdateService
                 'storage/framework',
                 str_starts_with($workPath, $this->statePath()) ? null : Str::after($workPath, base_path() . DIRECTORY_SEPARATOR),
                 Str::after($this->statePath(), base_path() . DIRECTORY_SEPARATOR),
-            ]))), $owner, $group);
+            ]))), $storageOwner, $storageGroup);
 
             flock($lock, LOCK_UN);
             fclose($lock);
@@ -722,6 +726,32 @@ class PanelUpdateService
     }
 
     /**
+     * plugins/ stays in place during the swap, but the new release rewrites plugin.json when it boots (for example
+     * marking plugins incompatible), so their metadata is part of what a rollback has to put back.
+     *
+     * @throws Exception
+     */
+    private function backupPluginMetadata(string $backup): void
+    {
+        foreach (glob(base_path('plugins/*/plugin.json')) ?: [] as $file) {
+            $copy = join_paths($backup, 'plugins', basename(dirname($file)), 'plugin.json');
+            File::ensureDirectoryExists(dirname($copy));
+            throw_unless(copy($file, $copy), new Exception("Could not back up $file."));
+        }
+    }
+
+    /** @throws Exception */
+    private function restorePluginMetadata(string $backup): void
+    {
+        foreach (glob(join_paths($backup, 'plugins') . '/*/plugin.json') ?: [] as $copy) {
+            $file = base_path(join_paths('plugins', basename(dirname($copy)), 'plugin.json'));
+            if (is_dir(dirname($file))) {
+                throw_unless(copy($copy, $file), new Exception("Could not restore $file."));
+            }
+        }
+    }
+
+    /**
      * @param  array<string, bool>  $swapped
      * @param  list<array{string, string}>  $carried
      * @param  null|array{driver: string, file: string}  $databaseBackup
@@ -754,6 +784,7 @@ class PanelUpdateService
             }
 
             File::deleteDirectory($failed);
+            $this->restorePluginMetadata(dirname($codeBackup));
             $this->log('Restored the previous code.');
 
             if ($migrating) {
