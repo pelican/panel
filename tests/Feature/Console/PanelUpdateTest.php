@@ -9,6 +9,7 @@ use App\Services\Helpers\PluginService;
 use App\Services\Helpers\SoftwareVersionService;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -68,6 +69,93 @@ it('treats a recently queued update as running until its process takes the lock'
     'just launched' => [0, true],
     'process never started' => [5, false],
 ]);
+
+it('keeps the newest backups by date rather than by version', function () {
+    $service = app(PanelUpdateService::class);
+    $backups = (new ReflectionMethod($service, 'workPath'))->invoke($service, 'backups');
+    File::deleteDirectory($backups);
+
+    // Oldest to newest. Sorted as strings, 1.10.0 would come before 1.7.0 and get pruned.
+    foreach (['1.7.0_20260101_000000', '1.8.0_20260201_000000', '1.9.0_20260301_000000', '1.10.0_20260401_000000'] as $name) {
+        File::ensureDirectoryExists("$backups/$name");
+    }
+
+    try {
+        (new ReflectionMethod($service, 'pruneBackups'))->invoke($service);
+
+        expect(collect(File::directories($backups))->map(fn ($path) => basename($path))->sort()->values()->all())
+            ->toBe(['1.10.0_20260401_000000', '1.8.0_20260201_000000', '1.9.0_20260301_000000']);
+    } finally {
+        File::deleteDirectory($backups);
+    }
+});
+
+it('refuses a second launch while another one is being started', function () use ($passingPreflight) {
+    updateServiceWithPreflight($passingPreflight);
+    Process::fake();
+
+    $admin = User::factory()->create();
+    $admin->syncRoles(Role::getRootAdmin());
+
+    $path = storage_path('app/private/update/launch.lock');
+    File::ensureDirectoryExists(dirname($path));
+    $lock = fopen($path, 'c');
+    flock($lock, LOCK_EX);
+
+    try {
+        expect(fn () => app(PanelUpdateService::class)->launch($admin, '1.1.0'))
+            ->toThrow(Exception::class, trans('admin/update.preflight.running'));
+
+        Process::assertNothingRan();
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+});
+
+it('backs up sqlite including transactions that are still in the WAL file', function () {
+    $directory = sys_get_temp_dir() . '/panel-update-sqlite-' . Str::random(8);
+    File::ensureDirectoryExists($directory);
+    $database = "$directory/live.sqlite";
+    touch($database);
+
+    config()->set('database.connections.update_test', ['driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true]);
+    $default = config('database.default');
+    config()->set('database.default', 'update_test');
+
+    try {
+        DB::statement('PRAGMA journal_mode = WAL');
+        DB::statement('PRAGMA wal_autocheckpoint = 0');
+        DB::statement('CREATE TABLE things (name TEXT)');
+        DB::table('things')->insert(['name' => 'only in the wal']);
+        expect(filesize("$database-wal"))->toBeGreaterThan(0);
+
+        $service = app(PanelUpdateService::class);
+        $backup = (new ReflectionMethod($service, 'backupDatabase'))->invoke($service, "$directory/backup", false);
+
+        $copy = new PDO('sqlite:' . $backup['file']);
+        expect($copy->query('SELECT name FROM things')->fetchColumn())->toBe('only in the wal');
+        $copy = null;
+    } finally {
+        DB::purge('update_test');
+        config()->set('database.default', $default);
+        File::deleteDirectory($directory);
+    }
+});
+
+it('resolves DB_URL so backups and restores reach the panel database', function () {
+    config()->set('database.default', 'mysql');
+    config()->set('database.connections.mysql.url', 'mysql://panel:secret@db.internal:3307/pelican');
+    config()->set('database.connections.mysql.host', '127.0.0.1');
+
+    $service = app(PanelUpdateService::class);
+
+    expect((new ReflectionMethod($service, 'databaseConfig'))->invoke($service))
+        ->host->toBe('db.internal')
+        ->port->toBe(3307)
+        ->database->toBe('pelican')
+        ->username->toBe('panel');
+});
 
 it('only checks when asked to', function () use ($passingPreflight) {
     updateServiceWithPreflight($passingPreflight);

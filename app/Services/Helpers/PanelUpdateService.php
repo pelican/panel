@@ -9,6 +9,8 @@ use Closure;
 use Exception;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Process\ProcessResult;
+use Illuminate\Support\ConfigurationUrlParser;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -172,6 +174,22 @@ class PanelUpdateService
     {
         throw_unless($user->isRootAdmin(), new AuthorizationException(trans('admin/update.notifications.unauthorized')));
 
+        // Two admins confirming at once must not both pass preflight, the second one has to see the first as queued.
+        File::ensureDirectoryExists($this->statePath());
+        $launchLock = fopen($this->statePath('launch.lock'), 'c');
+        throw_if($launchLock === false || !flock($launchLock, LOCK_EX | LOCK_NB), new Exception(trans('admin/update.preflight.running')));
+
+        try {
+            return $this->launchLocked($user, $target, $forcePlugins, $skipDatabaseBackup);
+        } finally {
+            flock($launchLock, LOCK_UN);
+            fclose($launchLock);
+        }
+    }
+
+    /** @throws Exception */
+    private function launchLocked(User $user, string $target, bool $forcePlugins, bool $skipDatabaseBackup): string
+    {
         $preflight = $this->preflight($target);
         throw_if(count($preflight['errors']) > 0, new Exception($preflight['errors'][0] ?? ''));
         throw_if(count($preflight['plugins']) > 0 && !$forcePlugins, new Exception(trans('admin/update.preflight.plugins', ['plugins' => implode(', ', $preflight['plugins'])])));
@@ -343,12 +361,16 @@ class PanelUpdateService
                 $restored = $this->rollback($swapped, $carried, $release, $codeBackup, $migrating ? $databaseBackup : null, $migrating);
             }
 
-            File::deleteDirectory($staging);
+            // Staging can hold custom public/ and database/ files that a failed rollback didn't put back.
+            if ($restored) {
+                File::deleteDirectory($staging);
+            }
 
             $this->writeStatus([
                 'state' => $restored ? self::STATE_FAILED : self::STATE_ROLLBACK_FAILED,
                 'message' => $this->redact($exception->getMessage()),
                 'backup' => $restored ? null : $backup,
+                'staging' => $restored ? null : $staging,
                 'finished_at' => now()->toIso8601String(),
             ]);
 
@@ -543,7 +565,12 @@ class PanelUpdateService
 
         if ($driver === 'sqlite') {
             $file = join_paths($backup, 'database.sqlite');
-            throw_unless(is_file($config['database']) && copy($config['database'], $file), new Exception('Could not back up the sqlite database.'));
+            throw_unless(is_file($config['database']), new Exception('Could not back up the sqlite database.'));
+
+            // A plain copy misses committed transactions still in the -wal file, VACUUM INTO writes a consistent snapshot.
+            @unlink($file);
+            DB::connection()->statement('VACUUM INTO ?', [$file]);
+            throw_unless(is_file($file) && filesize($file) > 0, new Exception('Could not back up the sqlite database.'));
             $this->log("Database backed up to $file");
 
             return ['driver' => $driver, 'file' => $file];
@@ -721,7 +748,9 @@ class PanelUpdateService
     {
         // Plain glob, this runs after the swap where autoloading a class could pick up the new release's version.
         $backups = glob($this->workPath('backups') . '/*', GLOB_ONLYDIR) ?: [];
-        sort($backups);
+
+        // Names are <version>_<Ymd_His>, sort by the timestamp since versions don't sort as strings (1.10 < 1.7).
+        usort($backups, fn (string $a, string $b) => strcmp(substr(basename($a), -15), substr(basename($b), -15)));
 
         foreach (array_slice($backups, 0, max(0, count($backups) - self::KEEP_BACKUPS)) as $directory) {
             File::deleteDirectory($directory);
@@ -749,7 +778,8 @@ class PanelUpdateService
     /** @return array<string, mixed> */
     private function databaseConfig(): array
     {
-        return config('database.connections.' . config('database.default'), []);
+        // Resolve DB_URL like Laravel does, so the dump tools reach the same database as db:wipe and migrate.
+        return (new ConfigurationUrlParser())->parseConfiguration(config('database.connections.' . config('database.default'), []));
     }
 
     /**
