@@ -34,6 +34,8 @@ class UpdateProgressWidget extends Widget
 
     public function dismiss(PanelUpdateService $panelUpdateService): void
     {
+        abort_unless(user()?->isRootAdmin(), 403);
+
         $status = $panelUpdateService->status();
 
         if (in_array($status['state'] ?? null, [PanelUpdateService::STATE_SUCCEEDED, PanelUpdateService::STATE_FAILED], true)) {

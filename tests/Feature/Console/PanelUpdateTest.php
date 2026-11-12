@@ -7,11 +7,13 @@ use App\Models\User;
 use App\Services\Helpers\PanelUpdateService;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\SoftwareVersionService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 $passingPreflight = ['errors' => [], 'warnings' => [], 'plugins' => [], 'needs_backup_confirmation' => false];
 
@@ -99,6 +101,7 @@ it('requires confirmation for plugins that would become incompatible', function 
     ]);
 
     $user = User::factory()->create();
+    $user->syncRoles(Role::getRootAdmin());
 
     expect(fn () => app(PanelUpdateService::class)->launch($user, '1.1.0'))
         ->toThrow(Exception::class, 'Example');
@@ -227,4 +230,34 @@ it('shows the progress of a running update', function () {
         ->assertOk()
         ->assertSee(trans('admin/update.progress.heading'))
         ->assertSee(trans('admin/update.progress.steps.download'));
+});
+
+it('refuses to start an update for admins who are not root admins', function () use ($passingPreflight) {
+    updateServiceWithPreflight($passingPreflight);
+    Process::fake();
+
+    $role = Role::create(['name' => 'Limited admin', 'guard_name' => 'web']);
+    $admin = User::factory()->create();
+    $admin->syncRoles($role);
+
+    expect(fn () => app(PanelUpdateService::class)->launch($admin, '1.1.0'))
+        ->toThrow(AuthorizationException::class);
+
+    Process::assertNothingRan();
+});
+
+it('hides the update from admins who are not root admins', function () {
+    Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.1.0', 'body' => 'Release notes'])]);
+
+    $admin = User::factory()->create();
+    $this->actingAs($admin);
+
+    Livewire::test(UpdateWidget::class)
+        ->assertOk()
+        ->assertDontSee(trans('admin/update.button'));
+
+    expect(UpdateProgressWidget::canView())->toBeFalse();
+
+    expect(fn () => (new UpdateProgressWidget())->dismiss(app(PanelUpdateService::class)))
+        ->toThrow(HttpException::class);
 });

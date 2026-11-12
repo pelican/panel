@@ -87,8 +87,9 @@ class UpdateWidget extends FormWidget
                     ->headerActions([
                         $this->updateAction($latestVersion, $isContainer),
                         Action::make('db_update')
-                            ->label(trans('admin/dashboard.sections.intro-update-available.heading'))
+                            ->label(trans('admin/dashboard.sections.intro-update-available.button_guide'))
                             ->icon(TablerIcon::ClipboardText)
+                            ->button()
                             ->url('https://pelican.dev/docs/panel/update', true)
                             ->color('warning'),
                     ]),
@@ -103,8 +104,10 @@ class UpdateWidget extends FormWidget
         return Action::make('update_now')
             ->label(trans('admin/update.button'))
             ->icon(TablerIcon::CloudDownload)
+            ->button()
             ->color('success')
             ->visible($visible)
+            ->authorize(fn () => (bool) user()?->isRootAdmin())
             ->disabled(filled($preflight['errors'] ?? null))
             ->tooltip($preflight['errors'][0] ?? null)
             ->requiresConfirmation()

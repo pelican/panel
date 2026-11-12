@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'button' => 'Update now',
+    'button' => 'Update Now',
     'modal' => [
         'heading' => 'Update to :version?',
         'description' => 'The panel downloads and prepares :to first, then goes into maintenance mode for a minute or two while it switches over from :from and runs the migrations. Your code and database are backed up and restored automatically if anything fails.',
@@ -50,5 +50,6 @@ return [
         'started_body' => 'You can follow its progress on the dashboard. You stay logged in while the panel is in maintenance mode.',
         'launch_failed' => 'Could not start the update process.',
         'failed' => 'Could not start the update',
+        'unauthorized' => 'Only root admins can update the panel.',
     ],
 ];

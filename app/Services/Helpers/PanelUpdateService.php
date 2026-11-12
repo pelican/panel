@@ -7,6 +7,7 @@ use App\Models\Plugin;
 use App\Models\User;
 use Closure;
 use Exception;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -166,6 +167,8 @@ class PanelUpdateService
      */
     public function launch(User $user, string $target, bool $forcePlugins = false, bool $skipDatabaseBackup = false): string
     {
+        throw_unless($user->isRootAdmin(), new AuthorizationException(trans('admin/update.notifications.unauthorized')));
+
         $preflight = $this->preflight($target);
         throw_if(count($preflight['errors']) > 0, new Exception($preflight['errors'][0] ?? ''));
         throw_if(count($preflight['plugins']) > 0 && !$forcePlugins, new Exception(trans('admin/update.preflight.plugins', ['plugins' => implode(', ', $preflight['plugins'])])));
