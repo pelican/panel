@@ -61,7 +61,10 @@ class PluginService
 
                 // Filter out plugins that are not compatible with the current panel version
                 if (!$plugin->isCompatible()) {
-                    $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin is only compatible with Panel version ' . $plugin->panel_version . (!$plugin->isPanelVersionStrict() ? ' or a compatible newer version' : '') . ' but you are using version ' . $this->app->make(SoftwareVersionService::class)->currentPanelVersion() . '!');
+                    // This runs during service provider registration, before the cache is bound, so it can't use
+                    // SoftwareVersionService::currentPanelVersion(). Canary always passes isCompatible(), so the
+                    // configured version is the real release version here.
+                    $this->setStatus($plugin, PluginStatus::Incompatible, 'This Plugin is only compatible with Panel version ' . $plugin->panel_version . (!$plugin->isPanelVersionStrict() ? ' or a compatible newer version' : '') . ' but you are using version ' . config('app.version') . '!');
 
                     continue;
                 } else {
