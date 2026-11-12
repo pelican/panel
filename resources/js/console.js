@@ -168,14 +168,18 @@ const areaDataset = (data, backgroundColor = 'rgba(96, 165, 250, 0.3)', label = 
 
 // The network and disk I/O counters are cumulative, so each point is the delta
 // from the previous sample. Pairs further apart than MAX_SAMPLE_GAP (history
-// restored after a revisit) would plot as one spike, and a counter that went
-// backwards (container restart) is clamped to 0.
+// restored after a revisit) would plot as one spike, as would a pair where either
+// side lacks a counter (older Wings, or history saved before disk I/O existed),
+// so both are skipped. A counter that went backwards (container restart) is clamped to 0.
 const deltaSeries = (window, keys) => {
     const series = Object.fromEntries(keys.map((key) => [key, []]));
     const points = [];
 
     for (let i = 1; i < window.length; i++) {
-        if (window[i].t - window[i - 1].t > MAX_SAMPLE_GAP) {
+        if (
+            window[i].t - window[i - 1].t > MAX_SAMPLE_GAP ||
+            keys.some((key) => window[i][key] == null || window[i - 1][key] == null)
+        ) {
             continue;
         }
 
