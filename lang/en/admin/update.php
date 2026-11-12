@@ -4,7 +4,20 @@ return [
     'button' => 'Update Now',
     'modal' => [
         'heading' => 'Update to :version?',
-        'description' => 'The panel downloads and prepares :to first, then goes into maintenance mode for a minute or two while it switches over from :from and runs the migrations. Your code and database are backed up and restored automatically if anything fails.',
+        'description' => 'From :from to :to. The panel is only offline during steps 5 to 9, usually a minute or two.',
+        'steps_label' => 'What happens',
+        'steps' => [
+            'Checks the requirements: PHP version and extensions, plugin compatibility, disk space and file permissions.',
+            'Downloads the :to release from GitHub.',
+            'Verifies the download against the release\'s published SHA-256 checksum.',
+            'Unpacks it into a staging folder and installs its dependencies and your plugins\' packages. The live panel is not touched yet.',
+            'Puts the panel into maintenance mode. You stay logged in so you can watch the progress.',
+            'Backs up the database.',
+            'Moves the current files aside as a backup and swaps in the new ones. Your .env, storage, plugins and uploads are kept.',
+            'Runs the database migrations.',
+            'Clears and rebuilds the caches, restarts the queue workers and brings the panel back online.',
+        ],
+        'rollback' => 'If any step fails, the old files and database are restored and the panel comes back online on :from.',
         'warnings' => 'Warnings',
         'plugins' => 'Update anyway. These enabled plugins don\'t support :version and will be marked incompatible: :plugins',
         'no_backup' => 'I have my own database backup. No database dump tool (mysqldump, mariadb-dump or pg_dump) was found, so the updater can\'t back up or restore the database.',
@@ -32,6 +45,7 @@ return [
         ],
     ],
     'preflight' => [
+        'windows_sqlite' => 'Stop the queue worker before updating. Windows can\'t move the database folder while another process has the SQLite database open.',
         'docker' => 'Docker installs update by pulling the new image and recreating the container.',
         'canary' => 'Canary builds can\'t be updated automatically.',
         'no_target' => 'The latest version could not be determined.',
@@ -48,7 +62,7 @@ return [
     'notifications' => [
         'started' => 'Update started',
         'started_body' => 'You can follow its progress on the dashboard. You stay logged in while the panel is in maintenance mode.',
-        'launch_failed' => 'Could not start the update process.',
+        'launch_failed' => 'Could not start the update process: :reason',
         'failed' => 'Could not start the update',
         'unauthorized' => 'Only root admins can update the panel.',
     ],

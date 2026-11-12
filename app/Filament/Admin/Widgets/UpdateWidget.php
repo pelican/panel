@@ -15,6 +15,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Width;
 use Illuminate\Foundation\Http\MaintenanceModeBypassCookie;
 use Illuminate\Support\Facades\Cookie;
 
@@ -102,6 +103,18 @@ class UpdateWidget extends FormWidget implements HasActions
             ]);
     }
 
+    private function updateStepsMarkdown(string $latestVersion): string
+    {
+        $steps = trans('admin/update.modal.steps', ['to' => $latestVersion]);
+
+        return collect(is_array($steps) ? $steps : [])
+            ->values()
+            ->map(fn (string $step, int $index) => ($index + 1) . '. ' . $step)
+            ->implode(PHP_EOL)
+            . PHP_EOL . PHP_EOL
+            . '**' . trans('admin/update.modal.rollback', ['from' => $this->softwareVersionService->currentPanelVersion()]) . '**';
+    }
+
     private function updateAction(?string $latestVersion, bool $isContainer): Action
     {
         $visible = !$isContainer && $latestVersion !== null && user()?->isRootAdmin();
@@ -123,7 +136,12 @@ class UpdateWidget extends FormWidget implements HasActions
                 'from' => $this->softwareVersionService->currentPanelVersion(),
                 'to' => $latestVersion,
             ]))
+            ->modalWidth(Width::Large)
             ->schema([
+                TextEntry::make('steps')
+                    ->label(trans('admin/update.modal.steps_label'))
+                    ->state($this->updateStepsMarkdown((string) $latestVersion))
+                    ->markdown(),
                 TextEntry::make('warnings')
                     ->label(trans('admin/update.modal.warnings'))
                     ->state(implode(PHP_EOL, $preflight['warnings'] ?? []))
