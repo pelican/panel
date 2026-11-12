@@ -357,6 +357,7 @@ class PluginService
         $this->rollbackPluginMigrations($plugin);
 
         $this->setStatus($plugin, PluginStatus::NotInstalled);
+        $this->clearDefaultTheme($plugin);
 
         if ($deleteFiles) {
             $this->deletePlugin($plugin);
@@ -548,6 +549,17 @@ class PluginService
     public function disablePlugin(string|Plugin $plugin): void
     {
         $this->setStatus($plugin, PluginStatus::Disabled);
+        $this->clearDefaultTheme($plugin);
+    }
+
+    /** A default theme that is no longer enabled would fail the settings form and, if forced, hide the theme picker for nothing. */
+    private function clearDefaultTheme(string|Plugin $plugin): void
+    {
+        $themeService = $this->app->make(ThemeService::class);
+
+        if ($themeService->getDefaultThemeId() === (is_string($plugin) ? $plugin : $plugin->id)) {
+            $themeService->setDefaultTheme(ThemeService::None);
+        }
     }
 
     /** @param array<string, mixed> $data */
