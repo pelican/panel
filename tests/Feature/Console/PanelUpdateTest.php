@@ -58,6 +58,17 @@ it('refuses to update on Windows', function () {
         ->toContain(trans('admin/update.preflight.windows'));
 })->skip(PHP_OS_FAMILY !== 'Windows', 'Only applies to Windows');
 
+it('treats a recently queued update as running until its process takes the lock', function (int $minutesAgo, bool $busy) {
+    $status = storage_path('app/private/update/status.json');
+    File::ensureDirectoryExists(dirname($status));
+    File::put($status, json_encode(['state' => PanelUpdateService::STATE_QUEUED, 'updated_at' => now()->subMinutes($minutesAgo)->toAtomString()]));
+
+    expect(app(PanelUpdateService::class)->isBusy())->toBe($busy);
+})->with([
+    'just launched' => [0, true],
+    'process never started' => [5, false],
+]);
+
 it('only checks when asked to', function () use ($passingPreflight) {
     updateServiceWithPreflight($passingPreflight);
     Process::fake();
