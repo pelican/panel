@@ -9,6 +9,8 @@
             "disk_bytes": 1073741824,
             "network_rx_bytes": 1024,
             "network_tx_bytes": 2048,
+            "disk_io_read_bytes": 4096,
+            "disk_io_write_bytes": 8192,
             "uptime": 60000
         }
     }

@@ -166,6 +166,29 @@ const areaDataset = (data, backgroundColor = 'rgba(96, 165, 250, 0.3)', label = 
     fill: true,
 });
 
+// The network and disk I/O counters are cumulative, so each point is the delta
+// from the previous sample. Pairs further apart than MAX_SAMPLE_GAP (history
+// restored after a revisit) would plot as one spike, and a counter that went
+// backwards (container restart) is clamped to 0.
+const deltaSeries = (window, keys) => {
+    const series = Object.fromEntries(keys.map((key) => [key, []]));
+    const points = [];
+
+    for (let i = 1; i < window.length; i++) {
+        if (window[i].t - window[i - 1].t > MAX_SAMPLE_GAP) {
+            continue;
+        }
+
+        for (const key of keys) {
+            series[key].push(Math.max(0, number(window[i][key]) - number(window[i - 1][key])));
+        }
+
+        points.push(window[i]);
+    }
+
+    return { series, points };
+};
+
 window.ServerStats = {
     configure(options) {
         const previousUuid = config.uuid;
@@ -204,6 +227,9 @@ window.ServerStats = {
             disk: number(stats.disk_bytes),
             rx: number(stats.network?.rx_bytes),
             tx: number(stats.network?.tx_bytes),
+            // Wings before v1.0.0-beta28 sends no disk_io; null lets the heading say so instead of showing 0.
+            read: stats.disk_io ? number(stats.disk_io.read_bytes) : null,
+            write: stats.disk_io ? number(stats.disk_io.write_bytes) : null,
             uptime: number(stats.uptime),
         });
 
@@ -277,29 +303,27 @@ window.ServerStats = {
         };
     },
 
-    // Mirrors ServerNetworkChart::getData(). The counters are cumulative, so each
-    // point is the delta from the previous sample; pairs further apart than
-    // MAX_SAMPLE_GAP (history restored after a revisit) would plot as one spike.
+    // Mirrors ServerNetworkChart::getData().
     networkData() {
-        const window = windowed();
-        const rx = [];
-        const tx = [];
-        const points = [];
-
-        for (let i = 1; i < window.length; i++) {
-            if (window[i].t - window[i - 1].t > MAX_SAMPLE_GAP) {
-                continue;
-            }
-
-            rx.push(Math.max(0, window[i].rx - window[i - 1].rx));
-            tx.push(Math.max(0, window[i].tx - window[i - 1].tx));
-            points.push(window[i]);
-        }
+        const { series, points } = deltaSeries(windowed(), ['rx', 'tx']);
 
         return {
             datasets: [
-                areaDataset(rx, 'rgba(100, 255, 105, 0.5)', 'Inbound'),
-                areaDataset(tx, 'rgba(96, 165, 250, 0.3)', 'Outbound'),
+                areaDataset(series.rx, 'rgba(100, 255, 105, 0.5)', 'Inbound'),
+                areaDataset(series.tx, 'rgba(96, 165, 250, 0.3)', 'Outbound'),
+            ],
+            labels: labelsFor(points),
+        };
+    },
+
+    // Mirrors ServerDiskIoChart::getData().
+    diskIoData() {
+        const { series, points } = deltaSeries(windowed(), ['read', 'write']);
+
+        return {
+            datasets: [
+                areaDataset(series.read, 'rgba(100, 255, 105, 0.5)', 'Read'),
+                areaDataset(series.write, 'rgba(96, 165, 250, 0.3)', 'Write'),
             ],
             labels: labelsFor(points),
         };

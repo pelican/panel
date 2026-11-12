@@ -21,6 +21,7 @@ return [
         'cpu' => 'CPU',
         'memory' => 'Memory',
         'network' => 'Network',
+        'disk_io' => 'Disk I/O',
         'disk' => 'Disk',
         'name' => 'Name',
         'status' => 'Status',

@@ -36,6 +36,8 @@ class ResourceUtilizationControllerTest extends ClientApiIntegrationTestCase
                     'disk_bytes' => 0,
                     'network_rx_bytes' => 0,
                     'network_tx_bytes' => 0,
+                    'disk_io_read_bytes' => 0,
+                    'disk_io_write_bytes' => 0,
                 ],
             ],
         ]);
