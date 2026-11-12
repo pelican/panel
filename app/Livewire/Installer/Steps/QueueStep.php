@@ -39,25 +39,25 @@ class QueueStep
                     ->default(config('queue.default')),
                 Toggle::make('done')
                     ->label(trans('installer.queue.fields.done'))
-                    ->accepted(fn () => !@file_exists('/.dockerenv'))
+                    ->accepted(fn () => !is_running_in_docker())
                     ->inline(false)
                     ->validationMessages([
                         'accepted' => trans('installer.queue.fields.done_validation'),
                     ])
-                    ->hidden(fn () => @file_exists('/.dockerenv')),
+                    ->hidden(fn () => is_running_in_docker()),
                 TextInput::make('crontab')
                     ->label(new HtmlString(trans('installer.queue.fields.crontab')))
                     ->disabled()
                     ->hintCopy()
                     ->default('(sudo crontab -l -u www-data 2>/dev/null; echo "* * * * * php ' . base_path() . '/artisan schedule:run >> /dev/null 2>&1") | sudo crontab -u www-data -')
-                    ->hidden(fn () => @file_exists('/.dockerenv'))
+                    ->hidden(fn () => is_running_in_docker())
                     ->columnSpanFull(),
                 TextInput::make('queueService')
                     ->label(new HtmlString(trans('installer.queue.fields.service')))
                     ->disabled()
                     ->hintCopy()
                     ->default('sudo php ' . base_path() . '/artisan p:environment:queue-service')
-                    ->hidden(fn () => @file_exists('/.dockerenv'))
+                    ->hidden(fn () => is_running_in_docker())
                     ->columnSpanFull(),
             ])
             ->afterValidation(fn () => $installer->writeToEnv('env_queue'));

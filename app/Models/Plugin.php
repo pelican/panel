@@ -249,9 +249,12 @@ class Plugin extends Model implements HasPluginSettings
         return $this->status === PluginStatus::Enabled || $this->status === PluginStatus::Incompatible;
     }
 
-    public function isCompatible(): bool
+    /**
+     * Whether this plugin supports the given panel version, or the running one when none is given.
+     */
+    public function isCompatible(?string $panelVersion = null): bool
     {
-        $currentPanelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
+        $currentPanelVersion = $panelVersion ?? App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
 
         if (!$this->panel_version || $currentPanelVersion === null) {
             return true;

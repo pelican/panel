@@ -103,6 +103,13 @@ if (!function_exists('plugin_path')) {
     }
 }
 
+if (!function_exists('is_running_in_docker')) {
+    function is_running_in_docker(): bool
+    {
+        return @file_exists('/.dockerenv');
+    }
+}
+
 if (!function_exists('get_ip_from_hostname')) {
     function get_ip_from_hostname(string $hostname): string|bool
     {

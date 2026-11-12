@@ -49,6 +49,30 @@ class SoftwareVersionService
         return is_array($release) ? $release : null;
     }
 
+    /**
+     * Download urls of a panel release's assets, keyed by asset name. Not cached, only the updater needs this.
+     *
+     * @return array<string, string>
+     *
+     * @throws Exception
+     */
+    public function panelReleaseAssets(string $version): array
+    {
+        foreach (["v$version", $version] as $tag) {
+            $response = Http::timeout(10)->connectTimeout(5)->get('https://api.github.com/repos/pelican/panel/releases/tags/' . rawurlencode($tag));
+
+            if ($response->notFound()) {
+                continue;
+            }
+
+            return collect($response->throw()->json('assets', []))
+                ->mapWithKeys(fn (array $asset) => [$asset['name'] => $asset['browser_download_url']])
+                ->all();
+        }
+
+        throw new Exception("Release $version was not found on GitHub.");
+    }
+
     public function isLatestPanel(): bool
     {
         $current = $this->currentComparableVersion();
