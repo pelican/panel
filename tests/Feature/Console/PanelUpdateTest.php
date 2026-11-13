@@ -78,26 +78,6 @@ it('treats a recently queued update as running until its process takes the lock'
     'process never started' => [5, false],
 ]);
 
-it('keeps the newest backups by date rather than by version', function () {
-    $service = app(PanelUpdateService::class);
-    $backups = (new ReflectionMethod($service, 'workPath'))->invoke($service, 'backups');
-    expect($backups)->toStartWith($this->updateStoragePath);
-
-    // Oldest to newest. Sorted as strings, 1.10.0 would come before 1.7.0 and get pruned.
-    foreach (['1.7.0_20260101_000000', '1.8.0_20260201_000000', '1.9.0_20260301_000000', '1.10.0_20260401_000000'] as $name) {
-        File::ensureDirectoryExists("$backups/$name");
-    }
-
-    try {
-        (new ReflectionMethod($service, 'pruneBackups'))->invoke($service);
-
-        expect(collect(File::directories($backups))->map(fn ($path) => basename($path))->sort()->values()->all())
-            ->toBe(['1.10.0_20260401_000000', '1.8.0_20260201_000000', '1.9.0_20260301_000000']);
-    } finally {
-        File::deleteDirectory($backups);
-    }
-});
-
 it('refuses a second launch while another one is being started', function () use ($passingPreflight) {
     updateServiceWithPreflight($passingPreflight);
     Process::fake();
@@ -118,36 +98,6 @@ it('refuses a second launch while another one is being started', function () use
     } finally {
         flock($lock, LOCK_UN);
         fclose($lock);
-    }
-});
-
-it('backs up sqlite including transactions that are still in the WAL file', function () {
-    $directory = sys_get_temp_dir() . '/panel-update-sqlite-' . Str::random(8);
-    File::ensureDirectoryExists($directory);
-    $database = "$directory/live.sqlite";
-    touch($database);
-
-    config()->set('database.connections.update_test', ['driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true]);
-    $default = config('database.default');
-    config()->set('database.default', 'update_test');
-
-    try {
-        DB::statement('PRAGMA journal_mode = WAL');
-        DB::statement('PRAGMA wal_autocheckpoint = 0');
-        DB::statement('CREATE TABLE things (name TEXT)');
-        DB::table('things')->insert(['name' => 'only in the wal']);
-        expect(filesize("$database-wal"))->toBeGreaterThan(0);
-
-        $service = app(PanelUpdateService::class);
-        $backup = (new ReflectionMethod($service, 'backupDatabase'))->invoke($service, "$directory/backup", false);
-
-        $copy = new PDO('sqlite:' . $backup['file']);
-        expect($copy->query('SELECT name FROM things')->fetchColumn())->toBe('only in the wal');
-        $copy = null;
-    } finally {
-        DB::purge('update_test');
-        config()->set('database.default', $default);
-        File::deleteDirectory($directory);
     }
 });
 
@@ -185,91 +135,20 @@ it('keeps showing a running update while its process holds the lock', function (
     }
 });
 
-it('restores the sqlite database when a rollback happens after migrations ran', function () {
-    $directory = sys_get_temp_dir() . '/panel-update-restore-' . Str::random(8);
-    File::ensureDirectoryExists($directory);
-    $database = "$directory/live.sqlite";
-    touch($database);
-
-    config()->set('database.connections.update_test', ['driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true]);
-    $default = config('database.default');
-    config()->set('database.default', 'update_test');
-    Process::fake();
-
-    try {
-        DB::statement('CREATE TABLE things (name TEXT)');
-        DB::table('things')->insert(['name' => 'before the update']);
-
-        $service = app(PanelUpdateService::class);
-        $backup = (new ReflectionMethod($service, 'backupDatabase'))->invoke($service, "$directory/backup", false);
-
-        // What a migration of the new release would have done.
-        DB::table('things')->update(['name' => 'changed by a migration']);
-        DB::statement('CREATE TABLE added_by_the_update (id INTEGER)');
-        DB::purge('update_test');
-
-        $restored = (new ReflectionMethod($service, 'rollback'))->invoke($service, [], [], "$directory/release", "$directory/backup/code", $backup, true);
-        DB::purge('update_test');
-
-        expect($restored)->toBeTrue()
-            ->and(DB::table('things')->value('name'))->toBe('before the update')
-            ->and(DB::getSchemaBuilder()->hasTable('added_by_the_update'))->toBeFalse();
-
-        Process::assertRan(fn ($process) => in_array('up', (array) $process->command, true));
-    } finally {
-        DB::purge('update_test');
-        config()->set('database.default', $default);
-        File::deleteDirectory($directory);
-    }
-});
-
-it('puts plugin metadata back when it rolls back', function () {
-    $original = base_path();
-    $root = sys_get_temp_dir() . '/panel-update-plugins-' . Str::random(8);
-    File::ensureDirectoryExists("$root/plugins/example");
-    File::put("$root/plugins/example/plugin.json", '{"meta":{"status":"enabled"}}');
-
-    app()->setBasePath($root);
-    Process::fake();
-
-    try {
-        $service = app(PanelUpdateService::class);
-        (new ReflectionMethod($service, 'backupPluginMetadata'))->invoke($service, "$root/backup");
-
-        // What the new release does when it boots and finds the plugin incompatible.
-        File::put("$root/plugins/example/plugin.json", '{"meta":{"status":"incompatible"}}');
-
-        $restored = (new ReflectionMethod($service, 'rollback'))->invoke($service, [], [], "$root/release", "$root/backup/code", null, false);
-
-        expect($restored)->toBeTrue()
-            ->and(File::get("$root/plugins/example/plugin.json"))->toBe('{"meta":{"status":"enabled"}}');
-    } finally {
-        app()->setBasePath($original);
-        File::deleteDirectory($root);
-    }
-});
-
-it('waits for running queue jobs before backing up the database', function () {
+it('reports running queue jobs to the update script', function () {
     config()->set('queue.default', 'database');
     config()->set('queue.connections.database', ['driver' => 'database', 'table' => 'jobs', 'queue' => 'default', 'retry_after' => 90]);
 
-    $service = app(PanelUpdateService::class);
-    $wait = fn () => (new ReflectionMethod($service, 'waitForQueueJobs'))->invoke($service, 0);
-    (new ReflectionProperty($service, 'output'))->setValue($service, fn () => null);
-
     DB::table('jobs')->insert(['queue' => 'default', 'payload' => '{}', 'attempts' => 1, 'reserved_at' => time() - 10, 'available_at' => time(), 'created_at' => time()]);
-    expect($wait)->toThrow(Exception::class, 'queue jobs are still running');
+    $this->artisan('p:update', ['--running-jobs' => true])->expectsOutput('1')->assertSuccessful();
 
     // A reservation older than retry_after belongs to a worker that died.
     DB::table('jobs')->update(['reserved_at' => time() - 600]);
-    $wait();
-
-    DB::table('jobs')->delete();
-    $wait();
+    $this->artisan('p:update', ['--running-jobs' => true])->expectsOutput('0')->assertSuccessful();
 
     // An unknown queue state must not count as an idle queue.
     config()->set('queue.connections.database.table', 'missing_jobs_table');
-    expect($wait)->toThrow(Exception::class, 'Could not check for running queue jobs');
+    $this->artisan('p:update', ['--running-jobs' => true])->assertFailed();
 });
 
 it('resolves DB_URL so backups and restores reach the panel database', function () {
@@ -319,7 +198,13 @@ it('aborts before touching the install when the checksum does not match', functi
         'github.com/pelican/panel/releases/download/v1.1.0/panel.tar.gz' => Http::response('not the real archive'),
     ]);
 
-    $succeeded = $service->run('1.1.0', 'secret', false, false, null, fn () => null);
+    putenv(PanelUpdateService::LOCKED_ENV . '=1');
+
+    try {
+        $succeeded = $service->prepare(['target' => '1.1.0', 'secret' => 'secret', 'user_id' => null, 'force_plugins' => false, 'skip_db_backup' => false], fn () => null);
+    } finally {
+        putenv(PanelUpdateService::LOCKED_ENV);
+    }
 
     expect($succeeded)->toBeFalse()
         ->and($service->status())
@@ -353,88 +238,6 @@ it('only shows the update status to root admins', function () {
         ->getJson(route('update.status'))
         ->assertOk()
         ->assertJson(['state' => null]);
-});
-
-it('swaps the release in and rolls it back without losing user data', function () {
-    $original = base_path();
-    $root = sys_get_temp_dir() . '/panel-update-test-' . Str::random(8);
-
-    $put = function (string $path, string $contents) {
-        File::ensureDirectoryExists(dirname($path));
-        File::put($path, $contents);
-    };
-
-    // The live install, with user data mixed into release directories.
-    $put("$root/app/Old.php", 'old');
-    $put("$root/public/index.php", 'old index');
-    $put("$root/public/custom-logo.png", 'user file');
-    $put("$root/database/migrations/old.php", 'old migration');
-    $put("$root/database/database.sqlite", 'user database');
-    $put("$root/storage/app/user-upload.txt", 'upload');
-    $put("$root/plugins/example/plugin.json", '{}');
-    $put("$root/.env", 'APP_KEY=secret');
-    $put("$root/node_modules/left-alone.js", 'not in the release');
-
-    // The staged release.
-    $release = "$root/staging/release";
-    $put("$release/app/New.php", 'new');
-    $put("$release/public/index.php", 'new index');
-    $put("$release/database/migrations/new.php", 'new migration');
-    $put("$release/vendor/autoload.php", 'new vendor');
-    $put("$release/storage/.gitignore", '*');
-    $put("$release/plugins/.gitignore", '*');
-
-    app()->setBasePath($root);
-    Process::fake();
-
-    try {
-        $service = app(PanelUpdateService::class);
-        $call = fn (string $method, mixed ...$arguments) => (new ReflectionMethod($service, $method))->invokeArgs($service, $arguments);
-
-        $swapped = [];
-        $carried = [];
-        $codeBackup = "$root/backup/code";
-        (new ReflectionMethod($service, 'swap'))->invokeArgs($service, [$release, $codeBackup, &$swapped, &$carried]);
-
-        expect(File::get("$root/app/New.php"))->toBe('new')
-            ->and(File::exists("$root/app/Old.php"))->toBeFalse()
-            ->and(File::get("$root/public/index.php"))->toBe('new index')
-            ->and(File::get("$root/public/custom-logo.png"))->toBe('user file')
-            ->and(File::get("$root/database/database.sqlite"))->toBe('user database')
-            ->and(File::exists("$root/database/migrations/old.php"))->toBeFalse()
-            ->and(File::get("$root/vendor/autoload.php"))->toBe('new vendor')
-            ->and(File::get("$root/storage/app/user-upload.txt"))->toBe('upload')
-            ->and(File::exists("$root/plugins/example/plugin.json"))->toBeTrue()
-            ->and(File::get("$root/.env"))->toBe('APP_KEY=secret')
-            ->and(File::exists("$root/node_modules/left-alone.js"))->toBeTrue();
-
-        expect($call('rollback', $swapped, $carried, $release, $codeBackup, null, false))->toBeTrue();
-
-        expect(File::get("$root/app/Old.php"))->toBe('old')
-            ->and(File::exists("$root/app/New.php"))->toBeFalse()
-            ->and(File::get("$root/public/index.php"))->toBe('old index')
-            ->and(File::get("$root/public/custom-logo.png"))->toBe('user file')
-            ->and(File::get("$root/database/database.sqlite"))->toBe('user database')
-            ->and(File::exists("$root/database/migrations/old.php"))->toBeTrue()
-            ->and(File::exists("$root/vendor"))->toBeFalse()
-            ->and(File::get("$root/storage/app/user-upload.txt"))->toBe('upload')
-            ->and(File::get("$root/.env"))->toBe('APP_KEY=secret');
-
-        Process::assertRan(fn ($process) => in_array('up', (array) $process->command, true));
-    } finally {
-        app()->setBasePath($original);
-        File::deleteDirectory($root);
-    }
-});
-
-it('keeps the panel down when migrations ran and there is no database backup', function () {
-    $service = app(PanelUpdateService::class);
-    Process::fake();
-
-    $restored = (new ReflectionMethod($service, 'rollback'))->invoke($service, [], [], '/nonexistent', sys_get_temp_dir() . '/panel-update-' . Str::random(8), null, true);
-
-    expect($restored)->toBeFalse();
-    Process::assertDidntRun(fn ($process) => in_array('up', (array) $process->command, true));
 });
 
 it('offers the update on the dashboard to root admins', function () {
@@ -520,3 +323,24 @@ it('opens the update modal and starts the update', function () use ($passingPref
         ->assertHasNoActionErrors()
         ->assertRedirect();
 })->skip(fn () => is_running_in_docker(), 'Docker installs update by recreating the container');
+
+it('only prepares a release while the update lock is held', function () {
+    $service = app(PanelUpdateService::class);
+    Http::fake();
+
+    expect($service->prepare(['target' => '1.1.0', 'secret' => 'secret', 'user_id' => null, 'force_plugins' => false, 'skip_db_backup' => false], fn () => null))
+        ->toBeFalse();
+
+    Http::assertNothingSent();
+});
+
+it('hands the update to the script of the release it installs, under one lock', function () {
+    $service = app(PanelUpdateService::class);
+    $command = $service->updateCommand();
+
+    expect($command[1])->toBe('-n')
+        ->and($command[2])->toEndWith('update.lock')
+        ->and($command[5])->toContain('p:update')->toContain('--from-request')
+        ->and($command[5])->toContain('&& exec ')->toContain('update.sh')
+        ->and($service->updateEnv())->toHaveKey(PanelUpdateService::LOCKED_ENV, '1');
+});

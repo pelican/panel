@@ -6,6 +6,7 @@ use App\Services\Helpers\PanelUpdateService;
 use App\Services\Helpers\SoftwareVersionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
+use Throwable;
 
 class UpdateCommand extends Command
 {
@@ -14,12 +15,17 @@ class UpdateCommand extends Command
         {--check : Only run the pre-update checks.}
         {--force-plugins : Update even if enabled plugins would become incompatible.}
         {--skip-db-backup : Update without a database backup when no dump tool is available.}
-        {--from-request : Run the update that was started from the admin dashboard.}';
+        {--from-request : Prepare the queued update for the update script of the new release.}
+        {--running-jobs : Print how many queue jobs are running, used by the update script.}';
 
     protected $description = 'Updates the panel to a newer release, rolling back if anything fails.';
 
     public function handle(PanelUpdateService $updateService, SoftwareVersionService $versionService): int
     {
+        if ($this->option('running-jobs')) {
+            return $this->runningJobs($updateService);
+        }
+
         if ($this->option('from-request')) {
             $request = $updateService->pullRequest();
             if ($request === null) {
@@ -28,7 +34,7 @@ class UpdateCommand extends Command
                 return self::FAILURE;
             }
 
-            return $this->update($updateService, $request['target'], $request['secret'], (bool) $request['force_plugins'], (bool) $request['skip_db_backup'], $request['user_id']);
+            return $updateService->prepare($request, fn (string $output) => $this->output->write($output)) ? self::SUCCESS : self::FAILURE;
         }
 
         $target = $this->argument('version') ?? $versionService->latestPanelVersion();
@@ -82,13 +88,30 @@ class UpdateCommand extends Command
         $secret = Str::random(40);
         $this->info('While the panel is in maintenance mode you can still reach it at ' . url($secret));
 
-        return $this->update($updateService, (string) $target, $secret, $forcePlugins, $skipBackup, null);
+        $updateService->queue((string) $target, $secret, $forcePlugins, $skipBackup, null);
+
+        // Replace this process with the update, so nothing of this release keeps running once the new one is swapped in.
+        if (function_exists('pcntl_exec')) {
+            $command = $updateService->updateCommand();
+            @pcntl_exec($command[0], array_slice($command, 1), [...getenv(), ...$updateService->updateEnv()]);
+        }
+
+        $updateService->start();
+        $this->info('The update is running in the background, follow it with: tail -f ' . storage_path('logs/panel-update.log'));
+
+        return self::SUCCESS;
     }
 
-    private function update(PanelUpdateService $updateService, string $target, string $secret, bool $forcePlugins, bool $skipBackup, ?int $userId): int
+    private function runningJobs(PanelUpdateService $updateService): int
     {
-        $succeeded = $updateService->run($target, $secret, $forcePlugins, $skipBackup, $userId, fn (string $output) => $this->output->write($output));
+        try {
+            $this->line((string) $updateService->runningQueueJobs());
 
-        return $succeeded ? self::SUCCESS : self::FAILURE;
+            return self::SUCCESS;
+        } catch (Throwable $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
     }
 }

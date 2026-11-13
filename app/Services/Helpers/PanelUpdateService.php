@@ -23,14 +23,13 @@ use Throwable;
 /**
  * Updates a bare-metal install to a newer release in place.
  *
- * The release is downloaded, verified and fully prepared (composer, plugin packages, plugin assets) in a
- * staging directory while the panel keeps running. Only then does the panel go into maintenance mode, the
- * database gets backed up and every top-level release entry is swapped in with a rename, keeping the old one
- * as the code backup. Everything after the swap runs as a fresh `artisan` subprocess so it loads the new code,
- * and any failure from that point on puts the old code and database back.
+ * This version of the panel only does what is safe while its own files are still in place: the preflight checks,
+ * downloading the release, verifying its checksum and extracting it into a staging directory. It then hands off
+ * to the `update.sh` that ships in the release being installed, which installs its dependencies, takes the backups,
+ * swaps the release in, migrates and rolls back on failure. No PHP from the old release runs after the swap, and
+ * the steps of an update always come from the release they install.
  *
- * After the swap this process must not autoload anything new, since the files it would load now belong to the
- * new release. That is why the steps after it only use processes, plain files and already loaded classes.
+ * Both halves run under one `flock` on update.lock, held by the shell that starts them.
  */
 class PanelUpdateService
 {
@@ -48,19 +47,14 @@ class PanelUpdateService
     /** The update failed and could not be fully undone, the panel stays in maintenance mode. */
     public const STATE_ROLLBACK_FAILED = 'rollback_failed';
 
+    /** Set by the shell that holds update.lock, the release preparation refuses to run without it. */
+    public const LOCKED_ENV = 'PANEL_UPDATE_LOCKED';
+
     private const MIN_FREE_BYTES = 1_000_000_000;
 
     private const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
 
-    private const KEEP_BACKUPS = 3;
-
     private const LOG_LINES = 100;
-
-    /** Top-level release entries that hold user data and are never replaced. */
-    private const PRESERVED = ['storage', 'plugins', '.env'];
-
-    /** Release directories whose extra live entries (sqlite database, storage symlink, custom files) are kept. */
-    private const CARRY_OVER = ['public', 'database'];
 
     /** Release directories that get replaced, so they must be writable before anything starts. */
     private const REPLACED = ['app', 'bootstrap', 'config', 'database', 'lang', 'public', 'resources', 'routes', 'vendor'];
@@ -93,7 +87,7 @@ class PanelUpdateService
         $current = $this->versionService->currentComparableVersion();
 
         if (PHP_OS_FAMILY === 'Windows') {
-            // The updater relies on sh, setsid, tar and chown.
+            // The updater relies on bash, flock, tar and chown.
             $errors[] = trans('admin/update.preflight.windows');
         } elseif (is_running_in_docker()) {
             $errors[] = trans('admin/update.preflight.docker');
@@ -112,7 +106,8 @@ class PanelUpdateService
         if (!function_exists('proc_open')) {
             $errors[] = trans('admin/update.preflight.proc_open');
         } else {
-            foreach (['php' => $this->phpCli(), 'composer' => $this->binary('composer'), 'tar' => $this->binary('tar')] as $name => $path) {
+            $binaries = ['php' => $this->phpCli(), 'composer' => $this->binary('composer'), 'tar' => $this->binary('tar'), 'bash' => $this->binary('bash'), 'flock' => $this->binary('flock')];
+            foreach ($binaries as $name => $path) {
                 if ($path === null) {
                     $errors[] = trans('admin/update.preflight.binary', ['binary' => $name]);
                 }
@@ -181,27 +176,31 @@ class PanelUpdateService
         throw_if($launchLock === false || !flock($launchLock, LOCK_EX | LOCK_NB), new Exception(trans('admin/update.preflight.running')));
 
         try {
-            return $this->launchLocked($user, $target, $forcePlugins, $skipDatabaseBackup);
+            $preflight = $this->preflight($target);
+            throw_if(count($preflight['errors']) > 0, new Exception($preflight['errors'][0] ?? ''));
+            throw_if(count($preflight['plugins']) > 0 && !$forcePlugins, new Exception(trans('admin/update.preflight.plugins', ['plugins' => implode(', ', $preflight['plugins'])])));
+            throw_if($preflight['needs_backup_confirmation'] && !$skipDatabaseBackup, new Exception(trans('admin/update.preflight.no_dump_tool')));
+
+            $secret = Str::random(40);
+            $this->queue($target, $secret, $forcePlugins, $skipDatabaseBackup, $user->id);
+            $this->start();
+
+            return $secret;
         } finally {
             flock($launchLock, LOCK_UN);
             fclose($launchLock);
         }
     }
 
-    /** @throws Exception */
-    private function launchLocked(User $user, string $target, bool $forcePlugins, bool $skipDatabaseBackup): string
+    /**
+     * Records an update for the process started by start() to pick up with pullRequest().
+     */
+    public function queue(string $target, string $secret, bool $forcePlugins, bool $skipDatabaseBackup, ?int $userId): void
     {
-        $preflight = $this->preflight($target);
-        throw_if(count($preflight['errors']) > 0, new Exception($preflight['errors'][0] ?? ''));
-        throw_if(count($preflight['plugins']) > 0 && !$forcePlugins, new Exception(trans('admin/update.preflight.plugins', ['plugins' => implode(', ', $preflight['plugins'])])));
-        throw_if($preflight['needs_backup_confirmation'] && !$skipDatabaseBackup, new Exception(trans('admin/update.preflight.no_dump_tool')));
-
-        $secret = Str::random(40);
-
         $this->writeRequest([
             'target' => $target,
             'secret' => $secret,
-            'user_id' => $user->id,
+            'user_id' => $userId,
             'force_plugins' => $forcePlugins,
             'skip_db_backup' => $skipDatabaseBackup,
         ]);
@@ -211,19 +210,47 @@ class PanelUpdateService
             'step' => null,
             'from' => $this->versionService->currentComparableVersion(),
             'to' => $target,
-            'user_id' => $user->id,
+            'user_id' => $userId,
             'started_at' => now()->toIso8601String(),
             'finished_at' => null,
             'message' => null,
             'log' => [],
         ], replace: true);
+    }
 
-        $command = [$this->phpCli(), base_path('artisan'), 'p:update', '--from-request', '--no-interaction'];
+    /**
+     * The command that runs a queued update: `flock` holds update.lock for its whole run, this release prepares the
+     * new one, then the shell execs the new release's update.sh, so no PHP from this release is left running.
+     *
+     * @return string[]
+     */
+    public function updateCommand(): array
+    {
+        $php = (string) $this->phpCli();
+        $prepare = implode(' ', array_map('escapeshellarg', [$php, base_path('artisan'), 'p:update', '--from-request', '--no-interaction']));
+        $install = implode(' ', array_map('escapeshellarg', ['bash', $this->releasePath('update.sh'), $php, $this->statePath('handoff.json')]));
+
+        return [(string) $this->binary('flock'), '-n', $this->statePath('update.lock'), 'sh', '-c', "$prepare && exec $install"];
+    }
+
+    /** @return array<string, string> */
+    public function updateEnv(): array
+    {
+        return [...$this->processEnv(), self::LOCKED_ENV => '1'];
+    }
+
+    /**
+     * Starts the queued update in the background, logging to storage/logs/panel-update.log.
+     *
+     * @throws Exception
+     */
+    public function start(): void
+    {
         $prefix = array_values(array_filter([$this->binary('setsid'), $this->binary('nohup')]));
-        $shell = implode(' ', array_map('escapeshellarg', [...$prefix, ...$command]))
+        $shell = implode(' ', array_map('escapeshellarg', [...$prefix, ...$this->updateCommand()]))
             . ' >> ' . escapeshellarg(storage_path('logs/panel-update.log')) . ' 2>&1 < /dev/null &';
 
-        $result = Process::path(base_path())->env($this->processEnv())->run(['sh', '-c', $shell]);
+        $result = Process::path(base_path())->env($this->updateEnv())->run(['sh', '-c', $shell]);
 
         if ($result->failed()) {
             $reason = trim($result->errorOutput() ?: $result->output()) ?: 'exit code ' . $result->exitCode();
@@ -232,14 +259,12 @@ class PanelUpdateService
 
             throw new Exception(trans('admin/update.notifications.launch_failed', ['reason' => $reason]));
         }
-
-        return $secret;
     }
 
     /**
-     * Reads and removes the request written by launch().
+     * Reads and removes the request written by queue().
      *
-     * @return null|array{target: string, secret: string, user_id: int, force_plugins: bool, skip_db_backup: bool}
+     * @return null|array{target: string, secret: string, user_id: ?int, force_plugins: bool, skip_db_backup: bool}
      */
     public function pullRequest(): ?array
     {
@@ -255,49 +280,32 @@ class PanelUpdateService
     }
 
     /**
-     * Runs the whole update. Returns whether the panel ended up on the target version.
+     * Prepares the release for its update.sh: preflight, download, checksum and extraction, then the handoff file
+     * with what the script needs to know about this install. Nothing live is touched here.
      *
+     * @param  array{target: string, secret: string, user_id: ?int, force_plugins: bool, skip_db_backup: bool}  $request
      * @param  Closure(string): void  $output
      */
-    public function run(string $target, ?string $secret, bool $forcePlugins, bool $skipDatabaseBackup, ?int $userId, Closure $output): bool
+    public function prepare(array $request, Closure $output): bool
     {
         $this->output = $output;
-        $this->secret = $secret ?? Str::random(40);
+        $this->secret = $request['secret'];
+        $target = $request['target'];
 
-        File::ensureDirectoryExists($this->statePath());
-        $lock = fopen($this->statePath('update.lock'), 'c');
-        if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
-            $this->log('Another update is already running.');
+        if (getenv(self::LOCKED_ENV) !== '1') {
+            $this->log('Updates must be started with `php artisan p:update` or from the admin dashboard.');
 
             return false;
         }
 
-        // Whoever owns the install, so a run as root can hand back what it creates.
-        $owner = @fileowner(base_path('public'));
-        $group = @filegroup(base_path('public'));
-        // storage can belong to the php-fpm user while the code belongs to someone else.
-        $storageOwner = @fileowner(storage_path());
-        $storageGroup = @filegroup(storage_path());
-
         $from = $this->versionService->currentComparableVersion() ?? 'canary';
         $staging = $this->workPath('staging');
-        $release = join_paths($staging, 'release');
-        $backup = $this->workPath('backups', $from . '_' . now()->format('Ymd_His'));
-        $codeBackup = join_paths($backup, 'code');
-
-        $isDown = false;
-        $migrating = false;
-        $databaseBackup = null;
-        /** @var array<string, bool> $swapped release entry => whether a live entry was moved aside for it */
-        $swapped = [];
-        /** @var list<array{string, string}> $carried [directory, name] moved from the live into the release directory */
-        $carried = [];
 
         $this->writeStatus([
             'state' => self::STATE_RUNNING,
             'from' => $from,
             'to' => $target,
-            'user_id' => $userId,
+            'user_id' => $request['user_id'],
             'started_at' => now()->toIso8601String(),
             'finished_at' => null,
             'message' => null,
@@ -308,95 +316,54 @@ class PanelUpdateService
             $this->step('preflight');
             $preflight = $this->preflight($target, holdsLock: true);
             throw_if(count($preflight['errors']) > 0, new Exception(implode(PHP_EOL, $preflight['errors'])));
-            throw_if(count($preflight['plugins']) > 0 && !$forcePlugins, new Exception(trans('admin/update.preflight.plugins', ['plugins' => implode(', ', $preflight['plugins'])])));
-            throw_if($preflight['needs_backup_confirmation'] && !$skipDatabaseBackup, new Exception(trans('admin/update.preflight.no_dump_tool')));
+            throw_if(count($preflight['plugins']) > 0 && !$request['force_plugins'], new Exception(trans('admin/update.preflight.plugins', ['plugins' => implode(', ', $preflight['plugins'])])));
+            throw_if($preflight['needs_backup_confirmation'] && !$request['skip_db_backup'], new Exception(trans('admin/update.preflight.no_dump_tool')));
             foreach ($preflight['warnings'] as $warning) {
                 $this->log("Warning: $warning");
             }
 
             $this->step('download');
             $archive = $this->download($target, $staging);
+            $this->extract($archive, $this->releasePath(), $target);
 
-            $this->step('dependencies');
-            $this->stage($archive, $release, $target);
-
-            // Resolve everything that is needed after the swap while the old files are still in place.
-            $php = $this->phpCli();
-            $configCached = file_exists(base_path('bootstrap/cache/config.php'));
-
-            $this->step('maintenance');
-            $this->artisan(['down', '--secret=' . $this->secret, '--render=errors::updating', '--retry=15', '--refresh=15']);
-            $isDown = true;
-            $this->artisan(['queue:restart'], throw: false);
-
-            $this->step('backup');
-            $this->waitForQueueJobs();
-            $databaseBackup = $this->backupDatabase($backup, $skipDatabaseBackup);
-            $this->backupPluginMetadata($backup);
-
-            $this->step('swap');
-            $this->swap($release, $codeBackup, $swapped, $carried);
-
-            $this->step('migrate');
-            $this->artisan(['package:discover'], php: $php);
-            $this->artisan(['filament:upgrade'], php: $php, throw: false);
-            $this->artisan(['optimize:clear'], php: $php);
-            $migrating = true;
-            $this->artisan(['migrate', '--force', '--seed'], timeout: 1800, php: $php);
-
-            $this->step('finish');
-            if ($configCached) {
-                $this->artisan(['optimize'], php: $php, throw: false);
-            }
-            $this->fixOwnership(array_keys($swapped), $owner, $group);
-            $this->artisan(['queue:restart'], php: $php, throw: false);
-            $this->artisan(['up'], php: $php);
-            $isDown = false;
-
-            File::deleteDirectory($staging);
-            $this->pruneBackups();
-
-            $this->log("Updated from $from to $target.");
-            $this->writeStatus(['state' => self::STATE_SUCCEEDED, 'step' => null, 'finished_at' => now()->toIso8601String()]);
+            $this->writeHandoff($request, $from);
+            $this->log('Handing off to the update script of ' . $target . '.');
 
             return true;
         } catch (Throwable $exception) {
             $this->log('Update failed: ' . $exception->getMessage());
-
-            $restored = true;
-            if ($isDown || count($swapped) > 0) {
-                $this->log('Rolling back...');
-                $restored = $this->rollback($swapped, $carried, $release, $codeBackup, $migrating ? $databaseBackup : null, $migrating);
-            }
-
-            // Staging can hold custom public/ and database/ files that a failed rollback didn't put back.
-            if ($restored) {
-                File::deleteDirectory($staging);
-            }
+            File::deleteDirectory($staging);
 
             $this->writeStatus([
-                'state' => $restored ? self::STATE_FAILED : self::STATE_ROLLBACK_FAILED,
+                'state' => self::STATE_FAILED,
                 'message' => $this->redact($exception->getMessage()),
-                'backup' => $restored ? null : $backup,
-                'staging' => $restored ? null : $staging,
                 'finished_at' => now()->toIso8601String(),
             ]);
 
             return false;
-        } finally {
-            // Run as root, everything this wrote under storage is root's, and the web user couldn't launch,
-            // dismiss or log anymore. The state directory goes last since chowning logs to its status file.
-            $workPath = $this->workPath();
-            $this->fixOwnership(array_values(array_unique(array_filter([
-                'storage/logs',
-                'storage/framework',
-                str_starts_with($workPath, $this->statePath()) ? null : Str::after($workPath, base_path() . DIRECTORY_SEPARATOR),
-                Str::after($this->statePath(), base_path() . DIRECTORY_SEPARATOR),
-            ]))), $storageOwner, $storageGroup);
-
-            flock($lock, LOCK_UN);
-            fclose($lock);
         }
+    }
+
+    /**
+     * Jobs a worker is processing right now. Drivers that can't tell, like sync, report none. update.sh asks the
+     * live install for this through `p:update --running-jobs` before it backs up the database.
+     *
+     * @throws Throwable when the queue backend can't be inspected
+     */
+    public function runningQueueJobs(): int
+    {
+        $name = config('queue.default');
+        $config = config("queue.connections.$name", []);
+
+        return match ($config['driver'] ?? null) {
+            // A reservation older than retry_after belongs to a worker that died, nobody is running that job.
+            'database' => DB::connection($config['connection'] ?? null)->table($config['table'] ?? 'jobs')
+                ->where('reserved_at', '>', time() - (int) ($config['retry_after'] ?? 90))
+                ->count(),
+            // The reserved set is scored by when the reservation expires.
+            'redis' => (int) Redis::connection($config['connection'] ?? null)->zcount('queues:' . ($config['queue'] ?? 'default') . ':reserved', (string) time(), '+inf'),
+            default => 0,
+        };
     }
 
     /** @return null|array<string, mixed> */
@@ -496,12 +463,8 @@ class PanelUpdateService
         return $archive;
     }
 
-    /**
-     * Extracts the release and installs everything it needs, so problems show up before any downtime.
-     *
-     * @throws Exception
-     */
-    private function stage(string $archive, string $release, string $target): void
+    /** @throws Exception */
+    private function extract(string $archive, string $release, string $target): void
     {
         $tar = (string) $this->binary('tar');
         File::ensureDirectoryExists($release);
@@ -517,40 +480,9 @@ class PanelUpdateService
         $config = @file_get_contents(join_paths($release, 'config/app.php'));
         throw_unless(file_exists(join_paths($release, 'artisan')) && $config !== false, new Exception('The release archive is not a panel release.'));
         throw_unless(preg_match("/'version'\s*=>\s*'" . preg_quote($target, '/') . "'/", $config), new Exception("The release archive is not version $target."));
+        throw_unless(is_file(join_paths($release, 'update.sh')), new Exception("Version $target can't be installed from the dashboard, it has no update.sh."));
 
         $this->checkPlatform($release, $target);
-
-        $composer = (string) $this->binary('composer');
-        $this->runProcess([$composer, 'install', '--no-dev', '--optimize-autoloader', '--no-interaction', '--no-progress', '--no-scripts'], $release, 900);
-
-        // The archive may ship caches built with dev packages, which would reference providers that aren't installed.
-        foreach (glob(join_paths($release, 'bootstrap/cache') . '/*.php') ?: [] as $cache) {
-            @unlink($cache);
-        }
-
-        $packages = collect($this->pluginService->pluginComposerPackages())->map(fn ($version, $package) => "$package:$version")->values()->all();
-        if (count($packages) > 0) {
-            $this->log('Installing plugin composer packages: ' . implode(', ', $packages));
-            $this->runProcess([$composer, 'require', '--update-no-dev', '--no-interaction', '--no-progress', '--no-scripts', ...$packages], $release, 900);
-        }
-
-        $yarn = $this->binary('yarn');
-        if ($yarn !== null && $this->pluginsNeedAssetBuild()) {
-            $this->log('Building frontend assets for plugins.');
-
-            // vite picks up plugin assets from plugins/*, so point the release at the live plugins for the build.
-            $plugins = join_paths($release, 'plugins');
-            File::deleteDirectory($plugins);
-            throw_unless(@symlink(base_path('plugins'), $plugins), new Exception('Could not link the plugins into the release.'));
-
-            try {
-                $this->runProcess([$yarn, 'install'], $release, 900);
-                $this->runProcess([$yarn, 'build'], $release, 900);
-            } finally {
-                @unlink($plugins);
-                File::deleteDirectory(join_paths($release, 'node_modules'));
-            }
-        }
     }
 
     /** @throws Exception */
@@ -605,300 +537,47 @@ class PanelUpdateService
     }
 
     /**
-     * @return null|array{driver: string, file: string}
+     * What update.sh needs to know about this install. Read once and deleted by the script, it holds the database
+     * password and the maintenance secret.
      *
-     * @throws Exception
+     * @param  array{target: string, secret: string, user_id: ?int, force_plugins: bool, skip_db_backup: bool}  $request
      */
-    private function backupDatabase(string $backup, bool $skip): ?array
-    {
-        File::ensureDirectoryExists($backup);
-        $config = $this->databaseConfig();
-        $driver = $config['driver'] ?? null;
-
-        if ($driver === 'sqlite') {
-            $file = join_paths($backup, 'database.sqlite');
-            throw_unless(is_file($config['database']), new Exception('Could not back up the sqlite database.'));
-
-            // A plain copy misses committed transactions still in the -wal file, VACUUM INTO writes a consistent snapshot.
-            @unlink($file);
-            DB::connection()->statement('VACUUM INTO ?', [$file]);
-            // Close it while its -wal and -shm still exist, a restore removes them and must not race an open handle.
-            DB::purge();
-            throw_unless(is_file($file) && filesize($file) > 0, new Exception('Could not back up the sqlite database.'));
-            $this->log("Database backed up to $file");
-
-            return ['driver' => $driver, 'file' => $file];
-        }
-
-        $tools = $this->databaseTools();
-        if ($tools === false || $tools === null) {
-            throw_unless($skip, new Exception(trans('admin/update.preflight.no_dump_tool')));
-            $this->log('Skipping the database backup, no dump tool is available.');
-
-            return null;
-        }
-
-        $file = join_paths($backup, 'database.sql');
-        $command = match ($driver) {
-            'pgsql' => [$tools['dump'], '--no-owner', '--no-privileges', '--host=' . $config['host'], '--port=' . $config['port'], '--username=' . $config['username'], '--file=' . $file, $config['database']],
-            default => [$tools['dump'], '--single-transaction', '--no-tablespaces', ...$this->mysqlConnectionArgs($config), '--result-file=' . $file, $config['database']],
-        };
-
-        $this->runProcess($command, timeout: 1800, env: $this->databaseEnv($config), quiet: true);
-        throw_unless(filesize($file) > 0, new Exception('The database backup is empty.'));
-        $this->log("Database backed up to $file");
-
-        return ['driver' => $driver, 'file' => $file];
-    }
-
-    /** @param array{driver: string, file: string} $backup */
-    private function restoreDatabase(array $backup): void
+    private function writeHandoff(array $request, string $from): void
     {
         $config = $this->databaseConfig();
-
-        if ($backup['driver'] === 'sqlite') {
-            @unlink($config['database'] . '-wal');
-            @unlink($config['database'] . '-shm');
-            throw_unless(copy($backup['file'], $config['database']), new Exception('Could not restore the sqlite database.'));
-
-            return;
-        }
-
         $tools = $this->databaseTools();
-        throw_unless(is_array($tools), new Exception('No database client is available to restore the backup.'));
 
-        // Tables created by the new migrations aren't in the dump, so start from an empty database.
-        $this->artisan(['db:wipe', '--force']);
+        $handoff = [
+            'version' => 1,
+            'target' => $request['target'],
+            'from' => $from,
+            'secret' => $request['secret'],
+            'skip_db_backup' => (bool) $request['skip_db_backup'],
+            'base' => base_path(),
+            'state' => $this->statePath(),
+            'staging' => $this->workPath('staging'),
+            'backups' => $this->workPath('backups'),
+            'composer' => $this->binary('composer'),
+            'yarn' => $this->binary('yarn'),
+            'plugin_packages' => collect($this->pluginService->pluginComposerPackages())->map(fn ($version, $package) => "$package:$version")->values()->all(),
+            'build_plugin_assets' => $this->pluginsNeedAssetBuild(),
+            'config_cached' => file_exists(base_path('bootstrap/cache/config.php')),
+            'database' => [
+                'driver' => (string) ($config['driver'] ?? ''),
+                'database' => (string) ($config['database'] ?? ''),
+                'host' => (string) ($config['host'] ?? ''),
+                'port' => (string) ($config['port'] ?? ''),
+                'username' => (string) ($config['username'] ?? ''),
+                'password' => (string) ($config['password'] ?? ''),
+                'socket' => (string) ($config['unix_socket'] ?? ''),
+                'dump' => is_array($tools) ? $tools['dump'] : '',
+                'client' => is_array($tools) ? $tools['client'] : '',
+            ],
+        ];
 
-        $command = match ($backup['driver']) {
-            'pgsql' => [$tools['client'], '-v', 'ON_ERROR_STOP=1', '--host=' . $config['host'], '--port=' . $config['port'], '--username=' . $config['username'], '--dbname=' . $config['database']],
-            default => [$tools['client'], ...$this->mysqlConnectionArgs($config), '--database=' . $config['database']],
-        };
-
-        $input = fopen($backup['file'], 'r');
-        throw_if($input === false, new Exception('Could not read the database backup.'));
-
-        try {
-            $this->runProcess($command, timeout: 1800, env: $this->databaseEnv($config), quiet: true, input: $input);
-        } finally {
-            fclose($input);
-        }
-    }
-
-    /**
-     * Moves every release entry into place, keeping the live one in the code backup.
-     *
-     * @param  array<string, bool>  $swapped
-     * @param  list<array{string, string}>  $carried
-     *
-     * @throws Exception
-     */
-    private function swap(string $release, string $codeBackup, array &$swapped, array &$carried): void
-    {
-        File::ensureDirectoryExists($codeBackup);
-
-        foreach (self::CARRY_OVER as $directory) {
-            $live = base_path($directory);
-            $staged = join_paths($release, $directory);
-            if (!is_dir($live) || !is_dir($staged)) {
-                continue;
-            }
-
-            foreach (array_diff(scandir($live) ?: [], ['.', '..']) as $name) {
-                if (file_exists(join_paths($staged, $name)) || is_link(join_paths($staged, $name))) {
-                    continue;
-                }
-
-                $this->move(join_paths($live, $name), join_paths($staged, $name));
-                $carried[] = [$directory, $name];
-            }
-        }
-
-        foreach (array_diff(scandir($release) ?: [], ['.', '..', ...self::PRESERVED]) as $name) {
-            $live = base_path($name);
-            $hadLive = file_exists($live) || is_link($live);
-
-            if ($hadLive) {
-                $this->move($live, join_paths($codeBackup, $name));
-            }
-
-            $swapped[$name] = $hadLive;
-            $this->move(join_paths($release, $name), $live);
-        }
-
-        $this->log('Swapped in ' . count($swapped) . ' release entries.');
-    }
-
-    /**
-     * In maintenance mode workers don't start new jobs, but queue:restart doesn't wait for the ones already running.
-     * A job that writes after the database backup would be lost if the update has to roll back.
-     *
-     * @throws Exception
-     */
-    private function waitForQueueJobs(int $timeoutSeconds = 120): void
-    {
-        $deadline = time() + $timeoutSeconds;
-        $logged = [];
-
-        while (true) {
-            // A failed check means the queue state is unknown, which is not the same as no jobs: retry, then give up.
-            try {
-                $running = $this->runningQueueJobs();
-                $problem = $running > 0 ? "$running queue jobs are still running" : null;
-            } catch (Throwable $exception) {
-                $problem = 'Could not check for running queue jobs: ' . $exception->getMessage();
-            }
-
-            if ($problem === null) {
-                return;
-            }
-
-            throw_if(time() >= $deadline, new Exception("$problem. Try the update again once the queue is idle."));
-
-            if (!isset($logged[$problem])) {
-                $this->log("$problem, waiting.");
-                $logged[$problem] = true;
-            }
-
-            sleep(2);
-        }
-    }
-
-    /**
-     * Jobs a worker is processing right now. Drivers that can't tell, like sync, report none.
-     *
-     * @throws Throwable when the queue backend can't be inspected
-     */
-    private function runningQueueJobs(): int
-    {
-        $name = config('queue.default');
-        $config = config("queue.connections.$name", []);
-
-        return match ($config['driver'] ?? null) {
-            // A reservation older than retry_after belongs to a worker that died, nobody is running that job.
-            'database' => DB::connection($config['connection'] ?? null)->table($config['table'] ?? 'jobs')
-                ->where('reserved_at', '>', time() - (int) ($config['retry_after'] ?? 90))
-                ->count(),
-            // The reserved set is scored by when the reservation expires.
-            'redis' => (int) Redis::connection($config['connection'] ?? null)->zcount('queues:' . ($config['queue'] ?? 'default') . ':reserved', (string) time(), '+inf'),
-            default => 0,
-        };
-    }
-
-    /**
-     * plugins/ stays in place during the swap, but the new release rewrites plugin.json when it boots (for example
-     * marking plugins incompatible), so their metadata is part of what a rollback has to put back.
-     *
-     * @throws Exception
-     */
-    private function backupPluginMetadata(string $backup): void
-    {
-        foreach (glob(base_path('plugins/*/plugin.json')) ?: [] as $file) {
-            $copy = join_paths($backup, 'plugins', basename(dirname($file)), 'plugin.json');
-            File::ensureDirectoryExists(dirname($copy));
-            throw_unless(copy($file, $copy), new Exception("Could not back up $file."));
-        }
-    }
-
-    /** @throws Exception */
-    private function restorePluginMetadata(string $backup): void
-    {
-        foreach (glob(join_paths($backup, 'plugins') . '/*/plugin.json') ?: [] as $copy) {
-            $file = base_path(join_paths('plugins', basename(dirname($copy)), 'plugin.json'));
-            if (is_dir(dirname($file))) {
-                throw_unless(copy($copy, $file), new Exception("Could not restore $file."));
-            }
-        }
-    }
-
-    /**
-     * @param  array<string, bool>  $swapped
-     * @param  list<array{string, string}>  $carried
-     * @param  null|array{driver: string, file: string}  $databaseBackup
-     */
-    private function rollback(array $swapped, array $carried, string $release, string $codeBackup, ?array $databaseBackup, bool $migrating): bool
-    {
-        try {
-            $failed = $codeBackup . '-failed';
-            File::ensureDirectoryExists($failed);
-
-            foreach (array_reverse($swapped, true) as $name => $hadLive) {
-                $live = base_path($name);
-                if (file_exists($live) || is_link($live)) {
-                    $this->move($live, join_paths($failed, $name));
-                }
-
-                if ($hadLive) {
-                    $this->move(join_paths($codeBackup, $name), $live);
-                }
-            }
-
-            foreach ($carried as [$directory, $name]) {
-                foreach ([join_paths($failed, $directory, $name), join_paths($release, $directory, $name)] as $source) {
-                    if (file_exists($source) || is_link($source)) {
-                        $this->move($source, base_path(join_paths($directory, $name)));
-
-                        break;
-                    }
-                }
-            }
-
-            File::deleteDirectory($failed);
-            $this->restorePluginMetadata(dirname($codeBackup));
-            $this->log('Restored the previous code.');
-
-            if ($migrating) {
-                throw_if($databaseBackup === null, new Exception('There is no database backup to restore, the panel stays in maintenance mode.'));
-
-                $this->restoreDatabase($databaseBackup);
-                $this->log('Restored the database backup.');
-            }
-
-            $this->artisan(['optimize:clear']);
-            $this->artisan(['queue:restart'], throw: false);
-            $this->artisan(['up']);
-            $this->log('Rolled back, the panel is back online.');
-
-            return true;
-        } catch (Throwable $exception) {
-            $this->log('Rollback failed: ' . $exception->getMessage());
-            $this->log('The panel is still in maintenance mode. Backups are in ' . dirname($codeBackup));
-
-            return false;
-        }
-    }
-
-    /** @param  string[]  $entries */
-    private function fixOwnership(array $entries, int|false $owner, int|false $group): void
-    {
-        // Only root can create files for another user, everyone else already owns what they wrote.
-        if (!function_exists('posix_geteuid') || posix_geteuid() !== 0 || $owner === false || $owner === 0) {
-            return;
-        }
-
-        foreach ($entries as $entry) {
-            $this->runProcess(['chown', '-R', $owner . ':' . ($group === false ? $owner : $group), base_path($entry)], throw: false, quiet: true);
-        }
-    }
-
-    private function pruneBackups(): void
-    {
-        // Plain glob, this runs after the swap where autoloading a class could pick up the new release's version.
-        $backups = glob($this->workPath('backups') . '/*', GLOB_ONLYDIR) ?: [];
-
-        // Names are <version>_<Ymd_His>, sort by the timestamp since versions don't sort as strings (1.10 < 1.7).
-        usort($backups, fn (string $a, string $b) => strcmp(substr(basename($a), -15), substr(basename($b), -15)));
-
-        foreach (array_slice($backups, 0, max(0, count($backups) - self::KEEP_BACKUPS)) as $directory) {
-            File::deleteDirectory($directory);
-        }
-    }
-
-    /** @throws Exception */
-    private function move(string $from, string $to): void
-    {
-        File::ensureDirectoryExists(dirname($to));
-        throw_unless(@rename($from, $to), new Exception("Could not move $from to $to."));
+        $path = $this->statePath('handoff.json');
+        file_put_contents($path, json_encode($handoff, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+        @chmod($path, 0600);
     }
 
     private function pluginsNeedAssetBuild(): bool
@@ -941,61 +620,25 @@ class PanelUpdateService
     }
 
     /**
-     * @param  array<string, mixed>  $config
-     * @return string[]
-     */
-    private function mysqlConnectionArgs(array $config): array
-    {
-        if (filled($config['unix_socket'] ?? null)) {
-            return ['--socket=' . $config['unix_socket'], '--user=' . $config['username']];
-        }
-
-        return ['--host=' . $config['host'], '--port=' . $config['port'], '--user=' . $config['username']];
-    }
-
-    /**
-     * Passwords go through the environment so they never show up in the process list.
-     *
-     * @param  array<string, mixed>  $config
-     * @return array<string, string>
-     */
-    private function databaseEnv(array $config): array
-    {
-        return ['MYSQL_PWD' => (string) ($config['password'] ?? ''), 'PGPASSWORD' => (string) ($config['password'] ?? '')];
-    }
-
-    /**
-     * @param  string[]  $arguments
-     *
-     * @throws Exception
-     */
-    private function artisan(array $arguments, int $timeout = 600, bool $throw = true, ?string $php = null): ProcessResult
-    {
-        return $this->runProcess([$php ?? (string) $this->phpCli(), 'artisan', ...$arguments], timeout: $timeout, throw: $throw);
-    }
-
-    /**
      * @param  string[]  $command
-     * @param  array<string, string>  $env
      *
      * @throws Exception
      */
-    private function runProcess(array $command, ?string $path = null, int $timeout = 600, array $env = [], bool $throw = true, bool $quiet = false, mixed $input = null): ProcessResult
+    private function runProcess(array $command, ?string $path = null, int $timeout = 600, bool $quiet = false): ProcessResult
     {
         $label = implode(' ', array_slice($command, 0, 3));
         $this->log('$ ' . $label);
 
         $result = Process::path($path ?? base_path())
-            ->env([...$this->processEnv(), ...$env])
+            ->env($this->processEnv())
             ->timeout($timeout)
-            ->input($input)
             ->run($command, function (string $type, string $buffer) use ($quiet) {
                 if (!$quiet) {
                     ($this->output)($this->redact($buffer));
                 }
             });
 
-        if ($throw && $result->failed()) {
+        if ($result->failed()) {
             $details = Str::limit(trim($result->errorOutput() ?: $result->output()), 2000);
 
             throw new Exception($this->redact("`$label` failed: $details"));
@@ -1081,6 +724,11 @@ class PanelUpdateService
     private function statePath(string ...$paths): string
     {
         return join_paths(storage_path('app/private/update'), ...$paths);
+    }
+
+    private function releasePath(string ...$paths): string
+    {
+        return join_paths($this->workPath('staging'), 'release', ...$paths);
     }
 
     /**
