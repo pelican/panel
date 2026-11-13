@@ -10,6 +10,7 @@ use App\Jobs\Plugin\InstallPlugin;
 use App\Jobs\Plugin\UninstallPlugin;
 use App\Jobs\Plugin\UpdatePlugin;
 use App\Models\Plugin;
+use App\Models\WingsPlugin;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\ThemeService;
 use BackedEnum;
@@ -56,6 +57,35 @@ class PluginResource extends Resource
         return (string) static::getEloquentQuery()->count() ?: null;
     }
 
+    /**
+     * Run an action on a node and only report success if the node confirmed it.
+     */
+    private static function runOnNode(callable $callback, string $errorKey, string $successKey): void
+    {
+        try {
+            $callback();
+        } catch (Exception $exception) {
+            report($exception);
+
+            Notification::make()
+                ->danger()
+                ->title(trans("admin/plugin.notifications.$errorKey"))
+                ->body($exception->getMessage())
+                ->send();
+
+            return;
+        } finally {
+            WingsPlugin::flush();
+        }
+
+        Notification::make()
+            ->success()
+            ->title(trans("admin/plugin.notifications.$successKey"))
+            ->send();
+
+        redirect(ListPlugins::getUrl(['tab' => 'wings']));
+    }
+
     public static function table(Table $table): Table
     {
         return $table
@@ -67,12 +97,17 @@ class PluginResource extends Resource
             ->columns([
                 TextColumn::make('name')
                     ->label(trans('admin/plugin.name'))
-                    ->description(fn (Plugin $plugin) => (strlen($plugin->description) > 80) ? substr($plugin->description, 0, 80).'...' : $plugin->description)
-                    ->icon(fn (Plugin $plugin) => $plugin->isUpdateAvailable() ? TablerIcon::VersionsOff : TablerIcon::Versions)
-                    ->iconColor(fn (Plugin $plugin) => $plugin->isUpdateAvailable() ? 'danger' : 'success')
-                    ->tooltip(fn (Plugin $plugin) => $plugin->isUpdateAvailable() ? trans('admin/plugin.update_available') : null)
+                    ->description(fn (Plugin $record) => (strlen($record->description) > 80) ? substr($record->description, 0, 80).'...' : $record->description)
+                    ->icon(fn (Plugin $record) => $record->isUpdateAvailable() ? TablerIcon::VersionsOff : TablerIcon::Versions)
+                    ->iconColor(fn (Plugin $record) => $record->isUpdateAvailable() ? 'danger' : 'success')
+                    ->tooltip(fn (Plugin $record) => $record->isUpdateAvailable() ? trans('admin/plugin.update_available') : null)
                     ->sortable()
                     ->searchable(),
+                TextColumn::make('node_name')
+                    ->label(trans('admin/plugin.node'))
+                    ->badge()
+                    ->sortable()
+                    ->visible(fn ($livewire) => $livewire->activeTab === 'wings'),
                 TextColumn::make('author')
                     ->label(trans('admin/plugin.author'))
                     ->sortable(),
@@ -87,51 +122,69 @@ class PluginResource extends Resource
                 TextColumn::make('status')
                     ->label(trans('admin/plugin.status'))
                     ->badge()
-                    ->tooltip(fn (Plugin $plugin) => $plugin->status_message)
-                    ->description(fn (Plugin $plugin) => is_null($plugin->api_version) ? trans('admin/plugin.api_version_missing') : null)
+                    ->tooltip(fn (Plugin $record) => $record->status_message)
+                    ->description(fn (Plugin $record) => is_null($record->api_version) ? trans('admin/plugin.api_version_missing') : null)
                     ->sortable(),
             ])
             ->recordActions([
                 Action::make('exclude_view')
                     ->label(trans('filament-actions::view.single.label'))
-                    ->icon(fn (Plugin $plugin) => $plugin->getReadme() ? TablerIcon::Eye : TablerIcon::EyeShare)
+                    ->icon(fn (Plugin $record) => $record->getReadme() ? TablerIcon::Eye : TablerIcon::EyeShare)
                     ->color('gray')
-                    ->visible(fn (Plugin $plugin) => $plugin->getReadme() || $plugin->url)
-                    ->url(fn (Plugin $plugin) => !$plugin->getReadme() ? $plugin->url : null, true)
+                    ->visible(fn (Plugin $record) => $record->getReadme() || $record->url)
+                    ->url(fn (Plugin $record) => !$record->getReadme() ? $record->url : null, true)
                     ->slideOver(true)
                     ->modalHeading(trans('admin/plugin.readme'))
-                    ->modalSubmitAction(fn (Plugin $plugin) => Action::make('exclude_visit_website')
+                    ->modalSubmitAction(fn (Plugin $record) => Action::make('exclude_visit_website')
                         ->label(trans('admin/plugin.visit_website'))
-                        ->visible(!is_null($plugin->url))
-                        ->url($plugin->url, true)
+                        ->visible(!is_null($record->url))
+                        ->url($record->url, true)
                     )
                     ->modalCancelActionLabel(trans('filament::components/modal.actions.close.label'))
-                    ->schema(fn (Plugin $plugin) => $plugin->getReadme() ? [
+                    ->schema(fn (Plugin $record) => $record->getReadme() ? [
                         TextEntry::make('readme')
                             ->hiddenLabel()
                             ->markdown()
-                            ->state(fn (Plugin $plugin) => $plugin->getReadme()),
+                            ->state(fn (Plugin $record) => $record->getReadme()),
                     ] : null),
                 Action::make('exclude_settings')
                     ->label(trans('admin/plugin.settings'))
-                    ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                    ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                     ->icon(TablerIcon::Settings)
                     ->color('primary')
-                    ->visible(fn (Plugin $plugin) => $plugin->status === PluginStatus::Enabled && $plugin->hasSettings())
-                    ->schema(fn (Plugin $plugin) => $plugin->getSettingsForm())
-                    ->fillForm(fn (Plugin $plugin) => $plugin->getSettingsFormData())
-                    ->action(fn (array $data, Plugin $plugin) => $plugin->saveSettings($data))
+                    ->visible(fn (Plugin $record) => $record->status === PluginStatus::Enabled && $record->hasSettings())
+                    ->schema(fn (Plugin $record) => $record->getSettingsForm())
+                    ->fillForm(fn (Plugin $record) => $record->getSettingsFormData())
+                    ->action(function (array $data, Plugin $record) {
+                        try {
+                            $record->saveSettings($data);
+                        } catch (Exception $exception) {
+                            report($exception);
+
+                            Notification::make()
+                                ->danger()
+                                ->title(trans('admin/plugin.notifications.settings_error'))
+                                ->body($exception->getMessage())
+                                ->send();
+                        }
+                    })
                     ->slideOver(),
                 ActionGroup::make([
                     Action::make('exclude_install')
                         ->label(trans('admin/plugin.install'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                        ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                         ->icon(TablerIcon::Terminal)
                         ->color('success')
-                        ->hidden(fn (Plugin $plugin) => $plugin->status !== PluginStatus::NotInstalled)
-                        ->action(function (Plugin $plugin) {
+                        ->hidden(fn (Plugin $record) => $record->status !== PluginStatus::NotInstalled)
+                        ->action(function (Plugin $record) {
+                            if ($record instanceof WingsPlugin) {
+                                self::runOnNode(fn () => $record->repository()->install($record->plugin_id), 'install_error', 'installed');
+
+                                return;
+                            }
+
                             try {
-                                InstallPlugin::dispatch(user(), $plugin->id);
+                                InstallPlugin::dispatch(user(), $record->id);
 
                                 Notification::make()
                                     ->success()
@@ -148,13 +201,13 @@ class PluginResource extends Resource
                         }),
                     Action::make('exclude_update')
                         ->label(trans('admin/plugin.update'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                        ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                         ->icon(TablerIcon::Download)
                         ->color('success')
-                        ->visible(fn (Plugin $plugin) => $plugin->isUpdateAvailable())
-                        ->action(function (Plugin $plugin) {
+                        ->visible(fn (Plugin $record) => $record->isUpdateAvailable())
+                        ->action(function (Plugin $record) {
                             try {
-                                UpdatePlugin::dispatch(user(), $plugin->id);
+                                UpdatePlugin::dispatch(user(), $record->id);
 
                                 Notification::make()
                                     ->success()
@@ -171,20 +224,26 @@ class PluginResource extends Resource
                         }),
                     Action::make('exclude_enable')
                         ->label(trans('admin/plugin.enable'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                        ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                         ->icon(TablerIcon::Check)
                         ->color('success')
-                        ->visible(fn (Plugin $plugin) => $plugin->canEnable())
-                        ->requiresConfirmation(fn (Plugin $plugin, PluginService $pluginService) => $plugin->isTheme() && !$plugin->isSwitchableTheme() && $pluginService->hasAnyThemeEnabled())
-                        ->modalHidden(fn (Plugin $plugin, PluginService $pluginService) => $plugin->isSwitchableTheme() ? !user()?->can('update settings') : !($plugin->isTheme() && $pluginService->hasAnyThemeEnabled()))
-                        ->modalHeading(fn (Plugin $plugin) => $plugin->isSwitchableTheme() ? trans('admin/plugin.default_theme_modal.heading') : trans('admin/plugin.enable_theme_modal.heading'))
-                        ->modalDescription(fn (Plugin $plugin) => $plugin->isSwitchableTheme() ? trans('admin/plugin.default_theme_modal.description') : trans('admin/plugin.enable_theme_modal.description'))
-                        ->schema(fn (Plugin $plugin) => $plugin->isSwitchableTheme() && user()?->can('update settings') ? static::defaultThemeSchema() : null)
-                        ->action(function (Plugin $plugin, array $data, $livewire, PluginService $pluginService, ThemeService $themeService) {
-                            $pluginService->enablePlugin($plugin);
+                        ->visible(fn (Plugin $record) => $record->canEnable())
+                        ->requiresConfirmation(fn (Plugin $record, PluginService $pluginService) => $record->isTheme() && !$record->isSwitchableTheme() && $pluginService->hasAnyThemeEnabled())
+                        ->modalHidden(fn (Plugin $record, PluginService $pluginService) => $record->isSwitchableTheme() ? !user()?->can('update settings') : !($record->isTheme() && $pluginService->hasAnyThemeEnabled()))
+                        ->modalHeading(fn (Plugin $record) => $record->isSwitchableTheme() ? trans('admin/plugin.default_theme_modal.heading') : trans('admin/plugin.enable_theme_modal.heading'))
+                        ->modalDescription(fn (Plugin $record) => $record->isSwitchableTheme() ? trans('admin/plugin.default_theme_modal.description') : trans('admin/plugin.enable_theme_modal.description'))
+                        ->schema(fn (Plugin $record) => $record->isSwitchableTheme() && user()?->can('update settings') ? static::defaultThemeSchema() : null)
+                        ->action(function (Plugin $record, array $data, $livewire, PluginService $pluginService, ThemeService $themeService) {
+                            if ($record instanceof WingsPlugin) {
+                                self::runOnNode(fn () => $record->repository()->enable($record->plugin_id), 'enable_error', 'enabled');
+
+                                return;
+                            }
+
+                            $pluginService->enablePlugin($record);
 
                             if (($data['set_as_default'] ?? false) && user()?->can('update settings')) {
-                                $themeService->setDefaultTheme($plugin->id, (bool) ($data['force_theme'] ?? false));
+                                $themeService->setDefaultTheme($record->id, (bool) ($data['force_theme'] ?? false));
                             }
 
                             redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
@@ -196,9 +255,9 @@ class PluginResource extends Resource
                         }),
                     Action::make('exclude_set_default_theme')
                         ->label(trans('admin/plugin.set_default_theme'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin) && user()->can('update settings'))
+                        ->authorize(fn (Plugin $record) => user()?->can('update', $record) && user()->can('update settings'))
                         ->icon(TablerIcon::Palette)
-                        ->visible(fn (Plugin $plugin, ThemeService $themeService) => $plugin->isSwitchableTheme() && $plugin->status === PluginStatus::Enabled && $themeService->getDefaultThemeId() !== $plugin->id)
+                        ->visible(fn (Plugin $record, ThemeService $themeService) => $record->isSwitchableTheme() && $record->status === PluginStatus::Enabled && $themeService->getDefaultThemeId() !== $record->id)
                         ->modalHeading(trans('admin/plugin.default_theme_modal.heading'))
                         ->schema([
                             Toggle::make('force_theme')
@@ -206,25 +265,31 @@ class PluginResource extends Resource
                                 ->helperText(trans('admin/plugin.default_theme_modal.force_theme_help'))
                                 ->default(fn (ThemeService $themeService) => $themeService->isForced()),
                         ])
-                        ->action(function (Plugin $plugin, array $data, $livewire, ThemeService $themeService) {
-                            $themeService->setDefaultTheme($plugin->id, (bool) ($data['force_theme'] ?? false));
+                        ->action(function (Plugin $record, array $data, $livewire, ThemeService $themeService) {
+                            $themeService->setDefaultTheme($record->id, (bool) ($data['force_theme'] ?? false));
 
                             redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
 
                             Notification::make()
                                 ->success()
                                 ->title(trans('admin/plugin.notifications.default_theme_set'))
-                                ->body($plugin->name)
+                                ->body($record->name)
                                 ->send();
                         }),
                     Action::make('exclude_disable')
                         ->label(trans('admin/plugin.disable'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                        ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                         ->icon(TablerIcon::X)
                         ->color('warning')
-                        ->visible(fn (Plugin $plugin) => $plugin->canDisable())
-                        ->action(function (Plugin $plugin, $livewire, PluginService $pluginService) {
-                            $pluginService->disablePlugin($plugin);
+                        ->visible(fn (Plugin $record) => $record->canDisable())
+                        ->action(function (Plugin $record, $livewire, PluginService $pluginService) {
+                            if ($record instanceof WingsPlugin) {
+                                self::runOnNode(fn () => $record->repository()->disable($record->plugin_id), 'disable_error', 'disabled');
+
+                                return;
+                            }
+
+                            $pluginService->disablePlugin($record);
 
                             redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
 
@@ -235,13 +300,19 @@ class PluginResource extends Resource
                         }),
                     Action::make('exclude_delete')
                         ->label(trans('filament-actions::delete.single.label'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('delete', $plugin))
+                        ->authorize(fn (Plugin $record) => user()?->can('delete', $record))
                         ->icon(TablerIcon::Trash)
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->visible(fn (Plugin $plugin) => $plugin->status === PluginStatus::NotInstalled || $plugin->status === PluginStatus::Errored)
-                        ->action(function (Plugin $plugin, $livewire, PluginService $pluginService) {
-                            $pluginService->deletePlugin($plugin);
+                        ->visible(fn (Plugin $record) => ($record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored) && !($record instanceof WingsPlugin && $record->plugin_id === ''))
+                        ->action(function (Plugin $record, $livewire, PluginService $pluginService) {
+                            if ($record instanceof WingsPlugin) {
+                                self::runOnNode(fn () => $record->repository()->uninstall($record->plugin_id, true), 'uninstall_error', 'deleted');
+
+                                return;
+                            }
+
+                            $pluginService->deletePlugin($record);
 
                             redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
 
@@ -252,14 +323,20 @@ class PluginResource extends Resource
                         }),
                     Action::make('exclude_uninstall')
                         ->label(trans('admin/plugin.uninstall'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                        ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                         ->icon(TablerIcon::Terminal)
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->hidden(fn (Plugin $plugin) => $plugin->status === PluginStatus::NotInstalled || $plugin->status === PluginStatus::Errored)
-                        ->action(function (Plugin $plugin) {
+                        ->hidden(fn (Plugin $record) => $record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored)
+                        ->action(function (Plugin $record) {
+                            if ($record instanceof WingsPlugin) {
+                                self::runOnNode(fn () => $record->repository()->uninstall($record->plugin_id), 'uninstall_error', 'uninstalled');
+
+                                return;
+                            }
+
                             try {
-                                UninstallPlugin::dispatch(user(), $plugin->id);
+                                UninstallPlugin::dispatch(user(), $record->id);
 
                                 Notification::make()
                                     ->success()
@@ -290,6 +367,7 @@ class PluginResource extends Resource
                     ->hiddenLabel()
                     ->tooltip(trans('admin/plugin.import_from_file'))
                     ->authorize(fn () => user()?->can('create', Plugin::class))
+                    ->visible(fn ($livewire) => $livewire->activeTab !== 'wings')
                     ->icon(TablerIcon::FileDownload)
                     ->schema([
                         // TODO: switch to new file upload
@@ -335,6 +413,7 @@ class PluginResource extends Resource
                     ->hiddenLabel()
                     ->tooltip(trans('admin/plugin.import_from_url'))
                     ->authorize(fn () => user()?->can('create', Plugin::class))
+                    ->visible(fn ($livewire) => $livewire->activeTab !== 'wings')
                     ->icon(TablerIcon::WorldDownload)
                     ->schema([
                         TextInput::make('url')
