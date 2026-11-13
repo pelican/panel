@@ -19,6 +19,22 @@ class PluginCompatibilityTest extends TestCase
         $this->assertSame($expected, $plugin->isCompatible());
     }
 
+    #[DataProvider('compatibilityDataProvider')]
+    public function test_is_compatible_with_given_version(?string $constraint, string $panelVersion, bool $expected): void
+    {
+        if ($panelVersion === 'canary') {
+            $this->markTestSkipped('Update targets are always releases.');
+        }
+
+        // Compatibility with an update target must not depend on the running version.
+        config()->set('app.version', '9.9.9');
+
+        $plugin = new Plugin();
+        $plugin->panel_version = $constraint;
+
+        $this->assertSame($expected, $plugin->isCompatible($panelVersion));
+    }
+
     public static function compatibilityDataProvider(): array
     {
         return [

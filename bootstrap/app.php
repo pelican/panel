@@ -61,6 +61,9 @@ $app = Application::configure(basePath: dirname(__DIR__))
 
         $middleware->replaceInGroup('web', IlluminatePreventRequestForgery::class, PreventRequestForgery::class);
 
+        // The panel updater hands the admin a maintenance bypass cookie, which is checked before cookies are decrypted.
+        $middleware->encryptCookies(except: ['laravel_maintenance']);
+
         $middleware->alias([
             'bindings' => SubstituteBindings::class,
             'guest' => RedirectIfAuthenticated::class,

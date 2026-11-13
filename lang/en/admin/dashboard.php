@@ -19,6 +19,7 @@ return [
             'content' => ':latestVersion is now available! Read our documentation to update your Panel.',
             'content_container' => ':latestVersion is now available! Pull the new image and recreate the container to update your Panel.',
             'button_changelog' => 'What\'s New?',
+            'button_guide' => 'Update Guide',
         ],
         'intro-version-unavailable' => [
             'heading' => 'Version check unavailable',

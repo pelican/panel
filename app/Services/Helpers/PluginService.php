@@ -188,26 +188,7 @@ class PluginService
      */
     public function manageComposerPackages(?array $newPackages = [], ?array $oldPackages = null): void
     {
-        $newPackages ??= [];
-
-        $plugins = Plugin::orderBy('load_order')->get();
-        foreach ($plugins as $plugin) {
-            if (!$plugin->composer_packages) {
-                continue;
-            }
-
-            if (!$plugin->shouldLoad()) {
-                continue;
-            }
-
-            try {
-                $pluginPackages = json_decode($plugin->composer_packages, true, 512, JSON_THROW_ON_ERROR);
-
-                $newPackages = array_merge($newPackages, $pluginPackages);
-            } catch (Exception $exception) {
-                report($exception);
-            }
-        }
+        $newPackages = array_merge($newPackages ?? [], $this->pluginComposerPackages());
 
         $oldPackages = collect($oldPackages)
             ->filter(fn ($version, $package) => !array_key_exists($package, $newPackages))
@@ -230,6 +211,31 @@ class PluginService
             $result = Process::path(base_path())->timeout(600)->run(['composer', 'require', '--update-no-dev', ...$newPackages]);
             throw_if($result->failed(), new Exception('Could not require new composer packages: ' . $result->errorOutput()));
         }
+    }
+
+    /**
+     * The composer packages required by every plugin that gets loaded, as package => version constraint.
+     *
+     * @return array<string, string>
+     */
+    public function pluginComposerPackages(): array
+    {
+        $packages = [];
+
+        $plugins = Plugin::orderBy('load_order')->get();
+        foreach ($plugins as $plugin) {
+            if (!$plugin->composer_packages || !$plugin->shouldLoad()) {
+                continue;
+            }
+
+            try {
+                $packages = array_merge($packages, json_decode($plugin->composer_packages, true, 512, JSON_THROW_ON_ERROR));
+            } catch (Exception $exception) {
+                report($exception);
+            }
+        }
+
+        return $packages;
     }
 
     /** @throws Exception */

@@ -18,7 +18,7 @@ class QueueWorkerServiceCommand extends Command
 
     public function handle(): int
     {
-        if (@file_exists('/.dockerenv')) {
+        if (is_running_in_docker()) {
             $result = Process::run('supervisorctl restart queue-worker');
             if ($result->failed()) {
                 $this->error('Error restarting service: ' . $result->errorOutput());
