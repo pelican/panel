@@ -4,12 +4,14 @@ namespace App\Filament\Admin\Resources\Nodes;
 
 use App\Enums\CustomizationKey;
 use App\Enums\TablerIcon;
+use App\Filament\Admin\Resources\Nodes\Components\NodeMassActions;
 use App\Filament\Admin\Resources\Nodes\Pages\CreateNode;
 use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
 use App\Filament\Admin\Resources\Nodes\Pages\ListNodes;
 use App\Filament\Admin\Resources\Nodes\Pages\ViewNode;
 use App\Filament\Admin\Resources\Nodes\RelationManagers\AllocationsRelationManager;
 use App\Filament\Admin\Resources\Nodes\RelationManagers\ServersRelationManager;
+use App\Filament\Admin\Resources\Nodes\RelationManagers\ServerTransferBatchesRelationManager;
 use App\Models\Node;
 use App\Repositories\Daemon\DaemonSystemRepository;
 use App\Services\Helpers\SoftwareVersionService;
@@ -98,6 +100,7 @@ class NodeResource extends Resource
         return [
             AllocationsRelationManager::class,
             ServersRelationManager::class,
+            ServerTransferBatchesRelationManager::class,
         ];
     }
 
@@ -980,6 +983,7 @@ class NodeResource extends Resource
                             ])->fullWidth(),
                         ]),
                 ]),
+            NodeMassActions::tab(),
             Tab::make('diagnostics')
                 ->label(trans('admin/node.tabs.diagnostics'))
                 ->icon(TablerIcon::HeartSearch)

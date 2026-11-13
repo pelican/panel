@@ -29,6 +29,22 @@ class ServerTransferControllerTest extends IntegrationTestCase
         ]);
     }
 
+    public function test_a_restarting_node_fails_all_of_its_unfinished_transfers(): void
+    {
+        $oldNode = $this->transfer->oldNode;
+
+        ServerTransfer::factory()->for($this->transfer->server)->count(1001)->create([
+            'new_node' => $this->transfer->new_node,
+            'old_node' => $oldNode->id,
+        ]);
+
+        $this->withHeader('Authorization', "Bearer $oldNode->daemon_token_id." . $oldNode->daemon_token)
+            ->postJson('/api/remote/servers/reset')
+            ->assertNoContent();
+
+        $this->assertSame(0, ServerTransfer::query()->whereNull('successful')->count());
+    }
+
     public function test_success_status_update_can_be_sent_from_new_node(): void
     {
         $server = $this->transfer->server;

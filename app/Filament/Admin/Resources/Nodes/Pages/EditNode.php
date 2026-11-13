@@ -85,8 +85,12 @@ class EditNode extends EditRecord
 
         return [
             DeleteAction::make()
-                ->disabled($hasServers)
-                ->tooltip(fn (Node $node) => $hasServers($node) ? trans('admin/node.node_has_servers') : trans('filament-actions::delete.single.label')),
+                ->disabled(fn (Node $node) => $hasServers($node) || $node->isInRunningTransferBatch())
+                ->tooltip(fn (Node $node) => match (true) {
+                    $hasServers($node) => trans('admin/node.node_has_servers'),
+                    $node->isInRunningTransferBatch() => trans('exceptions.node.in_transfer_batch'),
+                    default => trans('filament-actions::delete.single.label'),
+                }),
 
             Action::make('save')
                 ->hiddenLabel()

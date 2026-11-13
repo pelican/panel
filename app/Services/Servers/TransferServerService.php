@@ -4,6 +4,8 @@ namespace App\Services\Servers;
 
 use App\Enums\NodeJwtScope;
 use App\Exceptions\Http\Server\NodeNotViableException;
+use App\Exceptions\Service\Allocation\AllocationUnavailableException;
+use App\Exceptions\Service\Server\TransferUnconfirmedException;
 use App\Extensions\BackupAdapter\BackupAdapterService;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
 use App\Models\Allocation;
@@ -13,7 +15,10 @@ use App\Models\Server;
 use App\Models\ServerTransfer;
 use App\Services\Nodes\NodeJWTService;
 use Carbon\CarbonImmutable;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\TransferException;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Lcobucci\JWT\UnencryptedToken;
 use Throwable;
@@ -40,7 +45,8 @@ class TransferServerService
             ->pluck('uuid')
             ->all();
 
-        Http::daemon($transfer->oldNode)->post("/api/servers/{$transfer->server->uuid}/transfer", [
+        // Wings waits up to 15 seconds for a running server to stop before it responds
+        Http::daemon($transfer->oldNode)->timeout(30)->post("/api/servers/{$transfer->server->uuid}/transfer", [
             'url' => $transfer->newNode->getConnectionAddress() . '/api/transfers',
             'token' => 'Bearer ' . $token->toString(),
             'backups' => $backups,
@@ -48,7 +54,7 @@ class TransferServerService
                 'uuid' => $transfer->server->uuid,
                 'start_on_completion' => false,
             ],
-        ]);
+        ])->throw();
     }
 
     /**
@@ -60,7 +66,7 @@ class TransferServerService
      * @throws NodeNotViableException
      * @throws Throwable
      */
-    public function handle(Server $server, int $node_id, ?int $allocation_id = null, ?array $additional_allocations = [], array $backup_uuids = []): void
+    public function handle(Server $server, int $node_id, ?int $allocation_id = null, ?array $additional_allocations = [], array $backup_uuids = []): ServerTransfer
     {
         $additional_allocations = array_map(intval(...), $additional_allocations);
 
@@ -105,15 +111,40 @@ class TransferServerService
             return $transfer;
         });
 
-        // Generate a token for the destination node that the source node can use to authenticate with.
-        $token = $this->nodeJWTService
-            ->setExpiresAt(CarbonImmutable::now()->addMinutes(15))
-            ->setScopes(NodeJwtScope::ServerTransfer)
-            ->setSubject($server->uuid)
-            ->handle($transfer->newNode, $server->uuid);
+        try {
+            // Generate a token for the destination node that the source node can use to authenticate with.
+            $token = $this->nodeJWTService
+                ->setExpiresAt(CarbonImmutable::now()->addMinutes(15))
+                ->setScopes(NodeJwtScope::ServerTransfer)
+                ->setSubject($server->uuid)
+                ->handle($transfer->newNode, $server->uuid);
 
-        // Notify the source node of the pending outgoing transfer.
-        $this->notify($transfer, $token);
+            // Notify the source node of the pending outgoing transfer.
+            $this->notify($transfer, $token);
+        } catch (Throwable $exception) {
+            // Marking it failed would make the panel refuse the result if the daemon is in fact running it.
+            if ($this->mayHaveReachedDaemon($exception)) {
+                throw new TransferUnconfirmedException($transfer, $exception);
+            }
+
+            // The daemon won't report on a transfer it never accepted, which would leave the server locked forever.
+            $transfer->markFailed();
+
+            throw $exception;
+        }
+
+        return $transfer;
+    }
+
+    /**
+     * Whether a request that failed could still have been acted on: the connection worked but no full
+     * answer came back, as opposed to the daemon having been refused, unresolvable or out of reach.
+     */
+    private function mayHaveReachedDaemon(Throwable $exception): bool
+    {
+        $cause = $exception instanceof ConnectionException ? $exception->getPrevious() : null;
+
+        return $cause instanceof TransferException && !$cause instanceof ConnectException;
     }
 
     /**
@@ -123,26 +154,21 @@ class TransferServerService
      */
     private function assignAllocationsToServer(Server $server, int $node_id, int $allocation_id, array $additional_allocations): void
     {
-        $allocations = $additional_allocations;
-        $allocations[] = $allocation_id;
+        $allocations = array_unique([...$additional_allocations, $allocation_id]);
 
         $node = Node::findOrFail($node_id);
-        $unassigned = $node->allocations()
+
+        // Only claims what is still free, so another server's allocation can't end up on this server too.
+        $node->allocations()
+            ->whereIn('id', $allocations)
             ->whereNull('server_id')
-            ->pluck('id')
-            ->toArray();
+            ->update(['server_id' => $server->id]);
 
-        $updateIds = [];
-        foreach ($allocations as $allocation) {
-            if (!in_array($allocation, $unassigned)) {
-                continue;
-            }
+        $claimed = $node->allocations()
+            ->whereIn('id', $allocations)
+            ->where('server_id', $server->id)
+            ->count();
 
-            $updateIds[] = $allocation;
-        }
-
-        if (!empty($updateIds)) {
-            Allocation::whereIn('id', $updateIds)->update(['server_id' => $server->id]);
-        }
+        throw_if($claimed !== count($allocations), new AllocationUnavailableException());
     }
 }

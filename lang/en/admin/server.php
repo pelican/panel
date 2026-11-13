@@ -152,6 +152,7 @@ return [
         'log_failed' => 'Could not connect to Wings to retrieve server install log.',
         'transfer_started' => 'Transfer started',
         'transfer_failed' => 'Transfer failed',
+        'transfer_unconfirmed' => 'Transfer not confirmed',
         'already_transfering' => 'Server is currently being transferred.',
         'backup_transfer_failed' => 'Backup Transfer Failed',
     ],

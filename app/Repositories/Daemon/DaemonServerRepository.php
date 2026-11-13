@@ -46,6 +46,43 @@ class DaemonServerRepository extends DaemonRepository
     }
 
     /**
+     * Returns the state of the server, or null if the daemon couldn't say. Unlike getDetails(), this
+     * tells a server that isn't on the daemon (Missing) apart from a daemon that isn't answering.
+     */
+    public function getState(int $timeout = 1): ?ContainerStatus
+    {
+        try {
+            $response = $this->getHttpClient()->connectTimeout($timeout)->timeout($timeout)->get("/api/servers/{$this->server->uuid}");
+        } catch (RequestException $exception) {
+            return $exception->response->notFound() ? ContainerStatus::Missing : null;
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        return ContainerStatus::tryFrom($response->json('state') ?? '');
+    }
+
+    /**
+     * Returns the state of all servers on the node in one request. Empty if the daemon can't be reached.
+     *
+     * @return array<string, ContainerStatus> keyed by server uuid
+     */
+    public function getStates(int $timeout = 5): array
+    {
+        try {
+            $servers = $this->getHttpClient()->connectTimeout($timeout)->timeout($timeout)->get('/api/servers')->throw()->json();
+        } catch (Exception $exception) {
+            report($exception);
+
+            return [];
+        }
+
+        return collect($servers)
+            ->mapWithKeys(fn (array $server) => [$server['configuration']['uuid'] => ContainerStatus::tryFrom($server['state']) ?? ContainerStatus::Missing])
+            ->all();
+    }
+
+    /**
      * Creates a new server on the daemon.
      *
      * @throws ConnectionException
