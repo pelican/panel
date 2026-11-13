@@ -6,6 +6,7 @@ use App\Filament\Admin\Resources\Servers\Pages\EditServer;
 use App\Filament\Components\Actions\RotateDatabasePasswordAction;
 use App\Filament\Components\Tables\Columns\DateTimeColumn;
 use App\Models\Database;
+use App\Services\Databases\DatabaseManagementService;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\TextInput;
@@ -13,6 +14,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class DatabasesRelationManager extends RelationManager
 {
@@ -52,6 +54,7 @@ class DatabasesRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('database')
             ->heading(null)
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['server.node']))
             ->columns([
                 TextColumn::make('database'),
                 TextColumn::make('username')
@@ -71,7 +74,10 @@ class DatabasesRelationManager extends RelationManager
             ->recordActions([
                 ViewAction::make()
                     ->color('primary'),
-                DeleteAction::make(),
+                // Through the service so the database and user are dropped on the host
+                // too, and the delete is logged as server:database.delete.
+                DeleteAction::make()
+                    ->using(fn (Database $database, DatabaseManagementService $service) => $service->delete($database)),
             ]);
     }
 }

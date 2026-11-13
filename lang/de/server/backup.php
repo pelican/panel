@@ -12,6 +12,14 @@ return [
         'successful' => 'Erfolgreich',
         'failed' => 'Fehlgeschlagen',
     ],
+    'notifications' => [
+        'action' => 'Benachrichtigungseinstellungen',
+        'toggle_manual' => 'Manuelle Backup-Benachrichtigungen',
+        'helper_manual' => 'Erhalten Sie eine Benachrichtigung und eine E-Mail, wenn ein manuell erstelltes Backup für diesen Server beendet oder fehlschlägt.',
+        'toggle_scheduled' => 'Geplante Backup-Benachrichtigungen',
+        'helper_scheduled' => 'Erhalten Sie eine Benachrichtigung und eine E-Mail, wenn ein geplantes Backup für diesen Server abgeschlossen oder fehlschlägt.',
+        'saved' => 'Benachrichtigungseinstellungen aktualisiert',
+    ],
     'actions' => [
         'create' => [
             'title' => 'Backup erstellen',

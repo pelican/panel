@@ -34,10 +34,13 @@ class EditDatabaseHost extends EditRecord
     /** @return array<Action|ActionGroup> */
     protected function getDefaultHeaderActions(): array
     {
+        $hasDatabases = fn (DatabaseHost $databaseHost) => once(fn () => $databaseHost->databases()->exists());
+
         return [
             DeleteAction::make()
-                ->tooltip(fn (DatabaseHost $databaseHost) => $databaseHost->databases()->count() > 0 ? trans('admin/databasehost.delete_help') : trans('filament-actions::delete.single.modal.actions.delete.label'))
-                ->disabled(fn (DatabaseHost $databaseHost) => $databaseHost->databases()->count() > 0),
+                ->tooltip(fn (DatabaseHost $databaseHost) => $hasDatabases($databaseHost) ? trans('admin/databasehost.delete_help') : trans('filament-actions::delete.single.modal.actions.delete.label'))
+                ->disabled($hasDatabases),
+
             Action::make('save')
                 ->hiddenLabel()
                 ->action('save')

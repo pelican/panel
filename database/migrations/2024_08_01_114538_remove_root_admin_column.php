@@ -14,6 +14,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasColumn('users', 'root_admin')) {
+            return;
+        }
+
         // Model events would reach listeners (e.g. webhooks) that expect tables from later migrations.
         Model::withoutEvents(function () {
             $adminUsers = User::whereRootAdmin(true)->get();

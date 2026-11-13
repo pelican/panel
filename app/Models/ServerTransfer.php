@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $new_allocation
  * @property int[]|null $old_additional_allocations
  * @property int[]|null $new_additional_allocations
+ * @property string[]|null $backup_uuids
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property bool $archived
@@ -31,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ServerTransfer newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ServerTransfer query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ServerTransfer whereArchived($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ServerTransfer whereBackupUuids($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ServerTransfer whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ServerTransfer whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ServerTransfer whereNewAdditionalAllocations($value)
@@ -70,6 +72,8 @@ class ServerTransfer extends Model implements Validatable
         'old_additional_allocations.*' => ['numeric'],
         'new_additional_allocations' => ['nullable', 'array'],
         'new_additional_allocations.*' => ['numeric'],
+        'backup_uuids' => ['nullable', 'array'],
+        'backup_uuids.*' => ['string'],
         'successful' => ['sometimes', 'nullable', 'boolean'],
     ];
 
@@ -83,9 +87,31 @@ class ServerTransfer extends Model implements Validatable
             'new_allocation' => 'int',
             'old_additional_allocations' => 'array',
             'new_additional_allocations' => 'array',
+            'backup_uuids' => 'array',
             'successful' => 'bool',
             'archived' => 'bool',
         ];
+    }
+
+    /**
+     * Marks an unfinished transfer as failed and frees what it reserved on the new node.
+     * A transfer that already finished is left alone, its outcome is what actually happened.
+     */
+    public function markFailed(): void
+    {
+        $this->getConnection()->transaction(function () {
+            $updated = static::query()->whereKey($this->id)->whereNull('successful')->update(['successful' => false]);
+            $this->refresh();
+
+            if (!$updated) {
+                return;
+            }
+
+            $allocations = array_filter([$this->new_allocation, ...($this->new_additional_allocations ?? [])]);
+            if ($allocations) {
+                $this->server->releaseAllocations($allocations);
+            }
+        });
     }
 
     /**

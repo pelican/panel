@@ -41,6 +41,18 @@ return [
             'password_body' => 'Ihr SFTP-Passwort ist dasselbe wie das Passwort, das Sie für den Zugriff auf dieses Panel verwenden.',
         ],
     ],
+    'notifications' => [
+        'title' => 'Benachrichtigungen',
+        'saved' => 'Benachrichtigungseinstellungen aktualisiert',
+        'backup_manual' => [
+            'label' => 'Manuelle Backup-Benachrichtigungen',
+            'helper' => 'Erhalten Sie eine Benachrichtigung und eine E-Mail, wenn ein manuell erstelltes Backup für diesen Server beendet oder fehlschlägt.',
+        ],
+        'backup_scheduled' => [
+            'label' => 'Geplante Backup-Benachrichtigungen',
+            'helper' => 'Erhalten Sie eine Benachrichtigung und eine E-Mail, wenn ein geplantes Backup für diesen Server abgeschlossen oder fehlschlägt.',
+        ],
+    ],
     'reinstall' => [
         'title' => 'Server neu installieren',
         'body' => 'Durch die Neuinstallation Ihres Servers wird dieser gestoppt und anschließend das Installationsskript, mit dem er ursprünglich eingerichtet wurde, erneut ausgeführt.',

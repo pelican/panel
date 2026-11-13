@@ -27,6 +27,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Arr;
 use Illuminate\Support\HtmlString;
 
@@ -52,6 +53,8 @@ class ActivityResource extends Resource
         /** @var Server $server */
         $server = Filament::getTenant();
 
+        $viewerIsAdmin = user()?->isAdmin();
+
         return $table
             ->paginated([25, 50])
             ->defaultPaginationPageOption(25)
@@ -64,7 +67,7 @@ class ActivityResource extends Resource
                     ->formatStateUsing(fn (ActivityLog $activityLog) => $activityLog->getLabel()),
                 TextColumn::make('user')
                     ->label(trans('server/activity.user'))
-                    ->state(function (ActivityLog $activityLog) use ($server) {
+                    ->state(function (ActivityLog $activityLog) use ($server, $viewerIsAdmin) {
                         if (!$activityLog->actor instanceof User) {
                             return $activityLog->actor_id === null ? trans('server/activity.system') : trans('server/activity.deleted_user');
                         }
@@ -72,7 +75,7 @@ class ActivityResource extends Resource
                         $user = $activityLog->actor->username;
 
                         // Only show the email if the actor is the server owner/ a subuser or if the viewing user is an admin
-                        if (user()?->isAdmin() || $server->owner_id === $activityLog->actor->id || $server->subusers->where('user_id', $activityLog->actor->id)->first()) {
+                        if ($viewerIsAdmin || $server->owner_id === $activityLog->actor->id || $server->subusers->where('user_id', $activityLog->actor->id)->first()) {
                             $user .= " ({$activityLog->actor->email})";
                         }
 
@@ -97,7 +100,7 @@ class ActivityResource extends Resource
                             ->state(fn (ActivityLog $activityLog) => new HtmlString($activityLog->getLabel())),
                         TextInput::make('user')
                             ->label(trans('server/activity.user'))
-                            ->formatStateUsing(function (ActivityLog $activityLog) use ($server) {
+                            ->formatStateUsing(function (ActivityLog $activityLog) use ($server, $viewerIsAdmin) {
                                 if (!$activityLog->actor instanceof User) {
                                     return $activityLog->actor_id === null ? trans('server/activity.system') : trans('server/activity.deleted_user');
                                 }
@@ -105,7 +108,7 @@ class ActivityResource extends Resource
                                 $user = $activityLog->actor->username;
 
                                 // Only show the email if the actor is the server owner/ a subuser or if the viewing user is an admin
-                                if (user()?->isAdmin() || $server->owner_id === $activityLog->actor->id || $server->subusers->where('user_id', $activityLog->actor->id)->first()) {
+                                if ($viewerIsAdmin || $server->owner_id === $activityLog->actor->id || $server->subusers->where('user_id', $activityLog->actor->id)->first()) {
                                     $user .= " ({$activityLog->actor->email})";
                                 }
 
@@ -136,7 +139,9 @@ class ActivityResource extends Resource
                     ->preload(),
                 SelectFilter::make('actor_id')
                     ->label(trans('server/activity.user'))
-                    ->options(fn (Table $table) => $table->getQuery()->with('actor')->get()->pluck('actor.username', 'actor.id')->filter())
+                    ->options(fn (Table $table) => User::query()
+                        ->whereIn('id', $table->getQuery()->where('actor_type', (new User())->getMorphClass())->select('actor_id')->distinct())
+                        ->pluck('username', 'id'))
                     ->searchable()
                     ->preload(),
             ]);
@@ -148,8 +153,10 @@ class ActivityResource extends Resource
         /** @var Server $server */
         $server = Filament::getTenant();
 
-        return ActivityLog::whereHas('subjects', fn (Builder $query) => $query->where('subject_id', $server->id)->where('subject_type', $server->getMorphClass()))
-            ->whereNotIn('activity_logs.event', ActivityLog::DISABLED_EVENTS)
+        return ActivityLog::with(['actor' => fn (MorphTo $morphTo) => $morphTo->morphWith([User::class => ['roles']]), 'apiKey'])
+            ->whereHas('subjects', fn (Builder $query) => $query->where('subject_id', $server->id)->where('subject_type', $server->getMorphClass()))
+
+            ->visibleEvents()
             ->when(config('activity.hide_admin_activity'), fn (Builder $builder) => $builder->hideAdminActivity($server));
     }
 

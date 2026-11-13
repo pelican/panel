@@ -39,6 +39,9 @@ class PluginCompatibilityTest extends TestCase
             'caret prerelease below minimum' => ['^1.0', '1.0.0-rc1', false],
             'caret full constraint newer patch' => ['^1.2.3', '1.2.4', true],
             'caret full constraint below patch' => ['^1.2.3', '1.2.2', false],
+            'caret dotted prerelease below minimum' => ['^1.0.0-rc.3', '1.0.0-rc.2', false],
+            'caret dotted prerelease exact' => ['^1.0.0-rc.3', '1.0.0-rc.3', true],
+            'caret dotted prerelease allows stable' => ['^1.0.0-rc.3', '1.0.0', true],
         ];
     }
 }

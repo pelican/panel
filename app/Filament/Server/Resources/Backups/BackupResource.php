@@ -194,7 +194,7 @@ class BackupResource extends Resource
                                     ->send();
                             }
 
-                            if (!$backup->is_successful && is_null($backup->completed_at)) {
+                            if ($backup->status !== BackupStatus::Successful) {
                                 return Notification::make()
                                     ->title(trans('server/backup.actions.restore.notification_fail'))
                                     ->body(trans('server/backup.actions.restore.notification_fail_body_2'))

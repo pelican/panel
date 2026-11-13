@@ -46,10 +46,13 @@ class EditEgg extends EditRecord
     /** @return array<Action|ActionGroup> */
     protected function getDefaultHeaderActions(): array
     {
+        $hasServers = fn (Egg $egg): bool => once(fn () => $egg->servers()->exists());
+
         return [
             DeleteAction::make()
-                ->disabled(fn (Egg $egg): bool => $egg->servers()->count() > 0)
-                ->tooltip(fn (Egg $egg): string => $egg->servers()->count() <= 0 ? trans('filament-actions::delete.single.label') : trans('admin/egg.in_use')),
+                ->disabled($hasServers)
+                ->tooltip(fn (Egg $egg): string => $hasServers($egg) ? trans('admin/egg.in_use') : trans('filament-actions::delete.single.label')),
+
             ExportEggAction::make(),
             ImportEggAction::make()
                 ->multiple(false)

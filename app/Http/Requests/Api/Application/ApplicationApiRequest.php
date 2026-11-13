@@ -2,8 +2,12 @@
 
 namespace App\Http\Requests\Api\Application;
 
+use App\Enums\RolePermissionModels;
 use App\Exceptions\PanelException;
 use App\Models\ApiKey;
+use App\Models\Database;
+use App\Models\DatabaseHost;
+use App\Models\Role;
 use App\Services\Acl\Api\AdminAcl;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Database\Eloquent\Model;
@@ -27,6 +31,14 @@ abstract class ApplicationApiRequest extends FormRequest
     protected int $permission = AdminAcl::NONE;
 
     /**
+     * API resources whose name differs from the role permission model they map to.
+     */
+    private const ROLE_PERMISSION_MODELS = [
+        Database::RESOURCE_NAME => RolePermissionModels::Database->value,
+        DatabaseHost::RESOURCE_NAME => RolePermissionModels::DatabaseHost->value,
+    ];
+
+    /**
      * Determine if the current user is authorized to perform
      * the requested action against the API.
      *
@@ -36,22 +48,49 @@ abstract class ApplicationApiRequest extends FormRequest
     {
         throw_if(is_null($this->resource), new PanelException('An ACL resource must be defined on API requests.'));
 
+        return $this->canAccess($this->resource, $this->permission);
+    }
+
+    /**
+     * Determine if the current user may access the given resource at the given permission
+     * level, either through their API key or, for panel sessions, their role permissions.
+     */
+    protected function canAccess(string $resource, int $permission): bool
+    {
         /** @var TransientToken|ApiKey $token */
         $token = $this->user()->currentAccessToken();
 
         if ($token instanceof TransientToken) {
-            return match ($this->permission) {
+            return match ($permission) {
                 default => false,
-                AdminAcl::READ => $this->user()->can('viewList ' . $this->resource) && $this->user()->can('view ' . $this->resource),
-                AdminAcl::WRITE => $this->user()->can('update ' . $this->resource),
+                AdminAcl::READ => $this->hasRolePermissions($resource, ['viewList', 'view']),
+                AdminAcl::WRITE => $this->hasRolePermissions($resource, ['update']),
             };
+        }
+
+        if (!$token instanceof ApiKey) {
+            return false;
         }
 
         if ($this->user()->isRootAdmin() && $token->key_type === ApiKey::TYPE_ACCOUNT) {
             return true;
         }
 
-        return AdminAcl::check($token, $this->resource, $this->permission);
+        return AdminAcl::check($token, $resource, $permission);
+    }
+
+    /**
+     * Check the session user holds every given role permission for the resource, skipping
+     * prefixes the resource's role model doesn't define (plugins have no "view").
+     *
+     * @param  string[]  $prefixes
+     */
+    private function hasRolePermissions(string $resource, array $prefixes): bool
+    {
+        $model = self::ROLE_PERMISSION_MODELS[$resource] ?? $resource;
+        $prefixes = array_intersect($prefixes, Role::getPermissionList()[$model] ?? []);
+
+        return !empty($prefixes) && collect($prefixes)->every(fn (string $prefix) => $this->user()->can("$prefix $model"));
     }
 
     /** @return array<string, string|array<string|\Stringable|ValidationRule>> */

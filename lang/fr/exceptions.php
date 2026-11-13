@@ -5,6 +5,7 @@ return [
     'node' => [
         'servers_attached' => 'Une node ne doit avoir aucun serveur lié pour être supprimé.',
         'error_connecting' => 'Erreur de connexion au :node',
+        'not_viable' => 'Le nœud :node n\'a pas assez de ressources libres pour accepter ce serveur.',
         'daemon_off_config_updated' => 'La configuration du daemon <strong>a été mis à jour</strong>, cependant, une erreur s\'est produite lors de la tentative de mise à jour automatique du fichier de configuration sur le daemon. Vous devrez mettre à jour manuellement le fichier de configuration (core.json) pour qu\'il puisse appliquer ces modifications.',
     ],
     'allocations' => [

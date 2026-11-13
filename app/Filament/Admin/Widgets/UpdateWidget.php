@@ -43,7 +43,7 @@ class UpdateWidget extends FormWidget
         }
 
         $isLatest = $this->softwareVersionService->isLatestPanel();
-        $isContainer = file_exists('/.dockerenv');
+        $isContainer = @file_exists('/.dockerenv');
 
         return $schema
             ->components([

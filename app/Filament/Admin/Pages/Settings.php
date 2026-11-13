@@ -6,7 +6,11 @@ use App\Enums\TablerIcon;
 use App\Extensions\Avatar\AvatarService;
 use App\Extensions\Captcha\CaptchaService;
 use App\Extensions\OAuth\OAuthService;
+use App\Facades\Activity;
+use App\Helpers\ProcessEnv;
 use App\Notifications\MailTested;
+use App\Observers\AuditObserver;
+use App\Services\Helpers\ThemeService;
 use App\Traits\EnvironmentWriterTrait;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
@@ -17,6 +21,7 @@ use BladeUI\Icons\Factory as IconFactory;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
@@ -29,6 +34,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Concerns\InteractsWithHeaderActions;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\Callout;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Fieldset;
 use Filament\Schemas\Components\Group;
@@ -44,6 +50,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Enums\Width;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Notification as MailNotification;
 use Illuminate\Support\Str;
@@ -73,6 +80,8 @@ class Settings extends Page implements HasSchemas
 
     protected IconFactory $iconFactory;
 
+    protected ThemeService $themeService;
+
     /** @var array<mixed>|null */
     public ?array $data = [];
 
@@ -81,12 +90,13 @@ class Settings extends Page implements HasSchemas
         $this->form->fill();
     }
 
-    public function boot(OAuthService $oauthService, AvatarService $avatarService, CaptchaService $captchaService, IconFactory $iconFactory): void
+    public function boot(OAuthService $oauthService, AvatarService $avatarService, CaptchaService $captchaService, IconFactory $iconFactory, ThemeService $themeService): void
     {
         $this->oauthService = $oauthService;
         $this->avatarService = $avatarService;
         $this->captchaService = $captchaService;
         $this->iconFactory = $iconFactory;
+        $this->themeService = $themeService;
     }
 
     public static function canAccess(): bool
@@ -108,12 +118,26 @@ class Settings extends Page implements HasSchemas
     protected function getFormSchema(): array
     {
         return [
+            Callout::make(trans('admin/setting.env_read_only'))
+                ->warning()
+                ->visible(fn () => !$this->environmentIsWritable()),
             Tabs::make('Tabs')
                 ->columns()
                 ->persistTabInQueryString()
-                ->disabled(fn () => !user()?->can('update settings'))
-                ->tabs($this->getTabs()),
+                ->disabled(fn () => !user()?->can('update settings') || !$this->environmentIsWritable())
+                // Fields set by the real process environment can't be changed here, .env would never win.
+                ->tabs(Field::configureUsing(
+                    fn (Field $field) => $field
+                        ->disabled(fn () => ProcessEnv::has($field->getName()))
+                        ->hint(fn () => ProcessEnv::has($field->getName()) ? trans('admin/setting.env_locked', ['key' => $field->getName()]) : null),
+                    fn () => $this->getTabs(),
+                )),
         ];
+    }
+
+    protected function environmentIsWritable(): bool
+    {
+        return is_writable(App::environmentFilePath());
     }
 
     /**
@@ -162,20 +186,20 @@ class Settings extends Page implements HasSchemas
             TextInput::make('APP_NAME')
                 ->label(trans('admin/setting.general.app_name'))
                 ->required()
-                ->default(env('APP_NAME', 'Pelican')),
+                ->default(config('app.name')),
             Group::make()
                 ->columns(2)
                 ->schema([
                     TextInput::make('APP_LOGO')
                         ->label(trans('admin/setting.general.app_logo'))
                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/setting.general.app_logo_help'))
-                        ->default(env('APP_LOGO'))
+                        ->default(config('app.logo'))
                         ->placeholder('/pelican.svg'),
                     TextInput::make('APP_FAVICON')
                         ->label(trans('admin/setting.general.app_favicon'))
                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/setting.general.app_favicon_help'))
                         ->required()
-                        ->default(env('APP_FAVICON', '/pelican.ico'))
+                        ->default(config('app.favicon'))
                         ->placeholder('/pelican.ico'),
                 ]),
             Group::make()
@@ -189,7 +213,7 @@ class Settings extends Page implements HasSchemas
                         ->onColor('success')
                         ->offColor('danger')
                         ->stateCast(new BooleanStateCast(false))
-                        ->default(env('APP_DEBUG', config('app.debug'))),
+                        ->default(config('app.debug')),
                 ]),
             Group::make()
                 ->columns(2)
@@ -198,7 +222,7 @@ class Settings extends Page implements HasSchemas
                         ->label(trans('admin/setting.general.avatar_provider'))
                         ->options($this->avatarService->getMappings())
                         ->selectablePlaceholder(false)
-                        ->default(env('FILAMENT_AVATAR_PROVIDER', config('panel.filament.avatar-provider'))),
+                        ->default(config('panel.filament.avatar-provider')),
                     Toggle::make('FILAMENT_UPLOADABLE_AVATARS')
                         ->label(trans('admin/setting.general.uploadable_avatars'))
                         ->inline(false)
@@ -207,7 +231,7 @@ class Settings extends Page implements HasSchemas
                         ->onColor('success')
                         ->offColor('danger')
                         ->stateCast(new BooleanStateCast(false))
-                        ->default(env('FILAMENT_UPLOADABLE_AVATARS', config('panel.filament.uploadable-avatars'))),
+                        ->default(config('panel.filament.uploadable-avatars')),
                 ]),
             ToggleButtons::make('PANEL_USE_BINARY_PREFIX')
                 ->label(trans('admin/setting.general.unit_prefix'))
@@ -217,7 +241,7 @@ class Settings extends Page implements HasSchemas
                     1 => trans('admin/setting.general.binary_prefix'),
                 ])
                 ->stateCast(new BooleanStateCast(false, true))
-                ->default(env('PANEL_USE_BINARY_PREFIX', config('panel.use_binary_prefix'))),
+                ->default(config('panel.use_binary_prefix')),
             ToggleButtons::make('FILAMENT_DEFAULT_NAVIGATION')
                 ->label(trans('admin/setting.general.default_navigation'))
                 ->inline()
@@ -226,7 +250,25 @@ class Settings extends Page implements HasSchemas
                     'topbar' => trans('admin/setting.general.topbar'),
                     'mixed' => trans('admin/setting.general.mixed'),
                 ])
-                ->default(env('FILAMENT_DEFAULT_NAVIGATION', config('panel.filament.default-navigation'))),
+                ->default(config('panel.filament.default-navigation')),
+            Select::make('FILAMENT_DEFAULT_THEME')
+                ->label(trans('admin/setting.general.default_theme'))
+                ->hintIcon(TablerIcon::QuestionMark, trans('admin/setting.general.default_theme_help'))
+                ->options($this->themeService->getThemeOptions())
+                ->selectablePlaceholder(false)
+                ->visible(fn () => $this->themeService->getThemes() !== [])
+                ->default(config('panel.filament.default-theme')),
+            Toggle::make('FILAMENT_FORCE_THEME')
+                ->label(trans('admin/setting.general.force_theme'))
+                ->hintIcon(TablerIcon::QuestionMark, trans('admin/setting.general.force_theme_help'))
+                ->inline(false)
+                ->onIcon(TablerIcon::Check)
+                ->offIcon(TablerIcon::X)
+                ->onColor('success')
+                ->offColor('danger')
+                ->stateCast(new BooleanStateCast(false))
+                ->visible(fn () => $this->themeService->getThemes() !== [])
+                ->default(config('panel.filament.force-theme')),
             ToggleButtons::make('APP_2FA_REQUIRED')
                 ->label(trans('admin/setting.general.2fa_requirement'))
                 ->inline()
@@ -237,18 +279,18 @@ class Settings extends Page implements HasSchemas
                 ])
                 ->formatStateUsing(fn ($state): int => (int) $state)
                 ->afterStateUpdated(fn ($state, Set $set) => $set('APP_2FA_REQUIRED', (int) $state))
-                ->default(env('APP_2FA_REQUIRED', config('panel.auth.2fa_required'))),
+                ->default(config('panel.auth.2fa_required')),
             Select::make('FILAMENT_WIDTH')
                 ->label(trans('admin/setting.general.display_width'))
                 ->options(Width::class)
                 ->selectablePlaceholder(false)
-                ->default(env('FILAMENT_WIDTH', config('panel.filament.display-width'))),
+                ->default(config('panel.filament.display-width')),
             TagsInput::make('TRUSTED_PROXIES')
                 ->label(trans('admin/setting.general.trusted_proxies'))
                 ->separator()
                 ->splitKeys(['Tab', ' '])
                 ->placeholder(trans('admin/setting.general.trusted_proxies_help'))
-                ->default(env('TRUSTED_PROXIES', implode(',', Arr::wrap(config('trustedproxy.proxies')))))
+                ->default(implode(',', array_filter(Arr::wrap(config('trustedproxy.proxies')))))
                 ->hintActions([
                     Action::make('hint_clear')
                         ->label(trans('admin/setting.general.clear'))
@@ -307,21 +349,21 @@ class Settings extends Page implements HasSchemas
                 ->schema([
                     Hidden::make("CAPTCHA_{$id}_ENABLED")
                         ->live()
-                        ->default(env("CAPTCHA_{$id}_ENABLED")),
+                        ->default($schema->isEnabled()),
                     Actions::make([
                         Action::make("disable_captcha_$id")
                             ->visible(fn (Get $get) => $get("CAPTCHA_{$id}_ENABLED"))
-                            ->disabled(fn () => !user()?->can('update settings'))
+                            ->disabled(fn () => !user()?->can('update settings') || ProcessEnv::has("CAPTCHA_{$id}_ENABLED"))
                             ->label(trans('admin/setting.captcha.disable'))
                             ->color('danger')
                             ->action(fn (Set $set) => $set("CAPTCHA_{$id}_ENABLED", false)),
                         Action::make("enable_captcha_$id")
                             ->visible(fn (Get $get) => !$get("CAPTCHA_{$id}_ENABLED"))
-                            ->disabled(fn () => !user()?->can('update settings'))
+                            ->disabled(fn () => !user()?->can('update settings') || ProcessEnv::has("CAPTCHA_{$id}_ENABLED"))
                             ->label(trans('admin/setting.captcha.enable'))
                             ->color('success')
                             ->action(fn (Set $set) => $set("CAPTCHA_{$id}_ENABLED", true)),
-                    ])->columnSpan(1),
+                    ])->key("captcha_{$id}_actions")->columnSpan(1),
                     Group::make($schema->getSettingsForm())
                         ->visible(fn (Get $get) => $get("CAPTCHA_{$id}_ENABLED"))
                         ->columns(4)
@@ -353,7 +395,7 @@ class Settings extends Page implements HasSchemas
                     'sendmail' => 'sendmail (PHP)',
                 ])
                 ->live()
-                ->default(env('MAIL_MAILER', config('mail.default')))
+                ->default(config('mail.default'))
                 ->hintAction(
                     Action::make('hint_test')
                         ->label(trans('admin/setting.mail.test_mail'))
@@ -419,11 +461,11 @@ class Settings extends Page implements HasSchemas
                         ->label(trans('admin/setting.mail.from_address'))
                         ->required()
                         ->email()
-                        ->default(env('MAIL_FROM_ADDRESS', config('mail.from.address'))),
+                        ->default(config('mail.from.address')),
                     TextInput::make('MAIL_FROM_NAME')
                         ->label(trans('admin/setting.mail.from_name'))
                         ->required()
-                        ->default(env('MAIL_FROM_NAME', config('mail.from.name'))),
+                        ->default(config('mail.from.name')),
                 ]),
             Section::make(trans('admin/setting.mail.smtp.smtp_title'))
                 ->columns()
@@ -433,22 +475,22 @@ class Settings extends Page implements HasSchemas
                     TextInput::make('MAIL_HOST')
                         ->label(trans('admin/setting.mail.smtp.host'))
                         ->required()
-                        ->default(env('MAIL_HOST', config('mail.mailers.smtp.host'))),
+                        ->default(config('mail.mailers.smtp.host')),
                     TextInput::make('MAIL_PORT')
                         ->label(trans('admin/setting.mail.smtp.port'))
                         ->required()
                         ->numeric()
                         ->minValue(1)
                         ->maxValue(65535)
-                        ->default(env('MAIL_PORT', config('mail.mailers.smtp.port'))),
+                        ->default(config('mail.mailers.smtp.port')),
                     TextInput::make('MAIL_USERNAME')
                         ->label(trans('admin/setting.mail.smtp.username'))
-                        ->default(env('MAIL_USERNAME', config('mail.mailers.smtp.username'))),
+                        ->default(config('mail.mailers.smtp.username')),
                     TextInput::make('MAIL_PASSWORD')
                         ->label(trans('admin/setting.mail.smtp.password'))
                         ->password()
                         ->revealable()
-                        ->default(env('MAIL_PASSWORD')),
+                        ->default(config('mail.mailers.smtp.password')),
                     ToggleButtons::make('MAIL_SCHEME')
                         ->label(trans('admin/setting.mail.smtp.scheme'))
                         ->inline()
@@ -456,10 +498,12 @@ class Settings extends Page implements HasSchemas
                             'smtp' => 'SMTP',
                             'smtps' => 'SMTPS',
                         ])
-                        ->default(env('MAIL_SCHEME', config('mail.mailers.smtp.scheme')))
+                        ->default(config('mail.mailers.smtp.scheme'))
                         ->live()
                         ->afterStateUpdated(function ($state, Set $set) {
-                            $set('MAIL_PORT', $state === 'smtps' ? 587 : 2525);
+                            if (!ProcessEnv::has('MAIL_PORT')) {
+                                $set('MAIL_PORT', $state === 'smtps' ? 587 : 2525);
+                            }
                         }),
                 ]),
             Section::make(trans('admin/setting.mail.mailgun.mailgun_title'))
@@ -470,15 +514,15 @@ class Settings extends Page implements HasSchemas
                     TextInput::make('MAILGUN_DOMAIN')
                         ->label(trans('admin/setting.mail.mailgun.domain'))
                         ->required()
-                        ->default(env('MAILGUN_DOMAIN', config('services.mailgun.domain'))),
+                        ->default(config('services.mailgun.domain')),
                     TextInput::make('MAILGUN_SECRET')
                         ->label(trans('admin/setting.mail.mailgun.secret'))
                         ->required()
-                        ->default(env('MAILGUN_SECRET', config('services.mailgun.secret'))),
+                        ->default(config('services.mailgun.secret')),
                     TextInput::make('MAILGUN_ENDPOINT')
                         ->label(trans('admin/setting.mail.mailgun.endpoint'))
                         ->required()
-                        ->default(env('MAILGUN_ENDPOINT', config('services.mailgun.endpoint'))),
+                        ->default(config('services.mailgun.endpoint')),
                 ]),
         ];
     }
@@ -547,13 +591,13 @@ class Settings extends Page implements HasSchemas
                     Actions::make([
                         Action::make('disable_oauth_' . $schema->getId())
                             ->visible(fn (Get $get) => $get($key))
-                            ->disabled(fn () => !user()?->can('update settings'))
+                            ->disabled(fn () => !user()?->can('update settings') || ProcessEnv::has($key))
                             ->label(trans('admin/setting.oauth.disable'))
                             ->color('danger')
                             ->action(fn (Set $set) => $set($key, false)),
                         Action::make('enable_oauth_'  . $schema->getId())
                             ->visible(fn (Get $get) => !$get($key))
-                            ->disabled(fn () => !user()?->can('update settings'))
+                            ->disabled(fn () => !user()?->can('update settings') || ProcessEnv::has($key))
                             ->label(trans('admin/setting.oauth.enable'))
                             ->color('success')
                             ->steps($schema->getSetupSteps())
@@ -603,7 +647,7 @@ class Settings extends Page implements HasSchemas
                         ->live()
                         ->columnSpanFull()
                         ->stateCast(new BooleanStateCast(false))
-                        ->default(env('PANEL_CLIENT_ALLOCATIONS_ENABLED', config('panel.client_features.allocations.enabled'))),
+                        ->default(config('panel.client_features.allocations.enabled')),
                     Toggle::make('PANEL_CLIENT_ALLOCATIONS_CREATE_NEW')
                         ->label(trans('admin/setting.misc.auto_allocation.create_new'))
                         ->helperText(trans('admin/setting.misc.auto_allocation.create_new_help'))
@@ -615,7 +659,7 @@ class Settings extends Page implements HasSchemas
                         ->columnSpanFull()
                         ->visible(fn (Get $get) => $get('PANEL_CLIENT_ALLOCATIONS_ENABLED'))
                         ->stateCast(new BooleanStateCast(false))
-                        ->default(env('PANEL_CLIENT_ALLOCATIONS_CREATE_NEW', config('panel.client_features.allocations.create_new'))),
+                        ->default(config('panel.client_features.allocations.create_new')),
                     TextInput::make('PANEL_CLIENT_ALLOCATIONS_RANGE_START')
                         ->label(trans('admin/setting.misc.auto_allocation.start'))
                         ->required()
@@ -623,7 +667,7 @@ class Settings extends Page implements HasSchemas
                         ->minValue(1024)
                         ->maxValue(65535)
                         ->visible(fn (Get $get) => $get('PANEL_CLIENT_ALLOCATIONS_ENABLED'))
-                        ->default(env('PANEL_CLIENT_ALLOCATIONS_RANGE_START')),
+                        ->default(config('panel.client_features.allocations.range_start')),
                     TextInput::make('PANEL_CLIENT_ALLOCATIONS_RANGE_END')
                         ->label(trans('admin/setting.misc.auto_allocation.end'))
                         ->required()
@@ -631,7 +675,7 @@ class Settings extends Page implements HasSchemas
                         ->minValue(1024)
                         ->maxValue(65535)
                         ->visible(fn (Get $get) => $get('PANEL_CLIENT_ALLOCATIONS_ENABLED'))
-                        ->default(env('PANEL_CLIENT_ALLOCATIONS_RANGE_END')),
+                        ->default(config('panel.client_features.allocations.range_end')),
                 ]),
             Section::make(trans('admin/setting.misc.mail_notifications.title'))
                 ->description(trans('admin/setting.misc.mail_notifications.helper'))
@@ -648,7 +692,7 @@ class Settings extends Page implements HasSchemas
                         ->live()
                         ->formatStateUsing(fn ($state): bool => (bool) $state)
                         ->afterStateUpdated(fn ($state, Set $set) => $set('PANEL_SEND_ACCOUNT_CREATED_NOTIFICATION', (bool) $state))
-                        ->default(env('PANEL_SEND_ACCOUNT_CREATED_NOTIFICATION', config('panel.email.send_account_created_notification'))),
+                        ->default(config('panel.email.send_account_created_notification')),
                     Toggle::make('PANEL_SEND_ADDED_TO_SERVER_NOTIFICATION')
                         ->label(trans('admin/setting.misc.mail_notifications.added_to_server'))
                         ->onIcon(TablerIcon::Check)
@@ -658,7 +702,7 @@ class Settings extends Page implements HasSchemas
                         ->live()
                         ->formatStateUsing(fn ($state): bool => (bool) $state)
                         ->afterStateUpdated(fn ($state, Set $set) => $set('PANEL_SEND_ADDED_TO_SERVER_NOTIFICATION', (bool) $state))
-                        ->default(env('PANEL_SEND_ADDED_TO_SERVER_NOTIFICATION', config('panel.email.send_added_to_server_notification'))),
+                        ->default(config('panel.email.send_added_to_server_notification')),
                     Toggle::make('PANEL_SEND_REMOVED_FROM_SERVER_NOTIFICATION')
                         ->label(trans('admin/setting.misc.mail_notifications.removed_from_server'))
                         ->onIcon(TablerIcon::Check)
@@ -668,7 +712,7 @@ class Settings extends Page implements HasSchemas
                         ->live()
                         ->formatStateUsing(fn ($state): bool => (bool) $state)
                         ->afterStateUpdated(fn ($state, Set $set) => $set('PANEL_SEND_REMOVED_FROM_SERVER_NOTIFICATION', (bool) $state))
-                        ->default(env('PANEL_SEND_REMOVED_FROM_SERVER_NOTIFICATION', config('panel.email.send_removed_from_server_notification'))),
+                        ->default(config('panel.email.send_removed_from_server_notification')),
                     Toggle::make('PANEL_SEND_INSTALL_NOTIFICATION')
                         ->label(trans('admin/setting.misc.mail_notifications.server_installed'))
                         ->onIcon(TablerIcon::Check)
@@ -678,7 +722,7 @@ class Settings extends Page implements HasSchemas
                         ->live()
                         ->formatStateUsing(fn ($state): bool => (bool) $state)
                         ->afterStateUpdated(fn ($state, Set $set) => $set('PANEL_SEND_INSTALL_NOTIFICATION', (bool) $state))
-                        ->default(env('PANEL_SEND_INSTALL_NOTIFICATION', config('panel.email.send_install_notification'))),
+                        ->default(config('panel.email.send_install_notification')),
                     Toggle::make('PANEL_SEND_REINSTALL_NOTIFICATION')
                         ->label(trans('admin/setting.misc.mail_notifications.server_reinstalled'))
                         ->onIcon(TablerIcon::Check)
@@ -688,7 +732,7 @@ class Settings extends Page implements HasSchemas
                         ->live()
                         ->formatStateUsing(fn ($state): bool => (bool) $state)
                         ->afterStateUpdated(fn ($state, Set $set) => $set('PANEL_SEND_REINSTALL_NOTIFICATION', (bool) $state))
-                        ->default(env('PANEL_SEND_REINSTALL_NOTIFICATION', config('panel.email.send_reinstall_notification'))),
+                        ->default(config('panel.email.send_reinstall_notification')),
                 ]),
             Section::make(trans('admin/setting.misc.connections.title'))
                 ->description(trans('admin/setting.misc.connections.helper'))
@@ -703,7 +747,7 @@ class Settings extends Page implements HasSchemas
                         ->minValue(15)
                         ->maxValue(60)
                         ->suffix(trans('admin/setting.misc.connections.seconds'))
-                        ->default(env('GUZZLE_TIMEOUT', config('panel.guzzle.timeout'))),
+                        ->default(config('panel.guzzle.timeout')),
                     TextInput::make('GUZZLE_CONNECT_TIMEOUT')
                         ->label(trans('admin/setting.misc.connections.connection_timeout'))
                         ->required()
@@ -711,7 +755,7 @@ class Settings extends Page implements HasSchemas
                         ->minValue(5)
                         ->maxValue(60)
                         ->suffix(trans('admin/setting.misc.connections.seconds'))
-                        ->default(env('GUZZLE_CONNECT_TIMEOUT', config('panel.guzzle.connect_timeout'))),
+                        ->default(config('panel.guzzle.connect_timeout')),
                 ]),
             Section::make(trans('admin/setting.misc.activity_log.title'))
                 ->description(trans('admin/setting.misc.activity_log.helper'))
@@ -726,7 +770,7 @@ class Settings extends Page implements HasSchemas
                         ->minValue(1)
                         ->maxValue(365)
                         ->suffix(trans('admin/setting.misc.activity_log.days'))
-                        ->default(env('APP_ACTIVITY_PRUNE_DAYS', config('activity.prune_days'))),
+                        ->default(config('activity.prune_days')),
                     Toggle::make('APP_ACTIVITY_HIDE_ADMIN')
                         ->label(trans('admin/setting.misc.activity_log.log_admin'))
                         ->inline(false)
@@ -736,7 +780,7 @@ class Settings extends Page implements HasSchemas
                         ->offColor('danger')
                         ->live()
                         ->stateCast(new BooleanStateCast(false))
-                        ->default(env('APP_ACTIVITY_HIDE_ADMIN', config('activity.hide_admin_activity'))),
+                        ->default(config('activity.hide_admin_activity')),
                 ]),
             Section::make(trans('admin/setting.misc.api.title'))
                 ->description(trans('admin/setting.misc.api.helper'))
@@ -752,14 +796,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_CLIENT_RATELIMIT', config('http.rate_limit.client'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.client')),
 
                             TextInput::make('APP_API_CLIENT_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_CLIENT_RATELIMIT_PERIOD', config('http.rate_limit.client_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.client_period')),
                             Text::make(trans('admin/setting.misc.api.client_helper')),
                         ]),
                     Fieldset::make()
@@ -770,14 +814,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_APPLICATION_RATELIMIT', config('http.rate_limit.application'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.application')),
 
                             TextInput::make('APP_API_APPLICATION_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_APPLICATION_RATELIMIT_PERIOD', config('http.rate_limit.application_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.application_period')),
                             Text::make(trans('admin/setting.misc.api.application_helper')),
                         ]),
                     Fieldset::make()
@@ -788,14 +832,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_PASSWORD_RESET_RATELIMIT', config('http.rate_limit.password_reset'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.password_reset')),
 
                             TextInput::make('APP_API_PASSWORD_RESET_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_PASSWORD_RESET_RATELIMIT_PERIOD', config('http.rate_limit.password_reset_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.password_reset_period')),
                             Text::make(trans('admin/setting.misc.api.password_reset_helper')),
                         ]),
                     Fieldset::make()
@@ -806,14 +850,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_WEBSOCKET_RATELIMIT', config('http.rate_limit.websocket'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.websocket')),
 
                             TextInput::make('APP_API_WEBSOCKET_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_WEBSOCKET_RATELIMIT_PERIOD', config('http.rate_limit.websocket_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.websocket_period')),
                             Text::make(trans('admin/setting.misc.api.websocket_helper')),
                         ]),
                     Fieldset::make()
@@ -824,14 +868,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_BACKUP_RESTORE_RATELIMIT', config('http.rate_limit.backup_restore'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.backup_restore')),
 
                             TextInput::make('APP_API_BACKUP_RESTORE_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_BACKUP_RESTORE_RATELIMIT_PERIOD', config('http.rate_limit.backup_restore_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.backup_restore_period')),
                             Text::make(trans('admin/setting.misc.api.backup_restore_helper')),
                         ]),
                     Fieldset::make()
@@ -842,14 +886,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_DATABASE_CREATE_RATELIMIT', config('http.rate_limit.database_create'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.database_create')),
 
                             TextInput::make('APP_API_DATABASE_CREATE_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_DATABASE_CREATE_RATELIMIT_PERIOD', config('http.rate_limit.database_create_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.database_create_period')),
                             Text::make(trans('admin/setting.misc.api.database_create_helper')),
                         ]),
                     Fieldset::make()
@@ -860,14 +904,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_SUBUSER_CREATE_RATELIMIT', config('http.rate_limit.subuser_create'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.subuser_create')),
 
                             TextInput::make('APP_API_SUBUSER_CREATE_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_SUBUSER_CREATE_RATELIMIT_PERIOD', config('http.rate_limit.subuser_create_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.subuser_create_period')),
                             Text::make(trans('admin/setting.misc.api.subuser_create_helper')),
                         ]),
                     Fieldset::make()
@@ -878,14 +922,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_FILE_PULL_RATELIMIT', config('http.rate_limit.file_pull'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.file_pull')),
 
                             TextInput::make('APP_API_FILE_PULL_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_FILE_PULL_RATELIMIT_PERIOD', config('http.rate_limit.file_pull_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.file_pull_period')),
                             Text::make(trans('admin/setting.misc.api.file_pull_helper')),
                         ]),
                     Fieldset::make()
@@ -896,14 +940,14 @@ class Settings extends Page implements HasSchemas
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.requests'))->default(env('APP_API_DEFAULT_RATELIMIT', config('http.rate_limit.default'))),
+                                ->suffix(trans('admin/setting.misc.api.requests'))->default(config('http.rate_limit.default')),
 
                             TextInput::make('APP_API_DEFAULT_RATELIMIT_PERIOD')
                                 ->label(trans('admin/setting.misc.api.period_length'))
                                 ->required()
                                 ->numeric()
                                 ->minValue(1)
-                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(env('APP_API_DEFAULT_RATELIMIT_PERIOD', config('http.rate_limit.default_period'))),
+                                ->suffix(trans('admin/setting.misc.api.minutes'))->default(config('http.rate_limit.default_period')),
                             Text::make(trans('admin/setting.misc.api.default_helper')),
                         ]),
                 ]),
@@ -923,7 +967,7 @@ class Settings extends Page implements HasSchemas
                         ->columnSpan(1)
                         ->formatStateUsing(fn ($state): bool => (bool) $state)
                         ->afterStateUpdated(fn ($state, Set $set) => $set('PANEL_EDITABLE_SERVER_DESCRIPTIONS', (bool) $state))
-                        ->default(env('PANEL_EDITABLE_SERVER_DESCRIPTIONS', config('panel.editable_server_descriptions'))),
+                        ->default(config('panel.editable_server_descriptions')),
                     FileUpload::make('console_font')
                         ->hint(trans('admin/setting.misc.server.console_font_hint'))
                         ->label(trans('admin/setting.misc.server.console_font_upload'))
@@ -947,7 +991,7 @@ class Settings extends Page implements HasSchemas
                         ->minValue(1)
                         ->maxValue(365)
                         ->suffix(trans('admin/setting.misc.webhook.days'))
-                        ->default(env('APP_WEBHOOK_PRUNE_DAYS', config('panel.webhook.prune_days'))),
+                        ->default(config('panel.webhook.prune_days')),
                 ]),
         ];
     }
@@ -961,25 +1005,50 @@ class Settings extends Page implements HasSchemas
     {
         abort_unless(user()?->can('update settings'), 403);
 
+        if (!$this->environmentIsWritable()) {
+            Notification::make()
+                ->title(trans('admin/setting.save_failed'))
+                ->body(trans('admin/setting.env_read_only'))
+                ->danger()
+                ->send();
+
+            return;
+        }
+
         try {
-            $data = $this->form->getState();
-            unset($data['console_font']);
+            $state = ProcessEnv::except($this->form->getState());
+            unset($state['console_font']);
+            $data = $this->toEnvironmentValues($state);
 
-            $data = array_map(function ($value) {
-                // Convert bools to a string, so they are correctly written to the .env file
-                if (is_bool($value)) {
-                    return $value ? 'true' : 'false';
-                }
-
-                // Convert enum to its value
-                if ($value instanceof BackedEnum) {
-                    return $value->value;
-                }
-
-                return $value;
-            }, $data);
+            // Refilling gives the values the page loaded with, so only real changes are logged.
+            $this->form->fill();
+            $original = $this->form->getRawState();
 
             $this->writeToEnvironment($data);
+
+            $asText = fn ($value) => match (true) {
+                is_array($value) => implode(',', array_filter($value)),
+                is_bool($value) => $value ? 'true' : 'false',
+                $value instanceof BackedEnum => (string) $value->value,
+                default => (string) $value,
+            };
+
+            $changes = [];
+            foreach ($state as $key => $value) {
+                $old = $original[$key] ?? null;
+                // Toggles load as 1/0 and save as true/false, so only they compare as booleans.
+                if (is_bool($value) || is_bool($old)) {
+                    [$old, $value] = [filter_var($old, FILTER_VALIDATE_BOOL), filter_var($value, FILTER_VALIDATE_BOOL)];
+                }
+                [$old, $new] = [$asText($old), $asText($value)];
+                if ($old !== $new) {
+                    $changes[$key] = ['old' => AuditObserver::redact($key, $old), 'new' => AuditObserver::redact($key, $new)];
+                }
+            }
+
+            if ($changes !== []) {
+                Activity::event('audit:settings.update')->property(['changes' => $changes, 'count' => count($changes)])->log();
+            }
 
             Artisan::call('queue:restart');
 
@@ -996,6 +1065,21 @@ class Settings extends Page implements HasSchemas
                 ->danger()
                 ->send();
         }
+    }
+
+    /**
+     * Bools and enums as they are written to the .env file.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function toEnvironmentValues(array $values): array
+    {
+        return array_map(fn ($value) => match (true) {
+            is_bool($value) => $value ? 'true' : 'false',
+            $value instanceof BackedEnum => $value->value,
+            default => $value,
+        }, $values);
     }
 
     /** @return array<Action|ActionGroup> */

@@ -72,6 +72,9 @@ return [
     'topbar' => 'Topbar',
     'mixed' => 'Mixed',
     'button_style' => 'Button Style',
+    'theme' => 'Theme',
+    'default_theme' => 'Default Theme',
+    'no_theme' => 'No Theme',
     'icon' => 'Icon',
     'icon_button' => 'Icon Button',
     'redirect_to_admin' => 'Redirect to Admin on Login',
@@ -80,4 +83,8 @@ return [
     'no_api_keys' => 'No API Keys',
     'no_ssh_keys' => 'No SSH Keys',
     'activity_info' => 'Showing last 50 activity logs',
+    'delete_account' => 'Delete Account',
+    'delete_account_help' => 'This permanently deletes your account, API keys, SSH keys and server access. This cannot be undone.',
+    'delete_account_last_admin' => 'You are the only root admin, so make someone else a root admin before deleting your account.',
+    'delete_account_username' => 'Type your username to confirm',
 ];

@@ -30,6 +30,14 @@ class Startup extends ServerFormPage
 
     protected static ?int $navigationSort = 10;
 
+    public function mount(): void
+    {
+        // Once per page load, not every time the variables repeater builds its query.
+        $this->getRecord()->ensureVariablesExist();
+
+        parent::mount();
+    }
+
     /**
      * @throws Exception
      */
@@ -57,6 +65,7 @@ class Startup extends ServerFormPage
                     ->formatStateUsing(fn (Server $server) => $server->startup)
                     ->afterStateUpdated(function ($state, Server $server, Set $set) {
                         abort_unless(user()?->can(SubuserPermission::StartupUpdate, $server), 403);
+                        abort_unless(in_array($state, $server->egg->startup_commands, true), 422);
                         $original = $server->startup;
                         $server->forceFill(['startup' => $state])->saveOrFail();
 
@@ -91,6 +100,7 @@ class Startup extends ServerFormPage
                     ->disabled(fn (Server $server) => !user()?->can(SubuserPermission::StartupDockerImage, $server))
                     ->afterStateUpdated(function ($state, Server $server) {
                         abort_unless(user()?->can(SubuserPermission::StartupDockerImage, $server), 403);
+                        abort_unless(in_array($state, $server->egg->docker_images, true), 422);
                         $original = $server->image;
                         $server->forceFill(['image' => $state])->saveOrFail();
 
@@ -121,11 +131,7 @@ class Startup extends ServerFormPage
                     ->schema([
                         Repeater::make('server_variables')
                             ->hiddenLabel()
-                            ->relationship('serverVariables', function (Builder $query, Server $server) {
-                                $server->ensureVariablesExist();
-
-                                return $query->where('egg_variables.user_viewable', true)->orderByPowerJoins('variable.sort');
-                            })
+                            ->relationship('serverVariables', fn (Builder $query) => $query->with('variable')->where('egg_variables.user_viewable', true)->orderByPowerJoins('variable.sort'))
                             ->grid()
                             ->disabled(fn (Server $server) => !user()?->can(SubuserPermission::StartupUpdate, $server))
                             ->reorderable(false)->addable(false)->deletable(false)

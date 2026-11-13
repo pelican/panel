@@ -17,14 +17,19 @@ return [
     'no_mounts' => 'Žádná připojení',
     'eggs' => 'Vejce',
     'nodes' => 'Uzly',
+    'user_mountable' => 'Může připojit uživatel?',
+    'user_mountable_help' => 'Mají mít uživatelé možnost toto připojení u svých serverů zapínat a vypínat?',
     'toggles' => [
         'writable' => 'Lze zapisovat',
         'read_only' => 'Pouze pro čtení',
+        'user_mountable' => 'Může připojit uživatel',
+        'not_user_mountable' => 'Pouze pro administrátory',
     ],
     'table' => [
         'name' => 'Název',
         'all_eggs' => 'Všechna vejce.',
         'all_nodes' => 'Všechny uzly',
         'read_only' => 'Pouze pro čtení',
+        'user_mountable' => 'Může připojit uživatel',
     ],
 ];

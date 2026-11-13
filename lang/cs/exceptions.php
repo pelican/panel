@@ -5,6 +5,7 @@ return [
     'node' => [
         'servers_attached' => 'Uzel nesmí mít žádné servery spojené s ním, aby mohl být odstraněn.',
         'error_connecting' => 'Chyba při připojování k :node',
+        'not_viable' => 'Uzel :node nemá dostatek volných prostředků pro tento server.',
         'daemon_off_config_updated' => 'Konfigurace daemonu <strong>byla aktualizována</strong>, ale byla zde chyba při automatické aktualizaci souborů konfigurace Daemonu. Je třeba soubory konfigurace Daemonu aktualizovat manuálně (config.yml), aby změny daemonu byly aplikovány.',
     ],
     'allocations' => [
@@ -60,5 +61,11 @@ return [
     ],
     'server' => [
         'marked_as_failed' => 'Tento server ještě nedokončil instalační proces, zkuste to prosím později.',
+        'file_too_large' => 'Soubor, který se pokoušíte otevřít, je příliš velký na zobrazení v editoru souborů.',
+        'state_conflict' => 'Tento server je nyní v nepodporovaném stavu, zkuste to prosím později.',
+        'suspended' => 'Tento server je pozastavený a požadovaná funkce není dostupná.',
+        'maintenance' => 'Uzel tohoto serveru je v režimu údržby a požadovaná funkce není dostupná.',
+        'restoring_backup' => 'Tento server se právě obnovuje ze zálohy, zkuste to prosím později.',
+        'transferring' => 'Tento server se právě přesouvá na jiný stroj, zkuste to prosím později.',
     ],
 ];

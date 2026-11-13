@@ -40,6 +40,7 @@
                             "cpu_overallocate": 0,
                             "daemon_sftp_alias": null,
                             "daemon_connect": 8080,
+                            "daemon_config": null,
                             "allocated_resources": {
                                 "memory": 512,
                                 "disk": 512,
@@ -134,6 +135,7 @@
                             "cpu_overallocate": 0,
                             "daemon_sftp_alias": null,
                             "daemon_connect": 8080,
+                            "daemon_config": null,
                             "allocated_resources": {
                                 "memory": 512,
                                 "disk": 512,
@@ -228,6 +230,7 @@
                             "cpu_overallocate": 0,
                             "daemon_sftp_alias": null,
                             "daemon_connect": 8080,
+                            "daemon_config": null,
                             "allocated_resources": {
                                 "memory": 512,
                                 "disk": 512,

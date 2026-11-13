@@ -4,6 +4,8 @@ return [
     'title' => 'Settings',
     'save_success' => 'Settings saved',
     'save_failed' => 'Failed to save Settings',
+    'env_locked' => 'Set by :key in the server environment',
+    'env_read_only' => 'The .env file is not writable, so these settings are managed outside the panel.',
     'navigation' => [
         'general' => 'General',
         'captcha' => 'Captcha',
@@ -21,6 +23,10 @@ return [
         'debug_mode' => 'Debug Mode',
         'navigation' => 'Navigation',
         'default_navigation' => 'Default Navigation Type',
+        'default_theme' => 'Default Theme',
+        'default_theme_help' => 'The theme users who have not picked one themselves see.',
+        'force_theme' => 'Force Default Theme',
+        'force_theme_help' => 'Apply the default theme to everyone and hide the theme picker.',
         'sidebar' => 'Sidebar',
         'topbar' => 'Topbar',
         'mixed' => 'Mixed',
@@ -87,6 +93,8 @@ return [
             'bucket' => 'Bucket',
             'endpoint' => 'Endpoint',
             'use_path_style_endpoint' => 'Use Path Style Endpoint',
+            'use_presigned_requests' => 'Use Presigned Requests',
+            'use_presigned_requests_help' => 'Sign every request with query string auth. Needed by some providers like Hetzner.',
         ],
     ],
     'oauth' => [

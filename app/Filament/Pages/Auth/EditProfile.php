@@ -11,6 +11,7 @@ use App\Models\ApiKey;
 use App\Models\User;
 use App\Models\UserSSHKey;
 use App\Services\Helpers\LanguageService;
+use App\Services\Helpers\ThemeService;
 use App\Services\Ssh\KeyCreationService;
 use App\Services\Users\UserUpdateService;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -67,10 +68,15 @@ class EditProfile extends BaseEditProfile
 
     protected Request $request;
 
-    public function boot(OAuthService $oauthService, Request $request): void
+    protected ThemeService $themeService;
+
+    protected bool $themeChanged = false;
+
+    public function boot(OAuthService $oauthService, Request $request, ThemeService $themeService): void
     {
         $this->oauthService = $oauthService;
         $this->request = $request;
+        $this->themeService = $themeService;
     }
 
     public function getMaxWidth(): Width|string
@@ -461,7 +467,9 @@ class EditProfile extends BaseEditProfile
                         ->deletable(false)
                         ->addable(false)
                         ->relationship(null, function (Builder $query) {
-                            $query->orderByDesc('timestamp')->limit(50);
+                            /** @var Builder<ActivityLog> $query */
+                            $query->with('actor')->visibleEvents()->orderByDesc('timestamp')->limit(50);
+
                         })
                         ->schema([
                             TextEntry::make('log')
@@ -501,6 +509,11 @@ class EditProfile extends BaseEditProfile
                                     true => trans('profile.icon'),
                                     false => trans('profile.icon_button'),
                                 ]),
+                            Select::make('theme')
+                                ->label(trans('profile.theme'))
+                                ->options(fn (ThemeService $themeService) => $themeService->getUserThemeOptions())
+                                ->selectablePlaceholder(false)
+                                ->visible(fn (ThemeService $themeService) => $themeService->canChooseTheme()),
                         ]),
                     Section::make(trans('profile.admin'))
                         ->collapsible()
@@ -618,6 +631,46 @@ class EditProfile extends BaseEditProfile
                 ->tooltip(trans('filament-panels::auth/pages/edit-profile.actions.cancel.label'))
                 ->hiddenLabel()
                 ->icon(TablerIcon::ArrowLeft),
+            Action::make('delete_account')
+                ->hiddenLabel()
+                ->icon(TablerIcon::Trash)
+                ->color('danger')
+                ->hidden(fn () => $this->getUser()->is_managed_externally)
+                ->disabled(fn () => $this->accountDeletionBlockedReason() !== null)
+                ->tooltip(fn () => $this->accountDeletionBlockedReason() ?? trans('profile.delete_account'))
+                ->requiresConfirmation()
+                ->modalHeading(trans('profile.delete_account'))
+                ->modalDescription(trans('profile.delete_account_help'))
+                ->schema(fn () => [
+                    $this->getUser()->password === null
+                        ? TextInput::make('username')
+                            ->label(trans('profile.delete_account_username'))
+                            ->required()
+                            ->in([$this->getUser()->username])
+                        : TextInput::make('current_password')
+                            ->label(trans('profile.current_password'))
+                            ->password()
+                            ->required()
+                            ->currentPassword(),
+                ])
+                ->action(function () {
+                    $user = $this->getUser();
+
+                    if ($reason = $this->accountDeletionBlockedReason()) {
+                        Notification::make()->title($reason)->danger()->send();
+
+                        return;
+                    }
+
+                    // Log out first so User::deleting doesn't treat this as an admin deleting themselves.
+                    Filament::auth()->logout();
+                    $user->delete();
+
+                    session()->invalidate();
+                    session()->regenerateToken();
+
+                    $this->redirect(Filament::getLoginUrl());
+                }),
             Action::make('save')
                 ->hiddenLabel()
                 ->action('save')
@@ -628,6 +681,17 @@ class EditProfile extends BaseEditProfile
 
     }
 
+    private function accountDeletionBlockedReason(): ?string
+    {
+        $user = $this->getUser();
+
+        return match (true) {
+            $user->servers()->exists() => trans('exceptions.users.has_servers'),
+            $user->isLastRootAdmin() => trans('profile.delete_account_last_admin'),
+            default => null,
+        };
+    }
+
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $customization = [
@@ -636,6 +700,7 @@ class EditProfile extends BaseEditProfile
             'console_rows' => $data['console_rows'],
             'console_graph_period' => $data['console_graph_period'],
             'dashboard_layout' => $data['dashboard_layout'],
+            'theme' => $theme = $data['theme'] ?? $this->getUser()->getCustomization(CustomizationKey::Theme),
             'top_navigation' => $data['top_navigation'],
             'button_style' => $data['button_style'],
             'redirect_to_admin' => $data['redirect_to_admin'] ?? $this->getUser()->getCustomization(CustomizationKey::RedirectToAdmin),
@@ -646,6 +711,7 @@ class EditProfile extends BaseEditProfile
             $data['console_font_size'],
             $data['console_rows'],
             $data['dashboard_layout'],
+            $data['theme'],
             $data['top_navigation'],
             $data['button_style'],
             $data['redirect_to_admin'],
@@ -653,7 +719,16 @@ class EditProfile extends BaseEditProfile
 
         $data['customization'] = json_encode($customization);
 
+        $this->themeChanged = $theme !== $this->getUser()->getCustomization(CustomizationKey::Theme);
+
         return $data;
+    }
+
+    protected function afterSave(): void
+    {
+        if ($this->themeChanged) {
+            $this->js('window.location.reload()');
+        }
     }
 
     protected function mutateFormDataBeforeFill(array $data): array
@@ -663,6 +738,7 @@ class EditProfile extends BaseEditProfile
         $data['console_rows'] = (int) $this->getUser()->getCustomization(CustomizationKey::ConsoleRows);
         $data['console_graph_period'] = (int) $this->getUser()->getCustomization(CustomizationKey::ConsoleGraphPeriod);
         $data['dashboard_layout'] = $this->getUser()->getCustomization(CustomizationKey::DashboardLayout);
+        $data['theme'] = $this->themeService->getSelectedOption();
         $data['button_style'] = $this->getUser()->getCustomization(CustomizationKey::ButtonStyle);
         $data['redirect_to_admin'] = $this->getUser()->getCustomization(CustomizationKey::RedirectToAdmin);
 

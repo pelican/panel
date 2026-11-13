@@ -17,7 +17,12 @@ return [
         'intro-update-available' => [
             'heading' => 'Une mise à jour est disponible',
             'content' => ':latestVersion est maintenant disponible ! Lisez notre documentation pour mettre à jour votre Panneau.',
+            'content_container' => ':latestVersion est maintenant disponible ! Télécharger la nouvelle image et recréé le conteneur pour mettre à jour votre panneau.',
             'button_changelog' => 'Quoi de neuf ?',
+        ],
+        'intro-version-unavailable' => [
+            'heading' => 'Vérification de la version indisponible',
+            'content' => 'Vous utilisez actuellement :version. La dernière version n\'a pas pu être récupérée depuis GitHub, donc il est impossible de savoir si une mise à jour est disponible.',
         ],
         'intro-no-update' => [
             'heading' => 'Votre panneau est à jour',

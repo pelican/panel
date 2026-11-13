@@ -56,8 +56,8 @@ All contributors must sign our [Contributor License Agreement](./contributor_lic
 
 ### Translations
 
-If you add any new translation strings make sure to only add them to english.  
-Other languages are translated via [Crowdin](https://crowdin.com/project/pelican-dev).
+Only add new strings to the English source in `lang/en`. Other languages are translated on [Crowdin](https://crowdin.com/project/pelican-dev) and synced back automatically, so don't open translation PRs by hand.
+See [Translating Pelican](https://pelican.dev/docs/guides/translating) to help translate or request a new language.
 
 ### API changes
 

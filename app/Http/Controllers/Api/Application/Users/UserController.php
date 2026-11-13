@@ -11,6 +11,7 @@ use App\Http\Requests\Api\Application\Users\GetUsersRequest;
 use App\Http\Requests\Api\Application\Users\StoreUserRequest;
 use App\Http\Requests\Api\Application\Users\UpdateUserRequest;
 use App\Models\Role;
+use App\Models\Server;
 use App\Models\User;
 use App\Services\Users\UserCreationService;
 use App\Services\Users\UserUpdateService;
@@ -18,6 +19,7 @@ use Dedoc\Scramble\Attributes\Group;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Spatie\QueryBuilder\QueryBuilder;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 #[Group('User', weight: 0)]
 class UserController extends ApplicationApiController
@@ -43,10 +45,17 @@ class UserController extends ApplicationApiController
      */
     public function index(GetUsersRequest $request): array
     {
-        $users = QueryBuilder::for(User::class)
+        $includes = $this->readableIncludes(['servers' => Server::RESOURCE_NAME, 'roles' => Role::RESOURCE_NAME]);
+
+        // UserData reads the roles to report root_admin.
+        $users = QueryBuilder::for(User::query()->with(['roles', ...$includes]))
             ->allowedFilters('email', 'uuid', 'username', 'external_id')
             ->allowedSorts('id', 'uuid')
             ->paginate($request->query('per_page') ?? 50);
+
+        if (in_array('servers', $includes)) {
+            Server::loadVariables($users->getCollection()->pluck('servers')->collapse());
+        }
 
         return $this->response->collection($users)
             ->transformWith(UserData::class)
@@ -102,15 +111,13 @@ class UserController extends ApplicationApiController
      */
     public function assignRoles(AssignUserRolesRequest $request, User $user): array
     {
-        if (!$user->isRootAdmin()) {
-            $rootAdminId = Role::getRootAdmin()->id;
-            foreach ($request->input('roles') as $role) {
-                if ($role === $rootAdminId) {
-                    continue;
-                }
+        throw_if(
+            collect($request->input('roles'))->map(fn ($role) => (int) $role)->contains(Role::getRootAdmin()->id),
+            new AccessDeniedHttpException('The root admin role cannot be assigned via the application API.')
+        );
 
-                $user->assignRole($role);
-            }
+        foreach ($request->input('roles') as $role) {
+            $user->assignRole($role);
         }
 
         $response = $this->response->item($user)
@@ -128,15 +135,8 @@ class UserController extends ApplicationApiController
      */
     public function removeRoles(AssignUserRolesRequest $request, User $user): array
     {
-        if (!$user->isRootAdmin()) {
-            $rootAdminId = Role::getRootAdmin()->id;
-            foreach ($request->input('roles') as $role) {
-                if ($role === $rootAdminId) {
-                    continue;
-                }
-
-                $user->removeRole($role);
-            }
+        foreach ($request->input('roles') as $role) {
+            $user->removeRole($role);
         }
 
         $response = $this->response->item($user)
@@ -175,12 +175,8 @@ class UserController extends ApplicationApiController
      */
     public function delete(DeleteUserRequest $request, User $user): JsonResponse
     {
-        if (!$user->isRootAdmin()) {
-            $user->delete();
+        $user->delete();
 
-            return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
-        }
-
-        return new JsonResponse([], JsonResponse::HTTP_FORBIDDEN);
+        return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
     }
 }

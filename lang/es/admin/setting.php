@@ -106,7 +106,7 @@ return [
     'misc' => [
         'auto_allocation' => [
             'title' => 'Creación automática de asignaciones',
-            'helper' => 'Controla si los usuarios pueden crear asignaciones a través del área del cliente.',
+            'helper' => 'Activa o desactiva que los usuarios puedan asignar puertos desde el área del cliente. Se requiere una asignación principal',
             'question' => '¿Permitir a los usuarios crear asignaciones?',
             'create_new' => '¿Crear nuevas asignaciones si no hay ninguna disponible?',
             'create_new_help' => 'Cuando está activado, crea nuevas asignaciones; cuando está desactivado, solo asigna a partir de asignaciones existentes sin usar, y ambas opciones tienen en cuenta el rango de puertos indicado a continuación.',

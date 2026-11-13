@@ -13,46 +13,6 @@ use Filament\Forms\Components\TextInput;
 
 use function Pest\Livewire\livewire;
 
-/**
- * Mimics a plugin type (like Discord) that collapses its form fields into the
- * payload column on save and expands them back out when filling the form.
- */
-class PayloadCollapsingSchema extends BaseSchema
-{
-    public function getId(): string
-    {
-        return 'collapsing';
-    }
-
-    public function getFormComponents(WebhookScope $scope): array
-    {
-        return [
-            TextInput::make('username'),
-            TextInput::make('content'),
-        ];
-    }
-
-    public function mutateFormDataBeforeSave(array $data): array
-    {
-        $data['payload'] = array_filter([
-            'username' => $data['username'] ?? null,
-            'content' => $data['content'] ?? null,
-        ]);
-
-        unset($data['username'], $data['content']);
-
-        return $data;
-    }
-
-    public function mutateFormDataBeforeFill(array $data): array
-    {
-        $data['username'] = $data['payload']['username'] ?? null;
-        $data['content'] = $data['payload']['content'] ?? null;
-
-        return $data;
-    }
-}
-
 function createCollapsingWebhook(int $serverId): WebhookConfiguration
 {
     return WebhookConfiguration::factory()->create([
@@ -72,7 +32,45 @@ beforeEach(function () {
     $this->actingAs($this->user);
     Filament::setTenant($this->server);
 
-    app(WebhookTypeService::class)->register(new PayloadCollapsingSchema());
+    /**
+     * Mimics a plugin type (like Discord) that collapses its form fields into the
+     * payload column on save and expands them back out when filling the form.
+     */
+    app(WebhookTypeService::class)->register(new class extends BaseSchema
+    {
+        public function getId(): string
+        {
+            return 'collapsing';
+        }
+
+        public function getFormComponents(WebhookScope $scope): array
+        {
+            return [
+                TextInput::make('username'),
+                TextInput::make('content'),
+            ];
+        }
+
+        public function mutateFormDataBeforeSave(array $data): array
+        {
+            $data['payload'] = array_filter([
+                'username' => $data['username'] ?? null,
+                'content' => $data['content'] ?? null,
+            ]);
+
+            unset($data['username'], $data['content']);
+
+            return $data;
+        }
+
+        public function mutateFormDataBeforeFill(array $data): array
+        {
+            $data['username'] = $data['payload']['username'] ?? null;
+            $data['content'] = $data['payload']['content'] ?? null;
+
+            return $data;
+        }
+    });
 });
 
 afterEach(fn () => Filament::setCurrentPanel(null));

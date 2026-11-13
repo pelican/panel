@@ -32,6 +32,7 @@ return [
             'cancelled' => 'Cancelled',
             'cancel' => 'Cancel',
             'retry' => 'Retry',
+            'retry_failed' => 'Retry failed (:count)',
             'minimize' => 'Minimize',
             'restore' => 'Restore',
             'close' => 'Close',

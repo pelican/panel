@@ -25,7 +25,7 @@ return [
         'environment' => [
             'label' => 'Environnement',
             'ok' => 'Ok, réglé sur :actual',
-            'failed' => 'L\'environnement est défini à :actual , attendu :expected',
+            'failed' => 'L\'environnement est défini à :actual, attendu :expected',
         ],
         'nodeversions' => [
             'label' => 'Version du nœud',
@@ -42,6 +42,8 @@ return [
             'failed' => 'La version installée est :currentVersion mais la dernière est :latestVersion',
             'up_to_date' => 'À jour',
             'outdated' => 'Obsolète',
+            'unknown' => 'Inconnu',
+            'unavailable' => 'La dernière version n\'a pas pu être récupérée depuis GitHub',
         ],
         'schedule' => [
             'label' => 'Planifier',
@@ -51,6 +53,9 @@ return [
         ],
         'useddiskspace' => [
             'label' => 'Espace disque',
+        ],
+        'queue' => [
+            'label' => 'File d\'attente',
         ],
     ],
     'checks' => [

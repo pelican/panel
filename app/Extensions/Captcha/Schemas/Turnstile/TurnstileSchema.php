@@ -21,7 +21,7 @@ class TurnstileSchema extends BaseSchema implements CaptchaSchemaInterface
 
     public function isEnabled(): bool
     {
-        return (bool) env('CAPTCHA_TURNSTILE_ENABLED', false);
+        return (bool) config('extensions.CAPTCHA_TURNSTILE_ENABLED', false);
     }
 
     public function getFormComponent(): Component
@@ -35,7 +35,7 @@ class TurnstileSchema extends BaseSchema implements CaptchaSchemaInterface
     public function getConfig(): array
     {
         return array_merge(parent::getConfig(), [
-            'verify_domain' => env('CAPTCHA_TURNSTILE_VERIFY_DOMAIN'),
+            'verify_domain' => config('extensions.CAPTCHA_TURNSTILE_VERIFY_DOMAIN'),
         ]);
     }
 
@@ -55,7 +55,7 @@ class TurnstileSchema extends BaseSchema implements CaptchaSchemaInterface
                 ->offIcon(TablerIcon::X)
                 ->onColor('success')
                 ->offColor('danger')
-                ->default(env('CAPTCHA_TURNSTILE_VERIFY_DOMAIN', true)),
+                ->default(config('extensions.CAPTCHA_TURNSTILE_VERIFY_DOMAIN', true)),
             TextEntry::make('info')
                 ->label(trans('admin/setting.captcha.info_label'))
                 ->columnSpan(2)
@@ -75,7 +75,7 @@ class TurnstileSchema extends BaseSchema implements CaptchaSchemaInterface
     {
         $captchaResponse ??= request()->get('cf-turnstile-response');
 
-        throw_unless($secret = env('CAPTCHA_TURNSTILE_SECRET_KEY'), new Exception('Turnstile secret key is not defined.'));
+        throw_unless($secret = config('extensions.CAPTCHA_TURNSTILE_SECRET_KEY'), new Exception('Turnstile secret key is not defined.'));
 
         $response = Http::asJson()
             ->timeout(15)
@@ -104,7 +104,7 @@ class TurnstileSchema extends BaseSchema implements CaptchaSchemaInterface
 
     private function verifyDomain(string $hostname): bool
     {
-        if (!env('CAPTCHA_TURNSTILE_VERIFY_DOMAIN', true)) {
+        if (!config('extensions.CAPTCHA_TURNSTILE_VERIFY_DOMAIN', true)) {
             return true;
         }
 
