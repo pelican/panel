@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\Servers\Pages;
 
+use App\Enums\AllocationProtocol;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\ServerResource;
 use App\Filament\Components\Forms\Fields\StartupVariable;
@@ -888,7 +889,7 @@ class CreateServer extends CreateRecord
      * @param  string[]  $portEntries
      * @return array<int>
      */
-    public static function retrieveValidPorts(Node $node, array $portEntries, string $ip): array
+    public static function retrieveValidPorts(Node $node, array $portEntries, string $ip, AllocationProtocol|string|null $protocol = null): array
     {
         $portRangeLimit = AssignmentService::PORT_RANGE_LIMIT;
         $portFloor = AssignmentService::PORT_FLOOR;
@@ -896,9 +897,15 @@ class CreateServer extends CreateRecord
 
         $ports = collect();
 
+        $requested = $protocol instanceof AllocationProtocol ? $protocol : (AllocationProtocol::tryFrom($protocol ?? 'both') ?? AllocationProtocol::Both);
+
         $existingPorts = $node
             ->allocations()
             ->where('ip', $ip)
+            ->where(fn ($query) => $query
+                ->whereNotNull('server_id')
+                ->orWhere('protocol', AllocationProtocol::Both->value)
+                ->orWhere('protocol', $requested->value))
             ->pluck('port')
             ->all();
 

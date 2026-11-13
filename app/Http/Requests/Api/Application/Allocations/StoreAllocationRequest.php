@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests\Api\Application\Allocations;
 
+use App\Enums\AllocationProtocol;
 use App\Http\Requests\Api\Application\ApplicationApiRequest;
 use App\Models\Allocation;
 use App\Services\Acl\Api\AdminAcl;
+use Illuminate\Validation\Rule;
 
 class StoreAllocationRequest extends ApplicationApiRequest
 {
@@ -12,7 +14,7 @@ class StoreAllocationRequest extends ApplicationApiRequest
 
     protected int $permission = AdminAcl::WRITE;
 
-    /** @return array<string, string|string[]> */
+    /** @return array<string, mixed> */
     public function rules(): array
     {
         return [
@@ -24,6 +26,7 @@ class StoreAllocationRequest extends ApplicationApiRequest
             'ports' => 'required|array',
             /** A single port or an inclusive range such as `25565-25570`. */
             'ports.*' => 'string',
+            'protocol' => ['sometimes', Rule::enum(AllocationProtocol::class)],
         ];
     }
 
@@ -38,6 +41,7 @@ class StoreAllocationRequest extends ApplicationApiRequest
             'allocation_ip' => $data['ip'],
             'allocation_ports' => $data['ports'],
             'allocation_alias' => $data['alias'] ?? null,
+            'protocol' => $data['protocol'] ?? null,
         ];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\Servers\RelationManagers;
 
+use App\Enums\AllocationProtocol;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Models\Allocation;
@@ -17,10 +18,12 @@ use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\TextInputColumn;
 use Filament\Tables\Columns\ToggleColumn;
@@ -57,6 +60,11 @@ class AllocationsRelationManager extends RelationManager
                     ->sortable(),
                 ToggleColumn::make('show_port')
                     ->label(trans('admin/server.show_port')),
+                SelectColumn::make('protocol')
+                    ->label(trans('admin/server.protocol'))
+                    ->options(AllocationProtocol::class)
+                    ->selectablePlaceholder(false)
+                    ->disabled(fn (Allocation $allocation) => $this->isReadOnly() || !user()?->can('update', $allocation)),
                 TextInputColumn::make('ip_alias')
                     ->label(trans('admin/server.alias'))
                     ->placeholder(trans('admin/server.no_alias'))
@@ -171,19 +179,43 @@ class AllocationsRelationManager extends RelationManager
                             ->inlineLabel()
                             ->default(null)
                             ->helperText(trans('admin/server.alias_helper')),
+                        Select::make('protocol')
+                            ->label(trans('admin/server.protocol'))
+                            ->inlineLabel()
+                            ->options(AllocationProtocol::class)
+                            ->default(AllocationProtocol::Both->value)
+                            ->selectablePlaceholder(false)
+                            ->helperText(trans('admin/server.protocol_helper'))
+                            ->live()
+                            ->afterStateUpdated(function ($state, Set $set, Get $get) {
+                                if (empty($get('allocation_ip')) || empty($get('allocation_ports'))) {
+                                    return;
+                                }
+
+                                $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord()->node, $get('allocation_ports'), $get('allocation_ip'), $state));
+                            })
+                            ->required(),
                         TagsInput::make('allocation_ports')
                             ->placeholder('27015, 27017-27019')
                             ->label(trans('admin/server.ports'))
                             ->inlineLabel()
                             ->live()
                             ->disabled(fn (Get $get) => empty($get('allocation_ip')))
-                            ->afterStateUpdated(fn ($state, Set $set, Get $get) => $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord()->node, $state, $get('allocation_ip'))))
+                            ->afterStateUpdated(fn ($state, Set $set, Get $get) => $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord()->node, $state, $get('allocation_ip'), $get('protocol'))))
                             ->splitKeys(['Tab', ' ', ','])
                             ->required(),
                         Hidden::make('is_locked')
                             ->default(true),
                     ])
-                    ->action(fn (array $data, AssignmentService $service) => $service->handle($this->getOwnerRecord()->node, $data, $this->getOwnerRecord())),
+                    ->action(function (array $data, AssignmentService $service) {
+                        $result = $service->assign($this->getOwnerRecord()->node, $data, $this->getOwnerRecord());
+
+                        Notification::make()
+                            ->title(trans_choice('admin/server.allocations_created', count($result['created'])))
+                            ->body(count($result['merged']) > 0 ? trans_choice('admin/server.allocations_merged', count($result['merged'])) : null)
+                            ->success()
+                            ->send();
+                    }),
                 AssociateAction::make()
                     ->hidden(fn () => $this->isReadOnly())
                     ->multiple()
