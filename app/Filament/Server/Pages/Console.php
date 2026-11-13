@@ -10,6 +10,7 @@ use App\Exceptions\Http\Server\ServerStateConflictException;
 use App\Extensions\Features\FeatureService;
 use App\Filament\Server\Widgets\ServerConsole;
 use App\Filament\Server\Widgets\ServerCpuChart;
+use App\Filament\Server\Widgets\ServerDiskIoChart;
 use App\Filament\Server\Widgets\ServerMemoryChart;
 use App\Filament\Server\Widgets\ServerNetworkChart;
 use App\Filament\Server\Widgets\ServerOverview;
@@ -140,6 +141,7 @@ class Console extends Page
             ServerCpuChart::class,
             ServerMemoryChart::class,
             ServerNetworkChart::class,
+            ServerDiskIoChart::class,
         ]);
 
         $allWidgets = array_merge($allWidgets, static::$customWidgets[ConsoleWidgetPosition::Bottom->value] ?? []);
@@ -157,7 +159,7 @@ class Console extends Page
 
     public function getColumns(): int
     {
-        return 3;
+        return 2;
     }
 
     #[On('console-status')]

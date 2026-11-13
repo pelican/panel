@@ -33,6 +33,10 @@ class ResourceUtilizationFixtureTest extends FixtureTestCase
                     'rx_bytes' => 1024,
                     'tx_bytes' => 2048,
                 ],
+                'disk_io' => [
+                    'read_bytes' => 4096,
+                    'write_bytes' => 8192,
+                ],
                 'uptime' => 60000,
             ],
         ]);

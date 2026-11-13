@@ -226,12 +226,16 @@
             Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerCpuChart::class)), 'updateChartData', { data: window.ServerStats.cpuData() });
             Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerMemoryChart::class)), 'updateChartData', { data: window.ServerStats.memoryData() });
             Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerNetworkChart::class)), 'updateChartData', { data: window.ServerStats.networkData() });
+            Livewire.dispatchTo(@js($componentName(\App\Filament\Server\Widgets\ServerDiskIoChart::class)), 'updateChartData', { data: window.ServerStats.diskIoData() });
 
             const latest = window.ServerStats.latest();
             const state = window.ServerStats.state();
 
             if (latest) {
                 setStatText('server-network-heading', `- ↓${window.ServerStats.bytesToReadable(latest.rx)} - ↑${window.ServerStats.bytesToReadable(latest.tx)}`);
+                setStatText('server-disk-io-heading', latest.read == null
+                    ? `- ${window.ServerStats.unknownLabel()}`
+                    : `- R ${window.ServerStats.bytesToReadable(latest.read)} - W ${window.ServerStats.bytesToReadable(latest.write)}`);
                 setStatText('server-stat-disk', latest.disk === 0 ? window.ServerStats.unknownLabel() : window.ServerStats.bytesToReadable(latest.disk));
             }
 
@@ -269,6 +273,7 @@
             \App\Filament\Server\Widgets\ServerCpuChart::class,
             \App\Filament\Server\Widgets\ServerMemoryChart::class,
             \App\Filament\Server\Widgets\ServerNetworkChart::class,
+            \App\Filament\Server\Widgets\ServerDiskIoChart::class,
         ])->map($componentName)->values());
 
         const stopReplayingOnWidgetLoad = Livewire.hook('commit', ({ component, succeed }) => {

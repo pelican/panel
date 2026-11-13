@@ -35,6 +35,8 @@ final class StatsData extends ApiResource
                 'disk_bytes' => Arr::get($model, 'utilization.disk_bytes', 0),
                 'network_rx_bytes' => Arr::get($model, 'utilization.network.rx_bytes', 0),
                 'network_tx_bytes' => Arr::get($model, 'utilization.network.tx_bytes', 0),
+                'disk_io_read_bytes' => Arr::get($model, 'utilization.disk_io.read_bytes', 0),
+                'disk_io_write_bytes' => Arr::get($model, 'utilization.disk_io.write_bytes', 0),
                 'uptime' => Arr::get($model, 'utilization.uptime', 0),
             ],
         );
