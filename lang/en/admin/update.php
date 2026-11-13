@@ -52,6 +52,7 @@ return [
         'no_target' => 'The latest version could not be determined.',
         'not_newer' => ':target is not newer than the installed :current.',
         'running' => 'An update is already running.',
+        'unresolved' => 'The last update could not be rolled back. Recover the panel using the log and the backups in :path, then delete :status to update again.',
         'proc_open' => 'The proc_open function is disabled, so the updater can\'t run commands.',
         'binary' => 'The :binary command could not be found.',
         'not_writable' => ':path is not writable by the web server user.',

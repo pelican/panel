@@ -103,6 +103,11 @@ class PanelUpdateService
             $errors[] = trans('admin/update.preflight.running');
         }
 
+        // A failed rollback leaves files in staging that may be the only copy left, a new update would delete them.
+        if (($this->status()['state'] ?? null) === self::STATE_ROLLBACK_FAILED) {
+            $errors[] = trans('admin/update.preflight.unresolved', ['path' => $this->statePath(), 'status' => $this->statePath('status.json')]);
+        }
+
         if (!function_exists('proc_open')) {
             $errors[] = trans('admin/update.preflight.proc_open');
         } else {
@@ -171,11 +176,7 @@ class PanelUpdateService
         throw_unless($user->isRootAdmin(), new AuthorizationException(trans('admin/update.notifications.unauthorized')));
 
         // Two admins confirming at once must not both pass preflight, the second one has to see the first as queued.
-        File::ensureDirectoryExists($this->statePath());
-        $launchLock = fopen($this->statePath('launch.lock'), 'c');
-        throw_if($launchLock === false || !flock($launchLock, LOCK_EX | LOCK_NB), new Exception(trans('admin/update.preflight.running')));
-
-        try {
+        return $this->whileLaunching(function () use ($target, $forcePlugins, $skipDatabaseBackup, $user) {
             $preflight = $this->preflight($target);
             throw_if(count($preflight['errors']) > 0, new Exception($preflight['errors'][0] ?? ''));
             throw_if(count($preflight['plugins']) > 0 && !$forcePlugins, new Exception(trans('admin/update.preflight.plugins', ['plugins' => implode(', ', $preflight['plugins'])])));
@@ -186,9 +187,60 @@ class PanelUpdateService
             $this->start();
 
             return $secret;
+        });
+    }
+
+    /**
+     * Runs $callback holding the launch lock, which every launch from the dashboard or the CLI takes from its final
+     * busy check until the update is queued, so one launch can't overwrite the request or status of another.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T
+     *
+     * @throws Exception
+     */
+    public function whileLaunching(Closure $callback): mixed
+    {
+        File::ensureDirectoryExists($this->statePath());
+        $lock = $this->openLock('launch.lock');
+        throw_if($lock === false || !flock($lock, LOCK_EX | LOCK_NB), new Exception(trans('admin/update.preflight.running')));
+
+        try {
+            return $callback();
         } finally {
-            flock($launchLock, LOCK_UN);
-            fclose($launchLock);
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /**
+     * When run as root, gives the updater's state and log to the owner of storage/, so the web server can still open
+     * the locks and write the status afterwards. update.sh does the same for everything it touches.
+     */
+    public function shareStateWithWebUser(): void
+    {
+        if (!function_exists('posix_geteuid') || posix_geteuid() !== 0) {
+            return;
+        }
+
+        $owner = @stat(storage_path());
+        if ($owner === false || $owner['uid'] === 0) {
+            return;
+        }
+
+        File::ensureDirectoryExists($this->statePath());
+        $log = storage_path('logs/panel-update.log');
+        foreach ([$this->statePath('update.lock'), $this->statePath('launch.lock'), $log] as $file) {
+            if (!file_exists($file)) {
+                @touch($file);
+            }
+        }
+
+        foreach ([$this->statePath(), ...(glob($this->statePath('*')) ?: []), $log] as $path) {
+            @chown($path, $owner['uid']);
+            @chgrp($path, $owner['gid']);
         }
     }
 
@@ -339,6 +391,8 @@ class PanelUpdateService
                 'message' => $this->redact($exception->getMessage()),
                 'finished_at' => now()->toIso8601String(),
             ]);
+            // update.sh never ran, so nothing else gives the state back to the web server user.
+            $this->shareStateWithWebUser();
 
             return false;
         }
@@ -408,7 +462,7 @@ class PanelUpdateService
 
     private function lockHeld(): bool
     {
-        $lock = @fopen($this->statePath('update.lock'), 'c');
+        $lock = $this->openLock('update.lock');
         if ($lock === false) {
             return false;
         }
@@ -420,6 +474,18 @@ class PanelUpdateService
         fclose($lock);
 
         return !$free;
+    }
+
+    /**
+     * A lock file left behind by another user can still be locked read-only, flock() doesn't need write access.
+     *
+     * @return resource|false
+     */
+    private function openLock(string $name)
+    {
+        $path = $this->statePath($name);
+
+        return @fopen($path, 'c') ?: @fopen($path, 'r');
     }
 
     public function dismissStatus(): void

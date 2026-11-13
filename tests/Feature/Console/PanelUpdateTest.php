@@ -101,6 +101,43 @@ it('refuses a second launch while another one is being started', function () use
     }
 });
 
+it('does not let the command overwrite an update a dashboard launch is queuing', function () use ($passingPreflight) {
+    updateServiceWithPreflight($passingPreflight);
+    Process::fake();
+
+    $path = storage_path('app/private/update/launch.lock');
+    File::ensureDirectoryExists(dirname($path));
+    $lock = fopen($path, 'c');
+    flock($lock, LOCK_EX);
+
+    try {
+        $this->artisan('p:update', ['version' => '1.1.0', '--no-interaction' => true])
+            ->expectsOutputToContain(trans('admin/update.preflight.running'))
+            ->assertFailed();
+
+        expect(File::exists(storage_path('app/private/update/request.json')))->toBeFalse()
+            ->and(File::exists(storage_path('app/private/update/status.json')))->toBeFalse();
+        Process::assertNothingRan();
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+});
+
+it('refuses a new update while the last one is left unresolved by a failed rollback', function () {
+    $status = storage_path('app/private/update/status.json');
+    File::ensureDirectoryExists(dirname($status));
+    File::put($status, json_encode(['state' => PanelUpdateService::STATE_ROLLBACK_FAILED, 'updated_at' => now()->toIso8601String()]));
+
+    expect(implode("\n", app(PanelUpdateService::class)->preflight('1.1.0')['errors']))
+        ->toContain('could not be rolled back');
+
+    File::delete($status);
+
+    expect(implode("\n", app(PanelUpdateService::class)->preflight('1.1.0')['errors']))
+        ->not->toContain('could not be rolled back');
+});
+
 it('reports an update whose process died instead of showing it as running forever', function (string $state, ?string $step, int $minutesAgo, string $expected) {
     $status = storage_path('app/private/update/status.json');
     File::ensureDirectoryExists(dirname($status));

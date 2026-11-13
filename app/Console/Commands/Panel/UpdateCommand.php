@@ -4,6 +4,7 @@ namespace App\Console\Commands\Panel;
 
 use App\Services\Helpers\PanelUpdateService;
 use App\Services\Helpers\SoftwareVersionService;
+use Exception;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Throwable;
@@ -86,9 +87,21 @@ class UpdateCommand extends Command
         }
 
         $secret = Str::random(40);
-        $this->info('While the panel is in maintenance mode you can still reach it at ' . url($secret));
+        $updateService->shareStateWithWebUser();
 
-        $updateService->queue((string) $target, $secret, $forcePlugins, $skipBackup, null);
+        try {
+            // The confirmations above take time, a dashboard launch may have queued an update since the preflight.
+            $updateService->whileLaunching(function () use ($updateService, $target, $secret, $forcePlugins, $skipBackup) {
+                throw_if($updateService->isBusy(), new Exception(trans('admin/update.preflight.running')));
+                $updateService->queue((string) $target, $secret, $forcePlugins, $skipBackup, null);
+            });
+        } catch (Exception $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $this->info('While the panel is in maintenance mode you can still reach it at ' . url($secret));
 
         // Replace this process with the update, so nothing of this release keeps running once the new one is swapped in.
         if (function_exists('pcntl_exec')) {
