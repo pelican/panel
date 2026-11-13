@@ -4,12 +4,14 @@ return [
     'daemon_connection_failed' => 'There was an exception while attempting to communicate with the daemon resulting in a HTTP/:code response code. This exception has been logged.',
     'node' => [
         'servers_attached' => 'A node must have no servers linked to it in order to be deleted.',
+        'in_transfer_batch' => 'A node cannot be deleted while it is part of a running mass transfer.',
         'error_connecting' => 'Error connecting to :node',
         'not_viable' => 'The node :node does not have enough free resources to accept this server.',
         'daemon_off_config_updated' => 'The daemon configuration <strong>has been updated</strong>, however there was an error encountered while attempting to automatically update the configuration file on the Daemon. You will need to manually update the configuration file (config.yml) for the daemon to apply these changes.',
     ],
     'allocations' => [
         'server_using' => 'A server is currently assigned to this allocation. An allocation can only be deleted if no server is currently assigned.',
+        'unavailable' => 'One of the selected allocations is not available on the target node.',
         'too_many_ports' => 'Adding more than 1000 ports in a single range at once is not supported.',
         'invalid_mapping' => 'The mapping provided for :port was invalid and could not be processed.',
         'cidr_out_of_range' => 'CIDR notation only allows masks between /25 and /32.',
@@ -60,6 +62,7 @@ return [
         'servers_attached' => 'A mount must have no servers attached to it in order to be deleted.',
     ],
     'server' => [
+        'transfer_unconfirmed' => 'The source node did not answer in time, so the transfer may or may not be running. The server stays locked until a node reports back or restarts, or the transfer is aborted.',
         'marked_as_failed' => 'This server has not yet completed its installation process, please try again later.',
         'file_too_large' => 'The file you are attempting to open is too large to view in the file editor.',
         'state_conflict' => 'This server is currently in an unsupported state, please try again later.',

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Casts\DaemonConfigCast;
 use App\Contracts\Validatable;
+use App\Enums\ServerTransferBatchStatus;
 use App\Exceptions\Service\HasActiveServersException;
 use App\Repositories\Daemon\DaemonSystemRepository;
 use App\Traits\HasValidation;
@@ -301,7 +302,18 @@ class Node extends Model implements Validatable
 
         static::deleting(function (self $node) {
             throw_if($node->servers()->count(), new HasActiveServersException(trans('exceptions.egg.delete_has_servers')));
+
+            // The batch would go with the node, and with it the restart of the servers it stopped.
+            throw_if($node->isInRunningTransferBatch(), new HasActiveServersException(trans('exceptions.node.in_transfer_batch')));
         });
+    }
+
+    public function isInRunningTransferBatch(): bool
+    {
+        return ServerTransferBatch::query()
+            ->where('status', ServerTransferBatchStatus::Running)
+            ->where(fn ($query) => $query->where('old_node', $this->id)->orWhere('new_node', $this->id))
+            ->exists();
     }
 
     /**
@@ -487,6 +499,16 @@ class Node extends Model implements Validatable
     public function servers(): HasMany
     {
         return $this->hasMany(Server::class);
+    }
+
+    /**
+     * Gets the batches moving servers off this node.
+     *
+     * @return HasMany<ServerTransferBatch, $this>
+     */
+    public function transferBatches(): HasMany
+    {
+        return $this->hasMany(ServerTransferBatch::class, 'old_node');
     }
 
     /**

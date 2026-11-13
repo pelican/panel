@@ -5,7 +5,6 @@ namespace App\Providers\Filament;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Pages\ListLogs;
 use App\Filament\Admin\Pages\ViewLogs;
-use App\Services\Helpers\PluginService;
 use Boquizo\FilamentLogViewer\FilamentLogViewerPlugin;
 use CharrafiMed\GlobalSearchModal\GlobalSearchModalPlugin;
 use Filament\Actions\Action;
@@ -49,11 +48,6 @@ class AdminPanelProvider extends PanelProvider
                     ->navigationIcon(TablerIcon::FileInfo),
                 GlobalSearchModalPlugin::make(),
             ]);
-
-        /** @var PluginService $pluginService */
-        $pluginService = app(PluginService::class); // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
-
-        $pluginService->loadPanelPlugins($panel);
 
         return $panel;
     }

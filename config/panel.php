@@ -45,6 +45,11 @@ return [
         ],
     ],
 
+    'transfers' => [
+        // Minutes a batch waits on one server's transfer before failing it and moving on. 0 waits forever.
+        'batch_timeout' => env('PANEL_TRANSFER_BATCH_TIMEOUT', 1440),
+    ],
+
     'files' => [
         'max_edit_size' => env('PANEL_FILES_MAX_EDIT_SIZE', 1024 * 1024 * 4),
     ],
@@ -67,6 +72,8 @@ return [
         'avatar-provider' => env('FILAMENT_AVATAR_PROVIDER', 'gravatar'),
         'uploadable-avatars' => env('FILAMENT_UPLOADABLE_AVATARS', false),
         'default-navigation' => env('FILAMENT_DEFAULT_NAVIGATION', 'sidebar'),
+        'default-theme' => env('FILAMENT_DEFAULT_THEME', 'none'),
+        'force-theme' => env('FILAMENT_FORCE_THEME', false),
     ],
 
     'use_binary_prefix' => env('PANEL_USE_BINARY_PREFIX', true),

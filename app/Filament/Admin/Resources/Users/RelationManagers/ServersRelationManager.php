@@ -29,7 +29,14 @@ class ServersRelationManager extends RelationManager
         $user = $this->getOwnerRecord();
 
         return $table
-            ->heading(trans('admin/user.servers'))
+            ->heading(trans('admin/user.accessible_servers'))
+            // Owned servers and the ones shared with the user as a subuser.
+            ->query(fn () => Server::query()
+                ->whereIn('node_id', user()?->accessibleNodes()->pluck('id'))
+                ->where(fn (Builder $query) => $query
+                    ->where('owner_id', $user->id)
+                    ->orWhereHas('subusers', fn (Builder $query) => $query->where('user_id', $user->id))
+                ))
             ->headerActions([
                 Action::make('toggle_suspend')
                     ->authorize(fn () => user()?->can('update server'))
@@ -58,8 +65,9 @@ class ServersRelationManager extends RelationManager
                 'allocations',
                 'egg',
                 'node',
-                // ViewConsoleAction only looks for the viewer's own subuser.
-                'subusers' => fn ($query) => $query->where('user_id', user()?->id),
+                'user',
+                // ViewConsoleAction looks for the viewer's own subuser, the access column for the user's.
+                'subusers' => fn ($query) => $query->whereIn('user_id', array_filter([user()?->id, $user->id])),
             ]))
             ->columns([
                 TextColumn::make('name')
@@ -67,6 +75,14 @@ class ServersRelationManager extends RelationManager
                     ->url(fn (Server $server) => user()?->can('update', $server) ? EditServer::getUrl(['record' => $server]) : null)
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('access')
+                    ->label(trans('admin/user.access'))
+                    ->badge()
+                    ->state(fn (Server $server) => $server->owner_id === $user->id ? trans('admin/server.owner') : trans('admin/user.subuser'))
+                    ->color(fn (Server $server) => $server->owner_id === $user->id ? 'primary' : 'gray')
+                    ->tooltip(fn (Server $server) => $server->owner_id === $user->id ? null : trans_choice('admin/user.subuser_access', count($server->subusers->firstWhere('user_id', $user->id)->permissions ?? []), [
+                        'owner' => $server->user->username,
+                    ])),
                 TextColumn::make('node.name')
                     ->label(trans('admin/server.node'))
                     ->url(fn (Server $server) => user()?->can('update', $server->node) ? EditNode::getUrl(['record' => $server->node]) : null)
@@ -80,7 +96,7 @@ class ServersRelationManager extends RelationManager
                 SelectColumn::make('allocation_id')
                     ->label(trans('admin/server.primary_allocation'))
                     ->hidden(fn () => !user()?->can('update server')) // TODO: update to policy check (fn (Server $server) --> $server is empty)
-                    ->disabled(fn (Server $server) => $server->allocations->count() <= 1)
+                    ->disabled(fn (Server $server) => $server->allocations->count() <= 1 || !user()?->can('update', $server))
                     ->options(fn (Server $server) => $server->allocations->mapWithKeys(fn ($allocation) => [$allocation->id => $allocation->address]))
                     ->selectablePlaceholder(fn (Server $server) => $server->allocations->count() <= 1)
                     ->placeholder(trans('admin/server.none'))
