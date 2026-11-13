@@ -1,7 +1,9 @@
 <?php
 
+use App\Enums\PluginStatus;
 use App\Filament\Admin\Widgets\UpdateProgressWidget;
 use App\Filament\Admin\Widgets\UpdateWidget;
+use App\Models\Plugin;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Helpers\PanelUpdateService;
@@ -121,6 +123,55 @@ it('does not let the command overwrite an update a dashboard launch is queuing',
     } finally {
         flock($lock, LOCK_UN);
         fclose($lock);
+    }
+});
+
+it('does not let the command start over an update that failed to roll back while it waited', function () use ($passingPreflight) {
+    // The preflight passed, then another update ended in rollback_failed before the command queued its own.
+    updateServiceWithPreflight($passingPreflight);
+    Process::fake();
+
+    $status = storage_path('app/private/update/status.json');
+    File::ensureDirectoryExists(dirname($status));
+    File::put($status, json_encode(['state' => PanelUpdateService::STATE_ROLLBACK_FAILED, 'updated_at' => now()->toIso8601String()]));
+
+    $this->artisan('p:update', ['version' => '1.1.0', '--no-interaction' => true])
+        ->expectsOutputToContain('could not be rolled back')
+        ->assertFailed();
+
+    expect(json_decode(File::get($status), true)['state'])->toBe(PanelUpdateService::STATE_ROLLBACK_FAILED)
+        ->and(File::exists(storage_path('app/private/update/request.json')))->toBeFalse();
+    Process::assertNothingRan();
+});
+
+it('counts errored plugins as active when checking plugin compatibility', function () {
+    $plugins = ['update-test-enabled' => PluginStatus::Enabled, 'update-test-errored' => PluginStatus::Errored, 'update-test-disabled' => PluginStatus::Disabled];
+
+    try {
+        foreach ($plugins as $id => $status) {
+            File::ensureDirectoryExists(plugin_path($id));
+            File::put(plugin_path($id, 'plugin.json'), json_encode([
+                'id' => $id,
+                'name' => $id,
+                'author' => 'Pelican',
+                'version' => '1.0.0',
+                'category' => 'plugin',
+                'namespace' => 'UpdateTest',
+                'class' => 'UpdateTest',
+                // Only exactly 1.0.0, so 1.1.0 marks it incompatible.
+                'panel_version' => '1.0.0',
+                'meta' => ['status' => $status->value],
+            ]));
+        }
+
+        expect(app(PanelUpdateService::class)->incompatiblePlugins('1.1.0'))
+            ->toContain('update-test-enabled', 'update-test-errored')
+            ->not->toContain('update-test-disabled');
+    } finally {
+        foreach (array_keys($plugins) as $id) {
+            File::deleteDirectory(plugin_path($id));
+        }
+        Plugin::refreshRows();
     }
 });
 

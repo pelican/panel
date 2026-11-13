@@ -103,9 +103,8 @@ class PanelUpdateService
             $errors[] = trans('admin/update.preflight.running');
         }
 
-        // A failed rollback leaves files in staging that may be the only copy left, a new update would delete them.
-        if (($this->status()['state'] ?? null) === self::STATE_ROLLBACK_FAILED) {
-            $errors[] = trans('admin/update.preflight.unresolved', ['path' => $this->statePath(), 'status' => $this->statePath('status.json')]);
+        if ($this->unresolved()) {
+            $errors[] = $this->unresolvedMessage();
         }
 
         if (!function_exists('proc_open')) {
@@ -144,7 +143,8 @@ class PanelUpdateService
     }
 
     /**
-     * Names of the enabled plugins that the target version would mark as incompatible.
+     * Names of the active plugins that the target version would mark as incompatible. Errored plugins are still
+     * loaded, and re-enabled once they boot, so they count as active.
      *
      * @return string[]
      */
@@ -154,7 +154,7 @@ class PanelUpdateService
             Plugin::refreshRows();
 
             return Plugin::all()
-                ->filter(fn (Plugin $plugin) => $plugin->status === PluginStatus::Enabled && !$plugin->isCompatible($target))
+                ->filter(fn (Plugin $plugin) => in_array($plugin->status, [PluginStatus::Enabled, PluginStatus::Errored], true) && !$plugin->isCompatible($target))
                 ->map(fn (Plugin $plugin) => $plugin->name)
                 ->values()
                 ->all();
@@ -213,6 +213,31 @@ class PanelUpdateService
             flock($lock, LOCK_UN);
             fclose($lock);
         }
+    }
+
+    /**
+     * The checks preflight() makes against other updates, for a launch to repeat inside whileLaunching() when time
+     * passed since its preflight, like the CLI waiting for confirmations.
+     *
+     * @throws Exception
+     */
+    public function ensureCanQueue(): void
+    {
+        throw_if($this->isBusy(), new Exception(trans('admin/update.preflight.running')));
+        throw_if($this->unresolved(), new Exception($this->unresolvedMessage()));
+    }
+
+    /**
+     * A failed rollback leaves files in staging that may be the only copy left, and a new update would delete them.
+     */
+    private function unresolved(): bool
+    {
+        return ($this->status()['state'] ?? null) === self::STATE_ROLLBACK_FAILED;
+    }
+
+    private function unresolvedMessage(): string
+    {
+        return trans('admin/update.preflight.unresolved', ['path' => $this->statePath(), 'status' => $this->statePath('status.json')]);
     }
 
     /**

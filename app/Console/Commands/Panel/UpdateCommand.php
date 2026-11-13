@@ -90,9 +90,10 @@ class UpdateCommand extends Command
         $updateService->shareStateWithWebUser();
 
         try {
-            // The confirmations above take time, a dashboard launch may have queued an update since the preflight.
+            // The confirmations above take time, another update may have been queued or failed to roll back since the
+            // preflight.
             $updateService->whileLaunching(function () use ($updateService, $target, $secret, $forcePlugins, $skipBackup) {
-                throw_if($updateService->isBusy(), new Exception(trans('admin/update.preflight.running')));
+                $updateService->ensureCanQueue();
                 $updateService->queue((string) $target, $secret, $forcePlugins, $skipBackup, null);
             });
         } catch (Exception $exception) {
