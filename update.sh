@@ -111,22 +111,25 @@ main() {
     MIGRATING=0
     DB_BACKUP_FILE=
     ERROR=
-    SWAPPED=()  # release entries moved into the install
-    HAD_LIVE=() # 1 when a live entry was moved to the code backup for the entry at the same index of SWAPPED
-    CARRIED=()  # <directory>/<name> moved from the install into the release
+    # Recorded before each move, so a signal between two moves still leaves rollback a complete list.
+    SWAPPED=() # release entries being moved into the install
+    CARRIED=() # <directory>/<name> being moved from the install into the release
 
     cd "$BASE" || return 1
 
-    local succeeded=0
+    # php-fpm restarts kill everything it started, the button's update included, so roll back on the way out.
+    trap 'ERROR="The update was stopped before it finished."; finish 0' TERM HUP INT
     if update; then
-        succeeded=1
-    else
-        fail
+        finish 1
     fi
+    finish 0
+}
 
+finish() {
+    trap '' TERM HUP INT
+    (($1)) || fail
     fix_ownership "$STORAGE_OWNER" storage/logs storage/framework "${BACKUPS#"$BASE"/}" "${STATE#"$BASE"/}"
-
-    ((succeeded))
+    exit $((!$1))
 }
 
 update() {
@@ -145,8 +148,8 @@ update() {
     fi
 
     step maintenance
-    run "$PHP" artisan down "--secret=$SECRET" --render=errors::updating --retry=15 --refresh=15 || return 1
     IS_DOWN=1
+    run "$PHP" artisan down "--secret=$SECRET" --render=errors::updating --retry=15 --refresh=15 || return 1
     run "$PHP" artisan queue:restart || true
 
     step backup
@@ -205,10 +208,11 @@ rollback() {
 
     for ((i = ${#SWAPPED[@]} - 1; i >= 0; i--)); do
         name=${SWAPPED[i]}
-        if [[ -e $BASE/$name || -L $BASE/$name ]]; then
+        # Until the release entry has left staging, whatever is at $BASE/$name is still the live one.
+        if [[ ! -e $RELEASE/$name && ! -L $RELEASE/$name ]] && [[ -e $BASE/$name || -L $BASE/$name ]]; then
             move "$BASE/$name" "$failed/$name" || return 1
         fi
-        if ((HAD_LIVE[i])); then
+        if [[ -e $CODE_BACKUP/$name || -L $CODE_BACKUP/$name ]]; then
             move "$CODE_BACKUP/$name" "$BASE/$name" || return 1
         fi
     done
@@ -384,8 +388,8 @@ swap() {
         for entry in "$BASE/$directory"/*; do
             name=$(basename "$entry")
             [[ -e $RELEASE/$directory/$name || -L $RELEASE/$directory/$name ]] && continue
-            move "$entry" "$RELEASE/$directory/$name" || return 1
             CARRIED+=("$directory/$name")
+            move "$entry" "$RELEASE/$directory/$name" || return 1
         done
     done
 
@@ -393,14 +397,10 @@ swap() {
         name=$(basename "$entry")
         is_preserved "$name" && continue
 
+        SWAPPED+=("$name")
         if [[ -e $BASE/$name || -L $BASE/$name ]]; then
             move "$BASE/$name" "$CODE_BACKUP/$name" || return 1
-            HAD_LIVE+=(1)
-        else
-            HAD_LIVE+=(0)
         fi
-
-        SWAPPED+=("$name")
         move "$entry" "$BASE/$name" || return 1
     done
 

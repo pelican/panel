@@ -31,6 +31,10 @@ switch ($argv[1] ?? '') {
         (new PDO('sqlite:' . __DIR__ . '/database/database.sqlite'))->exec("UPDATE things SET name = 'migrated'");
         // What the new release does when it boots and finds the plugin incompatible.
         file_put_contents(__DIR__ . '/plugins/example/plugin.json', '{"meta":{"status":"incompatible"}}');
+        if (file_exists("$root/hang-migrate")) {
+            touch("$root/migrating");
+            sleep(2);
+        }
         if (file_exists("$root/fail-migrate")) {
             fwrite(STDERR, "migration exploded\n");
             exit(1);
@@ -183,6 +187,35 @@ it('rolls the code, database and plugin metadata back when a migration fails', f
         $status = json_decode(File::get("$state/status.json"), true);
         expect($status['state'])->toBe('failed')
             ->and($status['message'])->toContain('migration exploded');
+    } finally {
+        File::deleteDirectory($root);
+    }
+});
+
+it('rolls back when the update is killed partway through', function () {
+    [$root, $base, $state] = fakeInstall();
+    touch("$root/hang-migrate");
+
+    try {
+        // What a php-fpm restart does to the update it launched, in the middle of the migrations.
+        $process = new Process(['bash', "$state/staging/release/update.sh", PHP_BINARY, "$state/handoff.json"], env: ['FAKE_ROOT' => $root], timeout: 120);
+        $process->start();
+        $process->waitUntil(fn () => file_exists("$root/migrating"));
+        $process->signal(15); // SIGTERM, pcntl may not be loaded
+        $process->wait();
+
+        expect($process->getExitCode())->toBe(1);
+
+        expect(File::get("$base/app/Old.php"))->toBe('old')
+            ->and(File::exists("$base/app/New.php"))->toBeFalse()
+            ->and(File::get("$base/public/custom-logo.png"))->toBe('user file')
+            ->and(File::exists("$base/vendor"))->toBeFalse()
+            ->and(File::get("$base/plugins/example/plugin.json"))->toBe('{"meta":{"status":"enabled"}}')
+            ->and(thingName($base))->toBe('before the update')
+            ->and(File::exists("$root/down"))->toBeFalse()
+            ->and(json_decode(File::get("$state/status.json"), true))
+            ->state->toBe('failed')
+            ->message->toContain('stopped before it finished');
     } finally {
         File::deleteDirectory($root);
     }
