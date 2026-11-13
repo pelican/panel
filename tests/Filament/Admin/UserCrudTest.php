@@ -6,6 +6,7 @@ use App\Filament\Admin\Resources\Users\Pages\CreateUser;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Filament\Admin\Resources\Users\RelationManagers\ServersRelationManager;
 use App\Models\Role;
+use App\Models\Subuser;
 use App\Models\User;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\Testing\TestAction;
@@ -102,4 +103,42 @@ it('only offers suspend all when the user has unsuspended servers', function () 
     livewire(ServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
         ->assertActionHidden(TestAction::make('toggle_suspend')->table())
         ->assertActionVisible(TestAction::make('toggle_unsuspend')->table());
+});
+
+it('lists the servers a user owns or is a subuser of', function () {
+    $user = User::factory()->create();
+    $owned = createServerModel(['owner_id' => $user->id]);
+    $shared = createServerModel();
+    $notShared = createServerModel();
+
+    Subuser::query()->create(['user_id' => $user->id, 'server_id' => $shared->id, 'permissions' => ['control.console', 'file.read']]);
+    // Another user's access must not show up.
+    Subuser::query()->create(['user_id' => User::factory()->create()->id, 'server_id' => $notShared->id, 'permissions' => ['control.console']]);
+
+    livewire(ServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
+        ->assertCanSeeTableRecords([$owned, $shared])
+        ->assertCanNotSeeTableRecords([$notShared])
+        ->assertTableColumnStateSet('access', trans('admin/server.owner'), $owned)
+        ->assertTableColumnStateSet('access', trans('admin/user.subuser'), $shared);
+});
+
+it('hides servers on nodes a restricted admin cannot access', function () {
+    $user = User::factory()->create();
+    $visible = createServerModel(['owner_id' => $user->id]);
+    $hiddenOwned = createServerModel(['owner_id' => $user->id]);
+    $hiddenShared = createServerModel();
+    Subuser::query()->create(['user_id' => $user->id, 'server_id' => $hiddenShared->id, 'permissions' => ['control.console']]);
+
+    $role = Role::factory()->create(['name' => 'Node Admin', 'guard_name' => 'web']);
+    $role->givePermissionTo(collect([RolePermissionModels::User, RolePermissionModels::Server])
+        ->flatMap(fn (RolePermissionModels $model) => [$model->viewAny(), $model->view(), $model->update()])
+        ->map(fn (string $permission) => Permission::findOrCreate($permission, 'web')));
+    $role->nodes()->sync([$visible->node_id]);
+    [$admin] = generateTestAccount();
+    $admin->syncRoles($role);
+    $this->actingAs($admin->fresh());
+
+    livewire(ServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
+        ->assertCanSeeTableRecords([$visible])
+        ->assertCanNotSeeTableRecords([$hiddenOwned, $hiddenShared]);
 });
