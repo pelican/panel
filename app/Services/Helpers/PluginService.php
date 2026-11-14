@@ -603,7 +603,7 @@ class PluginService
     public function updateLoadOrder(array $order): void
     {
         foreach ($order as $i => $plugin) {
-            $plugin = Plugin::firstOrFail(str($plugin)->lower()->toString());
+            $plugin = Plugin::findOrFail(str($plugin)->lower()->toString());
 
             $this->setMetaData($plugin, [
                 'load_order' => $i,
