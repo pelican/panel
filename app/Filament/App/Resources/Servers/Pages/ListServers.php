@@ -136,6 +136,7 @@ class ListServers extends ListRecords
         $defaultPerPage = in_array($storedPerPage, $pageOptions, true) ? $storedPerPage : ($usingGrid ? 10 : 20);
 
         return $table
+            ->deferLoading(!$usingGrid)
             ->paginated($pageOptions)
             ->defaultPaginationPageOption($defaultPerPage)
             ->query(fn () => $baseQuery)
