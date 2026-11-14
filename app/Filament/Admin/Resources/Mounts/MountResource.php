@@ -202,7 +202,8 @@ class MountResource extends Resource
                     Select::make('nodes')
                         ->multiple()
                         ->label(trans('admin/mount.nodes'))
-                        ->relationship('nodes', 'name', fn (Builder $query) => $query->whereIn('nodes.id', user()?->accessibleNodes()->pluck('id')))
+                        // Selecting only non-json fields to prevent Postgres from choking on DISTINCT JSON columns
+                        ->relationship('nodes', 'name', fn (Builder $query) => $query->select(['nodes.id', 'nodes.name'])->whereIn('nodes.id', user()?->accessibleNodes()->pluck('id')))
                         ->searchable(['name', 'fqdn'])
                         ->preload(),
                 ]),
