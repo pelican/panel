@@ -170,7 +170,8 @@ class DatabaseHostResource extends Resource
                             ->preload()
                             ->helperText(trans('admin/databasehost.linked_nodes_help'))
                             ->label(trans('admin/databasehost.linked_nodes'))
-                            ->relationship('nodes', 'name', fn (Builder $query) => $query->whereIn('nodes.id', user()?->accessibleNodes()->pluck('id'))),
+                            // Selecting only non-json fields to prevent Postgres from choking on DISTINCT JSON columns
+                            ->relationship('nodes', 'name', fn (Builder $query) => $query->select(['nodes.id', 'nodes.name'])->whereIn('nodes.id', user()?->accessibleNodes()->pluck('id'))),
                     ]),
             ]);
     }

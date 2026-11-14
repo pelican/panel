@@ -119,7 +119,8 @@ class BackupHostResource extends Resource
                     ->multiple()
                     ->searchable()
                     ->preload()
-                    ->relationship('nodes', 'name', fn (Builder $query) => $query->whereIn('nodes.id', user()?->accessibleNodes()->pluck('id'))),
+                    // Selecting only non-json fields to prevent Postgres from choking on DISTINCT JSON columns
+                    ->relationship('nodes', 'name', fn (Builder $query) => $query->select(['nodes.id', 'nodes.name'])->whereIn('nodes.id', user()?->accessibleNodes()->pluck('id'))),
                 Section::make(trans('admin/backuphost.configuration'))
                     ->columnSpanFull()
                     ->columns()

@@ -34,6 +34,7 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 use Spatie\Permission\Contracts\Permission;
 
@@ -154,7 +155,8 @@ class RoleResource extends Resource
                 Select::make('nodes')
                     ->label(trans('admin/role.nodes'))
                     ->multiple()
-                    ->relationship('nodes', 'name')
+                    // Selecting only non-json fields to prevent Postgres from choking on DISTINCT JSON columns
+                    ->relationship('nodes', 'name', fn (Builder $query) => $query->select(['nodes.id', 'nodes.name']))
                     ->searchable(['name', 'fqdn'])
                     ->preload()
                     ->hint(trans('admin/role.nodes_hint'))
