@@ -7,10 +7,12 @@ use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use JsonException;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
+use Throwable;
 
 /**
  * Finds Panel plugins in plugin registries: pelican/wings plugin contract v1, sections R1 to R3.
@@ -30,6 +32,8 @@ class PluginRegistryService
     public const MAX_DOCUMENT_BYTES = 1024 * 1024;
 
     public const MAX_REDIRECTS = 10;
+
+    private const TOO_LARGE = 'Response too large.';
 
     /** Whether any registry is configured. A panel without one keeps behaving exactly as before. */
     public function hasRegistries(): bool
@@ -117,6 +121,8 @@ class PluginRegistryService
             $credentialOrigin = self::origin($registry['url']);
         }
 
+        $deadline = microtime(true) + $timeout;
+
         for ($redirects = 0; ; $redirects++) {
             $origin = self::origin($url) ?? throw new RuntimeException(trans('admin/plugin.registry.https_only', ['url' => $url]));
 
@@ -129,17 +135,13 @@ class PluginRegistryService
                     ->withoutRedirecting()
                     ->timeout($timeout)
                     ->connectTimeout(5)
-                    ->withOptions([
-                        // Refuse an oversized body from its headers, before downloading it.
-                        'on_headers' => function (ResponseInterface $response) use ($maxBytes) {
-                            if ((int) $response->getHeaderLine('Content-Length') > $maxBytes) {
-                                throw new RuntimeException('Response too large.');
-                            }
-                        },
-                    ])
+                    ->withOptions(self::boundedOptions($maxBytes))
                     ->get($url);
             } catch (ConnectionException|TransferException $exception) {
-                // Includes a body refused by the on_headers check above.
+                if (self::refusedAsTooLarge($exception)) {
+                    throw new RuntimeException(trans('admin/plugin.registry.too_large', ['url' => $url]), previous: $exception);
+                }
+
                 throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => $exception->getMessage()]), previous: $exception);
             }
 
@@ -164,14 +166,88 @@ class PluginRegistryService
                 throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => 'HTTP ' . $exception->response->status()]), previous: $exception);
             }
 
-            $body = $response->body();
+            return self::readBody($response, $maxBytes, $deadline)
+                ?? throw new RuntimeException(trans('admin/plugin.registry.too_large', ['url' => $url]));
+        }
+    }
 
-            if (strlen($body) > $maxBytes) {
-                throw new RuntimeException(trans('admin/plugin.registry.too_large', ['url' => $url]));
+    /**
+     * Guzzle options for a download whose body is read with readBody(): the body is streamed instead of
+     * buffered whole, and one that announces more than $maxBytes is refused from its headers (R2.4).
+     *
+     * @return array<string, mixed>
+     */
+    public static function boundedOptions(int $maxBytes): array
+    {
+        return [
+            'stream' => true,
+            'on_headers' => function (ResponseInterface $response) use ($maxBytes) {
+                if ((int) $response->getHeaderLine('Content-Length') > $maxBytes) {
+                    throw new RuntimeException(self::TOO_LARGE);
+                }
+            },
+        ];
+    }
+
+    /** Whether a failed request was refused by boundedOptions() because its Content-Length was over the cap. */
+    public static function refusedAsTooLarge(Throwable $exception): bool
+    {
+        for ($cause = $exception; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof RuntimeException && $cause->getMessage() === self::TOO_LARGE) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The body of a response requested with boundedOptions(), read in chunks so that no more than $maxBytes + 1
+     * bytes are ever read, whatever the server says or doesn't say about its length (R2.4). Null when the body
+     * is larger than $maxBytes.
+     *
+     * @throws RuntimeException when $deadline (a microtime) passes before the body is read
+     */
+    public static function readBody(Response $response, int $maxBytes, float $deadline): ?string
+    {
+        $stream = $response->toPsrResponse()->getBody();
+
+        if ((int) $response->header('Content-Length') > $maxBytes) {
+            $stream->close();
+
+            return null;
+        }
+
+        // A network body isn't seekable; one that is (a buffered or faked response) is read from its start.
+        if ($stream->isSeekable()) {
+            $stream->rewind();
+        }
+
+        $body = '';
+
+        while (!$stream->eof()) {
+            if (microtime(true) > $deadline) {
+                $stream->close();
+
+                throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => (string) $response->effectiveUri(), 'error' => 'timed out']));
             }
 
-            return $body;
+            $chunk = $stream->read(min(64 * 1024, $maxBytes - strlen($body) + 1));
+            if ($chunk === '') {
+                break;
+            }
+
+            $body .= $chunk;
+
+            if (strlen($body) > $maxBytes) {
+                // Stop the download here instead of leaving the rest of it to arrive.
+                $stream->close();
+
+                return null;
+            }
         }
+
+        return $body;
     }
 
     /**

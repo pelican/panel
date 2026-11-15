@@ -12,11 +12,13 @@ use Exception;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Panel;
+use GuzzleHttp\Exception\TransferException;
 use Illuminate\Console\Application as ConsoleApplication;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Foundation\Application;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -540,7 +542,18 @@ class PluginService
         $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
         $tmpPath = $tmpDir->path($basename);
 
-        $content = HubCredentials::request($url)->timeout(60)->connectTimeout(5)->throw()->get($url)->body();
+        // Validate file size to prevent zip bombs, while the bytes arrive (contract R2.4).
+        $maxSize = (int) config('panel.plugin.max_import_size');
+        $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
+        $tooLarge = new InvalidFileUploadException("Zip file too large. ($maxSizeLabel MiB)");
+
+        try {
+            $response = HubCredentials::request($url)->timeout(60)->connectTimeout(5)->withOptions(PluginRegistryService::boundedOptions($maxSize))->throw()->get($url);
+        } catch (ConnectionException|TransferException $exception) {
+            throw PluginRegistryService::refusedAsTooLarge($exception) ? $tooLarge : $exception;
+        }
+
+        $content = PluginRegistryService::readBody($response, $maxSize, microtime(true) + 60) ?? throw $tooLarge;
 
         // Any advertised checksum must match, including an empty or malformed one.
         if ($expectedSha256 !== null) {
@@ -548,11 +561,6 @@ class PluginService
 
             $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $signature);
         }
-
-        // Validate file size to prevent zip bombs
-        $maxSize = config('panel.plugin.max_import_size');
-        $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
-        throw_if(strlen($content) > $maxSize, new InvalidFileUploadException("Zip file too large. ($maxSizeLabel MiB)"));
 
         throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
 

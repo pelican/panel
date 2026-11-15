@@ -11,6 +11,7 @@ use App\Services\Helpers\PluginRegistryService;
 use App\Services\Helpers\PluginService;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use GuzzleHttp\Psr7\PumpStream;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -266,6 +267,60 @@ it('follows at most 10 redirects', function () {
 
     expect(fn () => registries()->fetch(REGISTRY_HOST . '/r', null, 1024))->toThrow(RuntimeException::class, 'Stopped following redirects');
     expect(Http::recorded())->toHaveCount(11);
+});
+
+/**
+ * A body of `$size` bytes without a Content-Length, produced as it is read; `$read` counts the bytes read so far.
+ */
+function unsizedBody(int $size, int &$read): PumpStream
+{
+    $read = 0;
+
+    return new PumpStream(function (int $length) use ($size, &$read) {
+        $length = min($length, $size - $read);
+        if ($length <= 0) {
+            return false;
+        }
+
+        $read += $length;
+
+        return str_repeat('a', $length);
+    });
+}
+
+it('stops reading a registry response without Content-Length once it passes the size cap', function () {
+    $read = 0;
+    Http::fake([REGISTRY_URL => Http::response(unsizedBody(8 * 1024 * 1024, $read))]);
+
+    expect(fn () => registries()->fetch(REGISTRY_URL, null, 1024 * 1024))->toThrow(RuntimeException::class, 'is too large');
+    expect($read)->toBeGreaterThan(1024 * 1024)
+        ->toBeLessThanOrEqual(1024 * 1024 + 64 * 1024);
+});
+
+it('stops reading a plugin download without Content-Length once it passes the size cap', function () {
+    config()->set('panel.plugin.max_import_size', 1024 * 1024);
+
+    $read = 0;
+    Http::fake(['https://downloads.example.test/*' => Http::response(unsizedBody(8 * 1024 * 1024, $read))]);
+
+    expect(fn () => app(PluginService::class)->downloadPluginFromUrl('https://downloads.example.test/reg-big.zip'))->toThrow(Exception::class, 'too large');
+    expect($read)->toBeGreaterThan(1024 * 1024)
+        ->toBeLessThanOrEqual(1024 * 1024 + 64 * 1024);
+});
+
+it('refuses a response whose Content-Length is over the size cap without reading it', function () {
+    $read = 0;
+    Http::fake([REGISTRY_URL => Http::response(unsizedBody(1024, $read), 200, ['Content-Length' => (string) (2 * 1024 * 1024)])]);
+
+    expect(fn () => registries()->fetch(REGISTRY_URL, null, 1024 * 1024))->toThrow(RuntimeException::class, 'is too large');
+    expect($read)->toBe(0);
+});
+
+it('reads a registry response that fits the size cap whole', function () {
+    $read = 0;
+    Http::fake([REGISTRY_URL => Http::response(unsizedBody(1024 * 1024, $read))]);
+
+    expect(registries()->fetch(REGISTRY_URL, null, 1024 * 1024))->toBe(str_repeat('a', 1024 * 1024));
 });
 
 it('never sends credentials for url#name, even to a configured registry', function () {
