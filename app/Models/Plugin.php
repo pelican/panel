@@ -435,7 +435,12 @@ class Plugin extends Model implements HasPluginSettings
             $sha256 = (string) $entry['sha256'];
         }
 
-        $signature = is_string($entry['signature'] ?? null) && $entry['signature'] !== '' ? $entry['signature'] : null;
+        // Null only when the feed has no signature. A present one that isn't a non-empty string is malformed,
+        // never "unsigned" (contract R1), so it's kept as '' for the signature check to reject.
+        $signature = null;
+        if (array_key_exists('signature', $entry)) {
+            $signature = is_string($entry['signature']) ? $entry['signature'] : '';
+        }
 
         return ['url' => (string) $entry['download_url'], 'sha256' => $sha256, 'signature' => $signature];
     }

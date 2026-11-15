@@ -376,6 +376,11 @@ class PluginRegistryService
             throw $invalid('sha256');
         }
 
+        // A signature that is present must be a non-empty string; anything else is invalid, never "unsigned" (R1).
+        if (array_key_exists('signature', $entry) && (!is_string($entry['signature']) || trim($entry['signature']) === '')) {
+            throw $invalid('signature');
+        }
+
         $optional = fn (string $key) => is_string($entry[$key] ?? null) && $entry[$key] !== '' ? $entry[$key] : null;
 
         return new RegistryPlugin(

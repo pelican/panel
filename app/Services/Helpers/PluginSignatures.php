@@ -18,12 +18,13 @@ class PluginSignatures
 {
     /**
      * @param  string  $digest  the archive's raw (binary) SHA-256 digest
+     * @param  ?string  $signature  null only when the source has no signature; any string, including '', is verified
      *
      * @throws RuntimeException
      */
     public function enforce(string $digest, ?string $signature): void
     {
-        if (blank($signature)) {
+        if ($signature === null) {
             if ($this->required()) {
                 throw new RuntimeException(trans('admin/plugin.registry.signature_required'));
             }

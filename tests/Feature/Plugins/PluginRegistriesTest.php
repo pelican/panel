@@ -197,6 +197,11 @@ it('refuses an entry without a valid sha256, https download or safe name', funct
     'missing version' => [['version' => ''], 'reg-a', 'version'],
     'name with a dot dot' => [[], 'reg..a', 'name'],
     'name starting with a dot' => [[], '.reg-a', 'name'],
+    // R1: a signature that is present but not a non-empty string is invalid, never "unsigned".
+    'empty signature' => [['signature' => ''], 'reg-a', 'signature'],
+    'null signature' => [['signature' => null], 'reg-a', 'signature'],
+    'numeric signature' => [['signature' => 5], 'reg-a', 'signature'],
+    'list signature' => [['signature' => ['c2ln']], 'reg-a', 'signature'],
 ]);
 
 // R2: fetching and downloading
@@ -617,6 +622,25 @@ it('verifies the signature of a signed update', function () {
 
     expect(app(PluginService::class)->updatePlugin($plugin)->version)->toBe('2.0.0');
 });
+
+it('refuses an update whose manifest has a malformed signature, even when signatures are not required', function (mixed $signature) {
+    Process::fake();
+
+    $plugin = updatablePlugin('reg-update', 'https://updates.example.test/reg-update.json');
+    $archive = registryZip('reg-update', '2.0.0', ['update_url' => 'https://updates.example.test/reg-update.json']);
+
+    Http::fake([
+        'https://updates.example.test/reg-update.json' => Http::response(['version' => '2.0.0', 'download' => 'https://updates.example.test/reg-update-2.0.0.zip', 'sha256' => hash('sha256', $archive), 'signature' => $signature]),
+        'https://updates.example.test/reg-update-2.0.0.zip' => Http::response($archive),
+    ]);
+
+    expect(fn () => app(PluginService::class)->updatePlugin($plugin))->toThrow(RuntimeException::class, 'signature is malformed');
+    expect(File::json(plugin_path('reg-update', 'plugin.json'))['version'])->toBe('1.0.0');
+})->with([
+    'empty' => [''],
+    'null' => [null],
+    'a number' => [5],
+]);
 
 // The install command
 
