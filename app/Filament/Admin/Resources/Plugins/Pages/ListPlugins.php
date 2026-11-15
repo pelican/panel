@@ -23,6 +23,7 @@ use Filament\Schemas\Components\Tabs\Tab;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Client\RequestException;
+use Livewire\Attributes\On;
 use Throwable;
 
 class ListPlugins extends ListRecords
@@ -118,12 +119,29 @@ class ListPlugins extends ListRecords
                         report($exception);
                     }
 
-                    Notification::make()
+                    // Wings re-checks the stage against the node as it is now (A4): 403, 422 or 409
+                    $refusal = WingsPluginFailure::approvalRefusal($exception);
+                    $restage = $refusal !== null ? $approvals->putRestage($user, $pending) : null;
+
+                    $notification = Notification::make()
                         ->danger()
                         ->title(trans("admin/plugin.notifications.$errorKey"))
-                        // 409: the token is unknown, used, expired, or for another endpoint
-                        ->body(WingsPluginFailure::status($exception) === 409 ? trans('admin/plugin.wings.approval_invalid') : WingsPluginFailure::message($exception))
-                        ->send();
+                        ->body($refusal === null
+                            ? WingsPluginFailure::message($exception)
+                            : $refusal . ' ' . trans($restage === null ? 'admin/plugin.wings.approval_upload_again' : 'admin/plugin.wings.approval_stage_again'));
+
+                    if ($restage !== null) {
+                        $notification
+                            ->persistent()
+                            ->actions([
+                                Action::make('restage')
+                                    ->label(trans('admin/plugin.wings.stage_again'))
+                                    ->button()
+                                    ->dispatch('restage-wings-plugin', ['handle' => $restage]),
+                            ]);
+                    }
+
+                    $notification->send();
 
                     return;
                 } finally {
@@ -136,6 +154,36 @@ class ListPlugins extends ListRecords
                     ->body(trans('admin/plugin.wings.installed_on', ['name' => $pending['plugin']['name'] ?? '?', 'node' => $node->name]))
                     ->send();
             });
+    }
+
+    /**
+     * Stages again what the node refused to approve, after the same checks as the first time (A4, A7):
+     * the admin's access to the node, their permission, and the node's current level.
+     */
+    #[On('restage-wings-plugin')]
+    public function restageWingsPlugin(string $handle, WingsPluginApprovals $approvals): void
+    {
+        $user = user();
+        $restage = $user ? $approvals->pullRestage($user, $handle) : null;
+
+        if ($restage === null) {
+            Notification::make()->danger()->title(trans('admin/plugin.wings.approval_missing'))->send();
+
+            return;
+        }
+
+        $action = $restage['action'];
+        $errorKey = $action === 'import' ? 'import_failed' : "{$action}_error";
+        $allowed = $action === 'update' ? $user->can('update plugin') : $user->can('create', WingsPlugin::class);
+        $node = $allowed ? PluginResource::nodeAllowing($restage['node_id'], $action === 'import' ? 'full' : 'signed') : null;
+
+        if (!$node) {
+            Notification::make()->danger()->title(trans("admin/plugin.notifications.$errorKey"))->body(trans('admin/plugin.wings.node_not_allowed'))->send();
+
+            return;
+        }
+
+        PluginResource::stageOnNode($this, $approvals, $node, $action, $restage['plugin_id'], $restage['source']);
     }
 
     /**
@@ -170,6 +218,7 @@ class ListPlugins extends ListRecords
             TextEntry::make('replaces')
                 ->label(trans('admin/plugin.wings.replaces'))
                 ->state($pending['replaces'] ?? trans('admin/plugin.wings.replaces_none')),
+            // True only when the signature verified against a key the node trusts (A4)
             TextEntry::make('signed')
                 ->label(trans('admin/plugin.wings.signed'))
                 ->state($pending['signed'] ? trans('admin/plugin.wings.signed_yes') : trans('admin/plugin.wings.signed_no'))

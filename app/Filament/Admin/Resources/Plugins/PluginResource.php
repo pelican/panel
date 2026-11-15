@@ -104,10 +104,29 @@ class PluginResource extends Resource
     /**
      * First step of a two-step install, update or import (contract v3, A4): Wings stages the plugin and
      * nothing is installed. What it staged is kept on the server and the admin is asked to approve it.
+     * $source is what the stage is made from, so it can be staged again (null: it can't be).
      *
+     * @param  array<string, string|null>|null  $source
+     */
+    public static function stageOnNode(ListPlugins $livewire, WingsPluginApprovals $approvals, Node $node, string $action, ?string $pluginId, ?array $source): void
+    {
+        self::stage($livewire, $approvals, $node, $action, $pluginId, $source, function (DaemonPluginRepository $repository) use ($action, $pluginId, $source): array {
+            $source ??= [];
+
+            return match ($action) {
+                'install' => $repository->install((string) $pluginId, $source['registry'] ?? null),
+                'update' => $repository->update((string) $pluginId),
+                'import' => $repository->importFromUrl((string) ($source['url'] ?? ''), $source['sha256'] ?? null, $source['signature'] ?? null),
+                default => throw new InvalidArgumentException("Unknown plugin action \"$action\"."),
+            };
+        });
+    }
+
+    /**
+     * @param  array<string, string|null>|null  $source
      * @param  Closure(DaemonPluginRepository): array<string, mixed>  $stage
      */
-    private static function stageOnNode(ListPlugins $livewire, WingsPluginApprovals $approvals, Node $node, string $action, ?string $pluginId, Closure $stage): void
+    private static function stage(ListPlugins $livewire, WingsPluginApprovals $approvals, Node $node, string $action, ?string $pluginId, ?array $source, Closure $stage): void
     {
         $errorKey = $action === 'import' ? 'import_failed' : "{$action}_error";
 
@@ -131,7 +150,7 @@ class PluginResource extends Resource
                 throw new InvalidArgumentException(trans('admin/plugin.wings.unexpected_answer'));
             }
 
-            $handle = $approvals->put(user() ?? throw new RuntimeException('Not signed in.'), $node, $action, $pluginId, $staged);
+            $handle = $approvals->put(user() ?? throw new RuntimeException('Not signed in.'), $node, $action, $pluginId, $staged, $source);
         } catch (Exception $exception) {
             if (!$exception instanceof RequestException) {
                 report($exception);
@@ -152,7 +171,7 @@ class PluginResource extends Resource
     /**
      * The node the admin picked, if it is one they can access and it allows $level (contract A7, L).
      */
-    private static function nodeAllowing(mixed $nodeId, string $level): ?Node
+    public static function nodeAllowing(mixed $nodeId, string $level): ?Node
     {
         $nodeId = filter_var($nodeId, FILTER_VALIDATE_INT);
         if ($nodeId === false || !WingsPlugin::nodesAllowing($level)->has($nodeId)) {
@@ -330,7 +349,7 @@ class PluginResource extends Resource
                                     return;
                                 }
 
-                                self::stageOnNode($livewire, $approvals, $record->node() ?? throw new RuntimeException('The node no longer exists.'), 'update', $record->plugin_id, fn () => $repository->update($record->plugin_id));
+                                self::stage($livewire, $approvals, $record->node() ?? throw new RuntimeException('The node no longer exists.'), 'update', $record->plugin_id, [], fn () => $repository->update($record->plugin_id));
 
                                 return;
                             }
@@ -528,7 +547,7 @@ class PluginResource extends Resource
                         $plugin = (string) $data['plugin'];
                         $registry = filled($data['registry'] ?? null) ? (string) $data['registry'] : null;
 
-                        self::stageOnNode($livewire, $approvals, $node, 'install', $plugin, fn (DaemonPluginRepository $repository) => $repository->install($plugin, $registry));
+                        self::stageOnNode($livewire, $approvals, $node, 'install', $plugin, ['registry' => $registry]);
                     }),
                 // From any https URL or an uploaded archive (contract L "full")
                 Action::make('wings_import')
@@ -599,7 +618,8 @@ class PluginResource extends Resource
                                 return;
                             }
 
-                            self::stageOnNode($livewire, $approvals, $node, 'import', null, fn (DaemonPluginRepository $repository) => $repository->importFromFile($file, $signature));
+                            // An upload can't be staged again without the archive
+                            self::stage($livewire, $approvals, $node, 'import', null, null, fn (DaemonPluginRepository $repository) => $repository->importFromFile($file, $signature));
 
                             return;
                         }
@@ -607,7 +627,7 @@ class PluginResource extends Resource
                         $url = (string) $data['url'];
                         $sha256 = filled($data['sha256'] ?? null) ? strtolower((string) $data['sha256']) : null;
 
-                        self::stageOnNode($livewire, $approvals, $node, 'import', null, fn (DaemonPluginRepository $repository) => $repository->importFromUrl($url, $sha256, $signature));
+                        self::stageOnNode($livewire, $approvals, $node, 'import', null, ['url' => $url, 'sha256' => $sha256, 'signature' => $signature]);
                     }),
                 Action::make('browse_hub')
                     ->label(trans('admin/plugin.hub.browse'))

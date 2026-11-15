@@ -6,6 +6,9 @@ use App\Models\Role;
 use App\Models\WingsPlugin;
 use App\Tests\Traits\FakesWingsPlugins;
 use Filament\Facades\Filament;
+use Filament\Notifications\Livewire\Notifications;
+use Filament\Notifications\Notification;
+use Filament\Notifications\NotificationMailbox;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -41,6 +44,30 @@ function wingsInstallApproves(Request $request): bool
     return array_key_exists('approve', json_decode($request->body(), true) ?: []);
 }
 
+/** The last notification sent, read the way Filament's assertNotified() reads them. */
+function wingsInstallLastNotification(): Notification
+{
+    app(NotificationMailbox::class)->flush();
+
+    $notifications = new Notifications();
+    $notifications->mount();
+    $notifications->pullNotifications();
+
+    return $notifications->notifications->last();
+}
+
+/** The handle a notification's "Stage again" button sends, or null when it has none. */
+function wingsInstallRestageHandle(Notification $notification): ?string
+{
+    foreach ($notification->getActions() as $action) {
+        if ($action->getName() === 'restage') {
+            return $action->getEventData()['handle'] ?? null;
+        }
+    }
+
+    return null;
+}
+
 it('stages an install, shows it, and installs only after approval', function () {
     $this->fakeWingsNode($this->node, [], 'signed', [
         '*/api/plugins/state-log/install' => Http::sequence()
@@ -54,7 +81,7 @@ it('stages an install, shows it, and installs only after approval', function () 
         ->assertHasNoTableActionErrors()
         ->assertActionMounted('approveWingsPlugin')
         ->assertMountedActionModalSee('server.logs')
-        ->assertMountedActionModalSee('Signed by a key this node trusts');
+        ->assertMountedActionModalSee(trans('admin/plugin.wings.signed_yes'));
 
     // Staged, nothing approved yet
     $installCalls = fn () => Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/api/plugins/state-log/install'));
@@ -97,20 +124,121 @@ it('keeps the approval token on the server', function () {
     expect(json_encode($component->instance()->mountedActions))->not->toContain('tok-secret');
 });
 
-it('explains an approval the node no longer has (409)', function () {
+it('explains why the node refused an approval and stages it again on request', function (int $status, array $error, string $says) {
     $this->fakeWingsNode($this->node, [], 'signed', [
         '*/api/plugins/state-log/install' => Http::sequence()
             ->push($this->wingsStagedBody('install', 'state-log', 'tok-old'), 202)
-            ->push(['error' => 'approval token unknown, used or expired'], 409, $this->wingsHeaders($this->node)),
+            ->push($error, $status, $this->wingsHeaders($this->node))
+            ->push($this->wingsStagedBody('install', 'state-log', 'tok-new'), 202),
+    ]);
+
+    $component = livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log', 'registry' => 'pelican'])
+        ->callMountedAction();
+
+    $notification = wingsInstallLastNotification();
+    $handle = wingsInstallRestageHandle($notification);
+
+    expect($notification->getTitle())->toBe(trans('admin/plugin.notifications.install_error'))
+        ->and($notification->getBody())->toContain($says)
+        ->and($notification->getBody())->toContain(trans('admin/plugin.wings.approval_stage_again'))
+        ->and($handle)->toBeString();
+
+    // Staged again from the same registry, and shown for approval again
+    $component->dispatch('restage-wings-plugin', handle: $handle)
+        ->assertActionMounted('approveWingsPlugin');
+
+    $bodies = Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/api/plugins/state-log/install'))
+        ->map(fn (array $pair) => json_decode($pair[0]->body(), true))
+        ->values()
+        ->all();
+
+    expect($bodies)->toBe([['registry' => 'pelican'], ['approve' => 'tok-old'], ['registry' => 'pelican']]);
+})->with([
+    'level dropped (403)' => [403, ['error' => 'plugins.panel_access is "view" on this node', 'panel_access' => 'view', 'required' => 'signed'], 'access level changed since this was staged'],
+    'signature policy (422)' => [422, ['error' => 'signature no longer verifies against a trusted key'], 'signature no longer passes'],
+    'installed plugin changed (409)' => [409, ['error' => 'the installed plugin changed since it was staged'], 'the installed plugin changed since it was staged'],
+]);
+
+it('asks for the upload again when the node refuses an uploaded archive', function () {
+    $this->fakeWingsNode($this->node, [], 'full', [
+        '*/api/plugins/import' => Http::sequence()
+            ->push($this->wingsStagedBody('import', 'state-log', 'tok-upload'), 202)
+            ->push(['error' => 'signature no longer verifies against a trusted key'], 422, $this->wingsHeaders($this->node)),
+    ]);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->callTableAction('wings_import', data: [
+            'node' => $this->node->id,
+            'source' => 'file',
+            'file' => UploadedFile::fake()->createWithContent('state-log.tar.gz', 'archive bytes'),
+        ])
+        ->callMountedAction();
+
+    $notification = wingsInstallLastNotification();
+
+    expect($notification->getTitle())->toBe(trans('admin/plugin.notifications.import_failed'))
+        ->and($notification->getBody())->toContain(trans('admin/plugin.wings.approval_upload_again'))
+        ->and(wingsInstallRestageHandle($notification))->toBeNull();
+});
+
+it('stages again an import from a url with what it was staged from', function () {
+    $this->fakeWingsNode($this->node, [], 'full', [
+        '*/api/plugins/import' => Http::sequence()
+            ->push($this->wingsStagedBody('import', 'state-log', 'tok-a'), 202)
+            ->push(['error' => 'approval token expired'], 409, $this->wingsHeaders($this->node))
+            ->push($this->wingsStagedBody('import', 'state-log', 'tok-b'), 202),
+    ]);
+
+    $component = livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->callTableAction('wings_import', data: ['node' => $this->node->id, 'source' => 'url', 'url' => 'https://example.test/s.zip', 'signature' => 'c2ln'])
+        ->callMountedAction();
+
+    $component->dispatch('restage-wings-plugin', handle: wingsInstallRestageHandle(wingsInstallLastNotification()))
+        ->assertActionMounted('approveWingsPlugin');
+
+    $bodies = Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/api/plugins/import'))
+        ->map(fn (array $pair) => json_decode($pair[0]->body(), true))
+        ->values()
+        ->all();
+
+    expect($bodies[2])->toBe(['url' => 'https://example.test/s.zip', 'signature' => 'c2ln']);
+});
+
+it('stages again only once, and only for the admin who was refused', function () {
+    $this->fakeWingsNode($this->node, [], 'signed', [
+        '*/api/plugins/state-log/install' => Http::sequence()
+            ->push($this->wingsStagedBody('install', 'state-log', 'tok-old'), 202)
+            ->push(['error' => 'approval token expired'], 409, $this->wingsHeaders($this->node))
+            ->push($this->wingsStagedBody('install', 'state-log', 'tok-new'), 202),
     ]);
 
     livewire(ListPlugins::class)
         ->set('activeTab', 'wings')
         ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log'])
-        ->callMountedAction()
-        ->assertNotified(trans('admin/plugin.notifications.install_error'));
+        ->callMountedAction();
 
-    expect(trans('admin/plugin.wings.approval_invalid'))->toContain('Start again');
+    $handle = wingsInstallRestageHandle(wingsInstallLastNotification());
+
+    [$other] = generateTestAccount();
+    $other->syncRoles(Role::getRootAdmin());
+    $this->actingAs($other);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->dispatch('restage-wings-plugin', handle: $handle)
+        ->assertActionNotMounted('approveWingsPlugin')
+        ->assertNotified(trans('admin/plugin.wings.approval_missing'));
+
+    $this->actingAs($this->admin);
+
+    livewire(ListPlugins::class)->set('activeTab', 'wings')->dispatch('restage-wings-plugin', handle: $handle)->assertActionMounted('approveWingsPlugin');
+    livewire(ListPlugins::class)->set('activeTab', 'wings')->dispatch('restage-wings-plugin', handle: $handle)->assertActionNotMounted('approveWingsPlugin');
+
+    expect(Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/install')))->toHaveCount(3);
 });
 
 it('explains too many installs waiting on the node (429) and asks nothing to approve', function () {
@@ -263,7 +391,7 @@ it('imports from a url in two steps on a full node', function () {
         ])
         ->assertHasNoTableActionErrors()
         ->assertActionMounted('approveWingsPlugin')
-        ->assertMountedActionModalSee('Not signed by a key this node trusts')
+        ->assertMountedActionModalSee(trans('admin/plugin.wings.signed_no'))
         ->callMountedAction()
         ->assertNotified(trans('admin/plugin.notifications.installed'));
 

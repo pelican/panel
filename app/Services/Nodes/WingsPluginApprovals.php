@@ -20,15 +20,20 @@ final class WingsPluginApprovals
 {
     private const PREFIX = 'wings_plugins.approval.';
 
+    private const RESTAGE_PREFIX = 'wings_plugins.restage.';
+
     /** Wings keeps a stage for 10 minutes. */
     private const MAX_MINUTES = 10;
 
     /**
-     * Keeps a 202 answer and returns the handle to approve it with.
+     * Keeps a 202 answer and returns the handle to approve it with. $source is what the stage was made
+     * from (an install's registry, an import's URL), so it can be staged again; null when it can't be
+     * (an uploaded archive).
      *
      * @param  array<string, mixed>  $staged
+     * @param  array<string, string|null>|null  $source
      */
-    public function put(User $user, Node $node, string $action, ?string $pluginId, array $staged): string
+    public function put(User $user, Node $node, string $action, ?string $pluginId, array $staged, ?array $source = []): string
     {
         if (!in_array($action, DaemonPluginRepository::STAGED_ACTIONS, true)) {
             throw new InvalidArgumentException("Unknown plugin action \"$action\".");
@@ -68,11 +73,53 @@ final class WingsPluginApprovals
             ],
             'host_access' => self::strings($staged['host_access'] ?? []),
             'replaces' => is_string($staged['replaces'] ?? null) && $staged['replaces'] !== '' ? $staged['replaces'] : null,
+            // Only true when the archive's signature verified against a key the node trusts (A4)
             'signed' => ($staged['signed'] ?? false) === true,
             'expires_at' => $expiresAt->toIso8601String(),
+            'source' => $source,
         ], $expiresAt);
 
         return $handle;
+    }
+
+    /**
+     * Keeps what an approval the node refused was staged from, and returns the handle to stage it again
+     * with, or null when it can't be (an uploaded archive). The approval token is not kept.
+     *
+     * @param  array<string, mixed>  $pending
+     */
+    public function putRestage(User $user, array $pending): ?string
+    {
+        if (!is_array($pending['source'] ?? null)) {
+            return null;
+        }
+
+        $handle = Str::random(40);
+
+        cache()->put(self::RESTAGE_PREFIX . $user->id . '.' . $handle, [
+            'node_id' => $pending['node_id'],
+            'action' => $pending['action'],
+            'plugin_id' => $pending['plugin_id'],
+            'source' => $pending['source'],
+        ], now()->addMinutes(self::MAX_MINUTES));
+
+        return $handle;
+    }
+
+    /**
+     * What $user can stage again under $handle; it can only be taken once.
+     *
+     * @return array{node_id: int, action: string, plugin_id: ?string, source: array<string, string|null>}|null
+     */
+    public function pullRestage(User $user, string $handle): ?array
+    {
+        if (!self::isHandle($handle)) {
+            return null;
+        }
+
+        $restage = cache()->pull(self::RESTAGE_PREFIX . $user->id . '.' . $handle);
+
+        return is_array($restage) ? $restage : null;
     }
 
     /**
