@@ -11,7 +11,9 @@ use App\Services\Helpers\PluginRegistryService;
 use App\Services\Helpers\PluginService;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use GuzzleHttp\Psr7\Exception\TimeoutException;
 use GuzzleHttp\Psr7\PumpStream;
+use GuzzleHttp\RequestOptions;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
@@ -327,6 +329,51 @@ it('reads a registry response that fits the size cap whole', function () {
     Http::fake([REGISTRY_URL => Http::response(unsizedBody(1024 * 1024, $read))]);
 
     expect(registries()->fetch(REGISTRY_URL, null, 1024 * 1024))->toBe(str_repeat('a', 1024 * 1024));
+});
+
+it('gives the whole redirect chain one deadline instead of a fresh timeout per hop', function () {
+    $this->freezeTime();
+
+    $timeouts = [];
+    Http::fake(['*' => function (Request $request, array $options) use (&$timeouts) {
+        $timeouts[] = round($options['timeout'], 3);
+        $this->travel(6)->seconds();
+
+        return Http::response('', 302, ['Location' => $request->url() . 'x']);
+    }]);
+
+    expect(fn () => registries()->fetch(REGISTRY_HOST . '/r', null, 1024))->toThrow(RuntimeException::class, 'timed out');
+    expect($timeouts)->toEqual([15.0, 9.0, 3.0]);
+});
+
+it('fails a body that finishes arriving after the deadline', function () {
+    $this->freezeTime();
+
+    $chunks = 0;
+    Http::fake([REGISTRY_URL => Http::response(new PumpStream(function () use (&$chunks) {
+        if ($chunks++ === 2) {
+            return false;
+        }
+
+        $this->travel(10)->seconds();
+
+        return 'a';
+    }))]);
+
+    expect(fn () => registries()->fetch(REGISTRY_URL, null, 1024))->toThrow(RuntimeException::class, 'timed out');
+});
+
+it('stops a blocking body read at the deadline instead of waiting for the idle timeout', function () {
+    [$local, $remote] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+
+    $factory = PluginRegistryService::boundedOptions(1024, PluginRegistryService::deadline(0.3))[RequestOptions::STREAM_FACTORY];
+    $stream = $factory->createStreamFromResource($local);
+
+    $start = microtime(true);
+    expect(fn () => $stream->read(1024))->toThrow(TimeoutException::class);
+    expect(microtime(true) - $start)->toBeLessThan(2.0);
+
+    fclose($remote);
 });
 
 it('never sends credentials for url#name, even to a configured registry', function () {

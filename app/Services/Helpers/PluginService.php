@@ -566,13 +566,15 @@ class PluginService
         $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
         $tooLarge = new InvalidFileUploadException("Zip file too large. ($maxSizeLabel MiB)");
 
+        $deadline = PluginRegistryService::deadline(60);
+
         try {
-            $response = HubCredentials::request($url)->timeout(60)->connectTimeout(5)->withOptions(PluginRegistryService::boundedOptions($maxSize))->throw()->get($url);
+            $response = HubCredentials::request($url)->timeout(60)->connectTimeout(5)->withOptions(PluginRegistryService::boundedOptions($maxSize, $deadline))->throw()->get($url);
         } catch (ConnectionException|TransferException $exception) {
             throw PluginRegistryService::refusedAsTooLarge($exception) ? $tooLarge : $exception;
         }
 
-        $content = PluginRegistryService::readBody($response, $maxSize, microtime(true) + 60) ?? throw $tooLarge;
+        $content = PluginRegistryService::readBody($response, $maxSize, $deadline) ?? throw $tooLarge;
 
         // Any advertised checksum must match, including an empty or malformed one.
         if ($expectedSha256 !== null) {

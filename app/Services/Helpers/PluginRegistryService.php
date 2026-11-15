@@ -3,8 +3,10 @@
 namespace App\Services\Helpers;
 
 use GuzzleHttp\Exception\TransferException;
+use GuzzleHttp\Psr7\Exception\TimeoutException;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
+use GuzzleHttp\RequestOptions;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
@@ -98,7 +100,8 @@ class PluginRegistryService
     /**
      * Downloads a registry URL or an archive: https on every hop, at most MAX_REDIRECTS redirects, and the
      * namespace's credentials only on requests to that registry's own origin (scheme, host and port). Once a
-     * redirect leaves that origin the credentials are gone for the rest of the chain.
+     * redirect leaves that origin the credentials are gone for the rest of the chain. $timeout covers the whole
+     * chain: every request and every body read gets only what is left of it.
      *
      * @throws RuntimeException
      */
@@ -121,7 +124,7 @@ class PluginRegistryService
             $credentialOrigin = self::origin($registry['url']);
         }
 
-        $deadline = microtime(true) + $timeout;
+        $deadline = self::deadline($timeout);
 
         for ($redirects = 0; ; $redirects++) {
             $origin = self::origin($url) ?? throw new RuntimeException(trans('admin/plugin.registry.https_only', ['url' => $url]));
@@ -130,12 +133,17 @@ class PluginRegistryService
                 $credentials = [];
             }
 
+            $remaining = $deadline - self::now();
+            if ($remaining <= 0) {
+                throw self::timedOut($url);
+            }
+
             try {
                 $response = Http::withHeaders($credentials)
                     ->withoutRedirecting()
-                    ->timeout($timeout)
-                    ->connectTimeout(5)
-                    ->withOptions(self::boundedOptions($maxBytes))
+                    ->timeout($remaining)
+                    ->connectTimeout(min(5, $remaining))
+                    ->withOptions(self::boundedOptions($maxBytes, $deadline))
                     ->get($url);
             } catch (ConnectionException|TransferException $exception) {
                 if (self::refusedAsTooLarge($exception)) {
@@ -166,20 +174,33 @@ class PluginRegistryService
                 throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => 'HTTP ' . $exception->response->status()]), previous: $exception);
             }
 
-            return self::readBody($response, $maxBytes, $deadline)
+            return self::readBody($response, $maxBytes, $deadline, $url)
                 ?? throw new RuntimeException(trans('admin/plugin.registry.too_large', ['url' => $url]));
         }
     }
 
+    /** The clock of every download deadline, in seconds; the test clock when time is frozen in tests. */
+    public static function now(): float
+    {
+        return (float) now()->format('U.u');
+    }
+
+    /** The deadline of a download that may take $seconds from now, for boundedOptions() and readBody(). */
+    public static function deadline(float $seconds): float
+    {
+        return self::now() + $seconds;
+    }
+
     /**
      * Guzzle options for a download whose body is read with readBody(): the body is streamed instead of
-     * buffered whole, and one that announces more than $maxBytes is refused from its headers (R2.4).
+     * buffered whole, and one that announces more than $maxBytes is refused from its headers (R2.4). With a
+     * $deadline (see deadline()), no read from the connection waits past it.
      *
      * @return array<string, mixed>
      */
-    public static function boundedOptions(int $maxBytes): array
+    public static function boundedOptions(int $maxBytes, ?float $deadline = null): array
     {
-        return [
+        $options = [
             'stream' => true,
             'on_headers' => function (ResponseInterface $response) use ($maxBytes) {
                 if ((int) $response->getHeaderLine('Content-Length') > $maxBytes) {
@@ -187,6 +208,12 @@ class PluginRegistryService
                 }
             },
         ];
+
+        if ($deadline !== null) {
+            $options[RequestOptions::STREAM_FACTORY] = new DeadlineStreamFactory($deadline);
+        }
+
+        return $options;
     }
 
     /** Whether a failed request was refused by boundedOptions() because its Content-Length was over the cap. */
@@ -206,10 +233,11 @@ class PluginRegistryService
      * bytes are ever read, whatever the server says or doesn't say about its length (R2.4). Null when the body
      * is larger than $maxBytes.
      *
-     * @throws RuntimeException when $deadline (a microtime) passes before the body is read
+     * @throws RuntimeException when $deadline (see deadline()) passes before the whole body is read
      */
-    public static function readBody(Response $response, int $maxBytes, float $deadline): ?string
+    public static function readBody(Response $response, int $maxBytes, float $deadline, ?string $url = null): ?string
     {
+        $url ??= (string) $response->effectiveUri();
         $stream = $response->toPsrResponse()->getBody();
 
         if ((int) $response->header('Content-Length') > $maxBytes) {
@@ -226,13 +254,17 @@ class PluginRegistryService
         $body = '';
 
         while (!$stream->eof()) {
-            if (microtime(true) > $deadline) {
+            try {
+                // Checked after the read as well: a read can block, and a body that arrives late is still late.
+                self::assertBefore($deadline, $url);
+                $chunk = $stream->read(min(64 * 1024, $maxBytes - strlen($body) + 1));
+                self::assertBefore($deadline, $url);
+            } catch (RuntimeException $exception) {
                 $stream->close();
 
-                throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => (string) $response->effectiveUri(), 'error' => 'timed out']));
+                throw $exception instanceof TimeoutException ? self::timedOut($url) : $exception;
             }
 
-            $chunk = $stream->read(min(64 * 1024, $maxBytes - strlen($body) + 1));
             if ($chunk === '') {
                 break;
             }
@@ -248,6 +280,19 @@ class PluginRegistryService
         }
 
         return $body;
+    }
+
+    /** @throws RuntimeException */
+    private static function assertBefore(float $deadline, string $url): void
+    {
+        if (self::now() >= $deadline) {
+            throw self::timedOut($url);
+        }
+    }
+
+    private static function timedOut(string $url): RuntimeException
+    {
+        return new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => 'timed out']));
     }
 
     /**
