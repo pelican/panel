@@ -327,3 +327,31 @@ it('reports a settings failure without fields as a notification', function () {
         ->callTableAction('exclude_settings', "{$this->node->id}:notify", ['webhook_url' => '********'])
         ->assertNotified(trans('admin/plugin.notifications.settings_error'));
 });
+
+it('keeps numbers past the integer range as the number entered', function () {
+    $this->fakeWingsNode($this->node, [$this->wingsPlugin('notify', ['settings' => wingsActionsSettingsSchema()], [
+        'can_configure' => true, 'values' => ['webhook_url' => '********'],
+    ])], more: [
+        '*/api/plugins/notify/settings' => Http::response(['status' => 'saved', 'values' => []]),
+    ]);
+
+    // 2^63: one past PHP_INT_MAX, which compares equal to it once both are floats
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->callTableAction('exclude_settings', "{$this->node->id}:notify", [
+            'webhook_url' => '********',
+            'ratio' => 9223372036854775808.0,
+            'retries' => '9223372036854775808',
+        ])
+        ->assertHasNoTableActionErrors();
+
+    Http::assertSent(function (Request $request) {
+        if ($request->method() !== 'PUT') {
+            return false;
+        }
+        $body = json_decode($request->body(), true);
+
+        return is_float($body['ratio'] ?? null) && $body['ratio'] === 9223372036854775808.0
+            && is_float($body['retries'] ?? null) && $body['retries'] === 9223372036854775808.0;
+    });
+});

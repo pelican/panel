@@ -778,7 +778,8 @@ class WingsPlugin extends Plugin
 
         // Filament's numeric input gives 3.0 for "3"; both are the JSON number 3
         if (is_float($value)) {
-            return is_finite($value) && floor($value) === $value && abs($value) <= PHP_INT_MAX ? (int) $value : $value;
+            // Strictly below: PHP_INT_MAX as a float rounds up to 2^63, which (int) can't hold
+            return is_finite($value) && floor($value) === $value && abs($value) < PHP_INT_MAX ? (int) $value : $value;
         }
 
         if (!is_string($value) || trim($value) === '') {
@@ -791,7 +792,10 @@ class WingsPlugin extends Plugin
             return $value;
         }
 
-        return preg_match('/^-?\d+$/', $value) ? (int) $value : (float) $value;
+        // An integer string past the int range would silently become PHP_INT_MAX with (int)
+        $int = filter_var($value, FILTER_VALIDATE_INT);
+
+        return $int !== false ? $int : (float) $value;
     }
 
     /** @param  array<mixed>  $setting */
