@@ -1,0 +1,681 @@
+<?php
+
+use App\Enums\PluginStatus;
+use App\Filament\Admin\Resources\Plugins\Pages\ListPlugins;
+use App\Jobs\Plugin\InstallPlugin;
+use App\Models\Plugin;
+use App\Models\Role;
+use App\Models\User;
+use App\Services\Helpers\PluginRegistryConfig;
+use App\Services\Helpers\PluginRegistryService;
+use App\Services\Helpers\PluginService;
+use Filament\Actions\Testing\TestAction;
+use Filament\Facades\Filament;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+use function Pest\Livewire\livewire;
+
+// pelican/wings plugin contract v1, section R, for Panel plugins. All HTTP is faked.
+
+const REGISTRY_URL = 'https://registry.example.test/registry.json';
+const REGISTRY_HOST = 'https://registry.example.test';
+const OTHER_REGISTRY_URL = 'https://other.example.test/registry.json';
+const CDN_HOST = 'https://cdn.example.test';
+
+beforeEach(function () {
+    config()->set('panel.plugin.registries', []);
+    config()->set('panel.plugin.trusted_keys');
+    config()->set('panel.plugin.require_signatures', false);
+});
+
+afterEach(function () {
+    Filament::setCurrentPanel(null);
+
+    foreach ([...File::glob(plugin_path('reg-*')), ...File::glob(plugin_path('.reg-*')), ...File::glob(plugin_path('.import-*'))] as $dir) {
+        File::deleteDirectory($dir);
+    }
+
+    Plugin::refreshRows();
+});
+
+/**
+ * A plugin zip as a registry would serve it.
+ *
+ * @param  array<string, mixed>  $manifest
+ */
+function registryZip(string $id, string $version = '1.0.0', array $manifest = [], bool $symlink = false): string
+{
+    $dir = TemporaryDirectory::make();
+    $path = $dir->path('plugin.zip');
+
+    $zip = new ZipArchive();
+    $zip->open($path, ZipArchive::CREATE);
+    $zip->addFromString("$id/plugin.json", json_encode([
+        'id' => $id,
+        'name' => 'Registry Test Plugin',
+        'author' => 'Example',
+        'version' => $version,
+        'category' => 'plugin',
+        'namespace' => 'RegistryTestPlugin',
+        'class' => 'RegistryTestPlugin',
+        ...$manifest,
+    ]));
+
+    if ($symlink) {
+        $zip->addFromString("$id/escape", '/etc/passwd');
+        $zip->setExternalAttributesName("$id/escape", ZipArchive::OPSYS_UNIX, 0120777 << 16);
+    }
+
+    $zip->close();
+
+    $bytes = file_get_contents($path);
+    $dir->delete();
+
+    return $bytes;
+}
+
+/**
+ * A `target: "panel"` registry entry for the given archive.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function panelEntry(string $name, string $archive, array $overrides = []): array
+{
+    return [
+        'name' => $name,
+        'version' => '1.0.0',
+        'target' => 'panel',
+        'author' => 'Example',
+        'description' => 'A plugin from a registry',
+        'download' => REGISTRY_HOST . "/plugins/$name.zip",
+        'sha256' => hash('sha256', $archive),
+        ...$overrides,
+    ];
+}
+
+/**
+ * Configures PANEL_PLUGIN_REGISTRIES the way the config file does, with the given environment.
+ *
+ * @param  array<string, mixed>  $registries
+ * @param  array<string, string>  $env
+ */
+function configureRegistries(array $registries, array $env = []): void
+{
+    config()->set('panel.plugin.registries', PluginRegistryConfig::parse(json_encode($registries), fn (string $name) => $env[$name] ?? null));
+}
+
+function registries(): PluginRegistryService
+{
+    return app(PluginRegistryService::class);
+}
+
+/** @return array{public: string, secret: string} base64 public key and raw secret key, made up for the test */
+function testSigningKey(): array
+{
+    $pair = sodium_crypto_sign_keypair();
+
+    return ['public' => base64_encode(sodium_crypto_sign_publickey($pair)), 'secret' => sodium_crypto_sign_secretkey($pair)];
+}
+
+function signArchive(string $archive, string $secret): string
+{
+    return base64_encode(sodium_crypto_sign_detached(hash('sha256', $archive, true), $secret));
+}
+
+/** The recorded requests to URLs starting with the prefix. */
+function requestsTo(string $prefix): array
+{
+    return collect(Http::recorded())
+        ->map(fn (array $pair) => $pair[0])
+        ->filter(fn (Request $request) => str_starts_with($request->url(), $prefix))
+        ->values()
+        ->all();
+}
+
+// R1: the document
+
+it('uses only target panel entries, treats a missing target as wings and ignores unknown fields', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-panel');
+
+    Http::fake([REGISTRY_URL => Http::response([
+        'name' => 'Acme',
+        'future_field' => ['anything'],
+        'plugins' => [
+            ['name' => 'reg-old', 'version' => '1.0.0', 'download' => REGISTRY_HOST . '/a.zip', 'sha256' => str_repeat('a', 64)],
+            panelEntry('reg-wings', $archive, ['target' => 'wings', 'capability' => 'events', 'minWings' => '1.0.0']),
+            panelEntry('reg-panel', $archive, ['unknown' => 'ignored', 'capability' => 'events', 'panel_version' => '^1.0']),
+            'not an entry',
+            ['version' => '1.0.0', 'target' => 'panel'],
+        ],
+    ])]);
+
+    $plugin = registries()->resolve('@acme/reg-panel');
+
+    expect($plugin->name)->toBe('reg-panel')
+        ->and($plugin->version)->toBe('1.0.0')
+        ->and($plugin->author)->toBe('Example')
+        ->and($plugin->panelVersion)->toBe('^1.0')
+        ->and($plugin->registryName)->toBe('Acme')
+        ->and($plugin->source())->toBe('Acme, @acme (' . REGISTRY_URL . ')');
+
+    expect(fn () => registries()->resolve('@acme/reg-old'))->toThrow(RuntimeException::class, 'doesn\'t list a Panel plugin named "reg-old"')
+        ->and(fn () => registries()->resolve('@acme/reg-wings'))->toThrow(RuntimeException::class, 'doesn\'t list a Panel plugin named "reg-wings"');
+});
+
+it('accepts an empty plugins list but not a missing or null one', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    Http::fakeSequence(REGISTRY_URL)
+        ->push(['name' => 'Acme', 'plugins' => []])
+        ->push(['name' => 'Acme', 'plugins' => null])
+        ->push(['name' => 'Acme']);
+
+    expect(fn () => registries()->resolve('@acme/reg-x'))->toThrow(RuntimeException::class, 'doesn\'t list')
+        ->and(fn () => registries()->resolve('@acme/reg-x'))->toThrow(RuntimeException::class, 'is not a plugin registry')
+        ->and(fn () => registries()->resolve('@acme/reg-x'))->toThrow(RuntimeException::class, 'is not a plugin registry');
+});
+
+it('refuses an entry without a valid sha256, https download or safe name', function (array $overrides, string $name, string $reason) {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    Http::fake([REGISTRY_URL => Http::response(['plugins' => [panelEntry($name, 'zip', $overrides)]])]);
+
+    expect(fn () => registries()->resolve("@acme/$name"))->toThrow(RuntimeException::class, "has no valid $reason");
+})->with([
+    'missing sha256' => [['sha256' => null], 'reg-a', 'sha256'],
+    'short sha256' => [['sha256' => 'abc'], 'reg-a', 'sha256'],
+    'http download' => [['download' => 'http://registry.example.test/a.zip'], 'reg-a', 'download'],
+    'missing version' => [['version' => ''], 'reg-a', 'version'],
+    'name with a dot dot' => [[], 'reg..a', 'name'],
+    'name starting with a dot' => [[], '.reg-a', 'name'],
+]);
+
+// R2: fetching and downloading
+
+it('sends the token and headers to the registry origin only', function () {
+    configureRegistries(['acme' => [
+        'url' => REGISTRY_URL,
+        'token' => '${ACME_TOKEN}',
+        'headers' => ['X-Api-Key' => '${ACME_KEY}'],
+    ]], ['ACME_TOKEN' => 'test-token', 'ACME_KEY' => 'test-key']);
+
+    Http::fake(['*' => Http::response('ok')]);
+
+    registries()->fetch(REGISTRY_HOST . '/plugins/a.zip', 'acme', 1024);
+    registries()->fetch(CDN_HOST . '/plugins/a.zip', 'acme', 1024);
+    registries()->fetch('https://registry.example.test:8443/plugins/a.zip', 'acme', 1024);
+    registries()->fetch('https://evil.registry.example.test/plugins/a.zip', 'acme', 1024);
+
+    [$own] = requestsTo(REGISTRY_HOST . '/');
+    expect($own->header('Authorization'))->toBe(['Bearer test-token'])
+        ->and($own->header('X-Api-Key'))->toBe(['test-key']);
+
+    foreach ([...requestsTo(CDN_HOST), ...requestsTo('https://registry.example.test:8443'), ...requestsTo('https://evil.')] as $request) {
+        expect($request->hasHeader('Authorization'))->toBeFalse()
+            ->and($request->hasHeader('X-Api-Key'))->toBeFalse();
+    }
+
+    expect(Http::recorded())->toHaveCount(4);
+});
+
+it('drops the credentials for the rest of a redirect chain once it leaves the registry host', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL, 'token' => 'test-token']]);
+
+    Http::fake([
+        REGISTRY_HOST . '/start.zip' => Http::response('', 302, ['Location' => CDN_HOST . '/hop.zip']),
+        CDN_HOST . '/hop.zip' => Http::response('', 302, ['Location' => REGISTRY_HOST . '/final.zip']),
+        REGISTRY_HOST . '/final.zip' => Http::response('archive'),
+    ]);
+
+    expect(registries()->fetch(REGISTRY_HOST . '/start.zip', 'acme', 1024))->toBe('archive');
+
+    $requests = collect(Http::recorded())->map(fn (array $pair) => $pair[0]);
+    expect($requests->map(fn (Request $request) => $request->url())->all())->toBe([REGISTRY_HOST . '/start.zip', CDN_HOST . '/hop.zip', REGISTRY_HOST . '/final.zip'])
+        ->and($requests->map(fn (Request $request) => $request->hasHeader('Authorization'))->all())->toBe([true, false, false]);
+});
+
+it('refuses a redirect to http and never requests it', function () {
+    Http::fake([
+        REGISTRY_URL => Http::response('', 301, ['Location' => 'http://registry.example.test/registry.json']),
+        'http://*' => Http::response(['plugins' => []]),
+    ]);
+
+    expect(fn () => registries()->resolve(REGISTRY_URL . '#reg-a'))->toThrow(RuntimeException::class, 'must use https');
+
+    Http::assertNotSent(fn (Request $request) => str_starts_with($request->url(), 'http://'));
+});
+
+it('refuses an http registry url', function () {
+    Http::fake();
+
+    expect(fn () => registries()->resolve('http://registry.example.test/registry.json#reg-a'))->toThrow(RuntimeException::class, 'must use https');
+
+    Http::assertNothingSent();
+});
+
+it('follows at most 10 redirects', function () {
+    Http::fake(['*' => fn (Request $request) => Http::response('', 302, ['Location' => $request->url() . 'x'])]);
+
+    expect(fn () => registries()->fetch(REGISTRY_HOST . '/r', null, 1024))->toThrow(RuntimeException::class, 'Stopped following redirects');
+    expect(Http::recorded())->toHaveCount(11);
+});
+
+it('never sends credentials for url#name, even to a configured registry', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL, 'token' => 'test-token']]);
+
+    $archive = registryZip('reg-url');
+    Http::fake([REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-url', $archive)]])]);
+
+    $plugin = registries()->resolve(REGISTRY_URL . '#reg-url');
+
+    expect($plugin->namespace)->toBeNull()
+        ->and($plugin->reference())->toBe(REGISTRY_URL . '#reg-url');
+    Http::assertSent(fn (Request $request) => !$request->hasHeader('Authorization'));
+});
+
+it('refuses an archive whose sha256 does not match before extracting it', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-tampered');
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-tampered', $archive, ['sha256' => hash('sha256', 'something else')])]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    $plugin = registries()->resolve('@acme/reg-tampered');
+
+    expect(fn () => app(PluginService::class)->downloadPluginFromRegistry($plugin))->toThrow(Exception::class, 'does not match the checksum');
+    expect(plugin_path('reg-tampered'))->not->toBeDirectory()
+        ->and(File::glob(plugin_path('.import-*')))->toBe([]);
+});
+
+it('installs a signed archive whose signature verifies against a trusted key', function () {
+    $key = testSigningKey();
+    config()->set('panel.plugin.trusted_keys', 'other:' . base64_encode(random_bytes(32)) . ', release:' . $key['public']);
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-signed');
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-signed', $archive, ['signature' => signArchive($archive, $key['secret'])])]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    expect(app(PluginService::class)->downloadPluginFromRegistry(registries()->resolve('@acme/reg-signed')))->toBe('reg-signed')
+        ->and(plugin_path('reg-signed', 'plugin.json'))->toBeFile();
+});
+
+it('refuses a signature that does not verify, even when signatures are not required', function (?string $trustedKeys) {
+    config()->set('panel.plugin.trusted_keys', $trustedKeys);
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-forged');
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-forged', $archive, ['signature' => signArchive($archive, testSigningKey()['secret'])])]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    expect(fn () => app(PluginService::class)->downloadPluginFromRegistry(registries()->resolve('@acme/reg-forged')))->toThrow(RuntimeException::class, 'does not match any trusted key');
+    expect(plugin_path('reg-forged'))->not->toBeDirectory();
+})->with([
+    'another trusted key' => fn () => testSigningKey()['public'],
+    'no trusted keys' => null,
+]);
+
+it('refuses an unsigned archive only when signatures are required', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-unsigned');
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-unsigned', $archive)]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    $plugin = registries()->resolve('@acme/reg-unsigned');
+
+    config()->set('panel.plugin.require_signatures', true);
+    expect(fn () => app(PluginService::class)->downloadPluginFromRegistry($plugin))->toThrow(RuntimeException::class, 'requires signed plugins');
+    expect(plugin_path('reg-unsigned'))->not->toBeDirectory();
+
+    config()->set('panel.plugin.require_signatures', false);
+    expect(app(PluginService::class)->downloadPluginFromRegistry($plugin))->toBe('reg-unsigned');
+});
+
+it('refuses an archive that is not exactly what the entry says', function (string $archive, string $message) {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-mismatch', $archive)]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    expect(fn () => app(PluginService::class)->downloadPluginFromRegistry(registries()->resolve('@acme/reg-mismatch')))->toThrow(Exception::class, $message);
+    expect(plugin_path('reg-mismatch'))->not->toBeDirectory();
+})->with([
+    'another plugin' => fn () => [registryZip('reg-other'), 'is for plugin "reg-other"'],
+    'another version' => fn () => [registryZip('reg-mismatch', '2.0.0'), 'is version "2.0.0", not "1.0.0"'],
+    'a symlink' => fn () => [registryZip('reg-mismatch', symlink: true), 'symbolic link'],
+    'a tar.gz' => fn () => [gzencode('tar'), '.tar.gz'],
+    'not an archive' => fn () => ['<html>', 'not a zip'],
+]);
+
+it('refuses a plugin that needs another panel version before downloading it', function () {
+    config()->set('app.version', '1.2.0');
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-future');
+    Http::fake([REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-future', $archive, ['panel_version' => '^2.0'])]])]);
+
+    expect(fn () => app(PluginService::class)->downloadPluginFromRegistry(registries()->resolve('@acme/reg-future')))->toThrow(Exception::class, 'needs Panel version ^2.0');
+    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/plugins/'));
+});
+
+it('reads ${NAME} from the environment and never keeps a registry with an unset one usable', function () {
+    $registries = PluginRegistryConfig::parse(json_encode([
+        'acme' => ['url' => REGISTRY_URL, 'token' => 'pre-${ACME_TOKEN}', 'headers' => ['X-Key' => '${ACME_KEY}']],
+        'broken' => ['url' => OTHER_REGISTRY_URL, 'token' => '${MISSING_TOKEN}'],
+        'plain' => ['url' => 'http://insecure.example.test/registry.json'],
+        'Bad Namespace' => ['url' => REGISTRY_URL],
+    ]), fn (string $name) => ['ACME_TOKEN' => 'test-token', 'ACME_KEY' => 'test-key'][$name] ?? null);
+
+    expect($registries['acme'])->toBe(['url' => REGISTRY_URL, 'token' => 'pre-test-token', 'headers' => ['X-Key' => 'test-key'], 'error' => null])
+        ->and($registries['broken']['error'])->toBe('Environment variable(s) not set: MISSING_TOKEN.')
+        ->and($registries['broken']['token'])->toBeNull()
+        ->and($registries['plain']['error'])->toBe('The registry url must be https.')
+        ->and($registries['Bad Namespace']['error'])->toContain('namespace');
+
+    expect(PluginRegistryConfig::parse(null, fn () => null))->toBe([])
+        ->and(PluginRegistryConfig::parse('', fn () => null))->toBe([])
+        ->and(PluginRegistryConfig::parse('{not json', fn () => null))->toBeString()
+        ->and(PluginRegistryConfig::parse('[{"url": "https://x"}]', fn () => null))->toBeString();
+});
+
+it('refuses to use a registry whose config is broken', function () {
+    config()->set('panel.plugin.registries', PluginRegistryConfig::parse('{not json', fn () => null));
+    Http::fake();
+
+    expect(registries()->hasRegistries())->toBeTrue()
+        ->and(fn () => registries()->resolve('reg-a'))->toThrow(RuntimeException::class, 'must be a JSON object');
+
+    Http::assertNothingSent();
+});
+
+// R3: choosing a registry
+
+it('refuses a bare name that more than one registry lists, and installs it by @namespace/name', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL], 'other' => ['url' => OTHER_REGISTRY_URL]]);
+
+    $archive = registryZip('reg-dup');
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-dup', $archive)]]),
+        OTHER_REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-dup', $archive, ['download' => 'https://other.example.test/reg-dup.zip'])]]),
+    ]);
+
+    expect(fn () => registries()->resolve('reg-dup'))->toThrow(RuntimeException::class, 'Choose one of: @acme/reg-dup, @other/reg-dup');
+
+    expect(registries()->resolve('@other/reg-dup')->download)->toBe('https://other.example.test/reg-dup.zip');
+});
+
+it('resolves a bare name listed by exactly one registry, ignoring Wings entries elsewhere', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL], 'other' => ['url' => OTHER_REGISTRY_URL]]);
+
+    $archive = registryZip('reg-one');
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-one', $archive, ['target' => 'wings'])]]),
+        OTHER_REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-one', $archive)]]),
+    ]);
+
+    expect(registries()->resolve('reg-one')->reference())->toBe('@other/reg-one');
+});
+
+it('refuses a bare name while any registry can\'t be read, but still installs by @namespace/name', function (Closure $breakAcme, string $message) {
+    $breakAcme();
+
+    $archive = registryZip('reg-hidden');
+    Http::fake([
+        REGISTRY_URL => Http::response('down', 500),
+        OTHER_REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-hidden', $archive)]]),
+    ]);
+
+    expect(fn () => registries()->resolve('reg-hidden'))->toThrow(RuntimeException::class, $message);
+    expect(registries()->resolve('@other/reg-hidden')->name)->toBe('reg-hidden');
+})->with([
+    'a server error' => [fn () => configureRegistries(['acme' => ['url' => REGISTRY_URL], 'other' => ['url' => OTHER_REGISTRY_URL]]), 'Could not read the plugin registry "acme"'],
+    'an unset variable' => [fn () => configureRegistries(['acme' => ['url' => REGISTRY_URL, 'token' => '${UNSET}'], 'other' => ['url' => OTHER_REGISTRY_URL]]), 'not set: UNSET'],
+]);
+
+it('refuses an unknown namespace, a malformed reference and a bare name without registries', function () {
+    Http::fake();
+
+    expect(fn () => registries()->resolve('reg-a'))->toThrow(RuntimeException::class, 'No plugin registries are configured');
+
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    expect(fn () => registries()->resolve('@nope/reg-a'))->toThrow(RuntimeException::class, 'namespace "nope"')
+        ->and(fn () => registries()->resolve('@acme'))->toThrow(RuntimeException::class, 'not a valid plugin reference');
+
+    Http::assertNothingSent();
+});
+
+// R4: update manifests
+
+function updatablePlugin(string $id, string $updateUrl): Plugin
+{
+    config()->set('app.version', '1.0.0');
+
+    File::ensureDirectoryExists(plugin_path($id));
+    File::put(plugin_path($id, 'plugin.json'), json_encode([
+        'id' => $id,
+        'name' => 'Registry Test Plugin',
+        'author' => 'Example',
+        'version' => '1.0.0',
+        'category' => 'plugin',
+        'update_url' => $updateUrl,
+        'namespace' => 'RegistryTestPlugin',
+        'class' => 'RegistryTestPlugin',
+    ]));
+
+    Plugin::refreshRows();
+
+    return Plugin::findOrFail($id);
+}
+
+it('reads update manifests in the plain shape and the Hub shape', function (array $manifest, ?string $signature) {
+    $plugin = updatablePlugin('reg-update', 'https://updates.example.test/reg-update.json');
+
+    Http::fake(['https://updates.example.test/*' => Http::response($manifest)]);
+
+    expect($plugin->isUpdateAvailable())->toBeTrue()
+        ->and($plugin->getUpdateDownload())->toBe(['url' => 'https://updates.example.test/reg-update-2.0.0.zip', 'sha256' => str_repeat('b', 64), 'signature' => $signature]);
+})->with([
+    'plain' => [['version' => '2.0.0', 'download' => 'https://updates.example.test/reg-update-2.0.0.zip', 'sha256' => str_repeat('b', 64), 'signature' => 'c2ln', 'future' => true], 'c2ln'],
+    'hub' => [['*' => ['version' => '2.0.0', 'download_url' => 'https://updates.example.test/reg-update-2.0.0.zip', 'channel' => 'stable', 'sha256' => str_repeat('b', 64)]], null],
+    'keyed by plugin id' => [['reg-update' => ['version' => '2.0.0', 'download' => 'https://updates.example.test/reg-update-2.0.0.zip', 'sha256' => str_repeat('b', 64)]], null],
+]);
+
+it('treats an empty update manifest as no release', function (mixed $manifest) {
+    $plugin = updatablePlugin('reg-update', 'https://updates.example.test/reg-update.json');
+
+    Http::fake(['https://updates.example.test/*' => Http::response($manifest)]);
+
+    expect($plugin->isUpdateAvailable())->toBeFalse()
+        ->and($plugin->getUpdateDownload())->toBeNull();
+})->with([
+    'empty list' => [[]],
+    'empty object' => ['{}'],
+    'not an object' => ['"nope"'],
+]);
+
+it('verifies the signature of a signed update', function () {
+    Process::fake();
+    $key = testSigningKey();
+    config()->set('panel.plugin.trusted_keys', $key['public']);
+
+    $plugin = updatablePlugin('reg-update', 'https://updates.example.test/reg-update.json');
+    $archive = registryZip('reg-update', '2.0.0', ['update_url' => 'https://updates.example.test/reg-update.json']);
+
+    $signature = signArchive($archive, testSigningKey()['secret']);
+    Http::fake([
+        'https://updates.example.test/reg-update.json' => function () use (&$signature, $archive) {
+            return Http::response(['version' => '2.0.0', 'download' => 'https://updates.example.test/reg-update-2.0.0.zip', 'sha256' => hash('sha256', $archive), 'signature' => $signature]);
+        },
+        'https://updates.example.test/reg-update-2.0.0.zip' => Http::response($archive),
+    ]);
+
+    expect(fn () => app(PluginService::class)->updatePlugin($plugin))->toThrow(RuntimeException::class, 'does not match any trusted key');
+    expect(File::json(plugin_path('reg-update', 'plugin.json'))['version'])->toBe('1.0.0');
+
+    cache()->forget('plugins.reg-update.update');
+    $signature = signArchive($archive, $key['secret']);
+
+    expect(app(PluginService::class)->updatePlugin($plugin)->version)->toBe('2.0.0');
+});
+
+// The install command
+
+it('shows the registry entry and installs it only after the admin confirms', function () {
+    Process::fake();
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-cli');
+    Http::fake([
+        REGISTRY_URL => Http::response(['name' => 'Acme', 'plugins' => [panelEntry('reg-cli', $archive)]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    $question = 'Install this plugin? It runs inside the panel, so only install plugins from authors you trust.';
+
+    $this->artisan('p:plugin:install', ['id' => '@acme/reg-cli'])
+        ->expectsOutputToContain('Acme, @acme (' . REGISTRY_URL . ')')
+        ->expectsConfirmation($question, 'no')
+        ->expectsOutput('Nothing was installed.')
+        ->assertSuccessful();
+
+    expect(plugin_path('reg-cli'))->not->toBeDirectory();
+    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/plugins/'));
+
+    $this->artisan('p:plugin:install', ['id' => 'reg-cli'])
+        ->expectsConfirmation($question, 'yes')
+        ->expectsOutput('Plugin installed and enabled.')
+        ->assertSuccessful();
+
+    Plugin::refreshRows();
+    expect(Plugin::findOrFail('reg-cli')->status)->toBe(PluginStatus::Enabled);
+});
+
+it('keeps the install command as it was for panels without registries', function () {
+    Http::fake();
+
+    $this->artisan('p:plugin:install', ['id' => 'reg-not-here'])
+        ->expectsOutput('Plugin does not exist!')
+        ->assertSuccessful();
+
+    Http::assertNothingSent();
+});
+
+// The admin UI
+
+function registryAdmin(): void
+{
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+
+    $admin = User::factory()->create();
+    test()->actingAs($admin->syncRoles(Role::getRootAdmin()));
+}
+
+it('only offers registry installs when a registry is configured', function () {
+    registryAdmin();
+
+    livewire(ListPlugins::class)->assertActionHidden(TestAction::make('install_from_registry')->table());
+
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    livewire(ListPlugins::class)->assertActionVisible(TestAction::make('install_from_registry')->table());
+});
+
+it('installs from a registry what the admin reviewed, and nothing else', function () {
+    Queue::fake();
+    registryAdmin();
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-ui');
+    $entry = panelEntry('reg-ui', $archive);
+    Http::fake([
+        REGISTRY_URL => function () use (&$entry) {
+            return Http::response(['name' => 'Acme', 'plugins' => [$entry]]);
+        },
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    $approved = [
+        'name' => 'reg-ui',
+        'version' => '1.0.0',
+        'author' => 'Example',
+        'description' => 'A plugin from a registry',
+        'source' => 'Acme, @acme (' . REGISTRY_URL . ')',
+        'download' => REGISTRY_HOST . '/plugins/reg-ui.zip',
+        'sha256' => hash('sha256', $archive),
+        'signed' => 'no',
+        'panel_version' => null,
+    ];
+
+    // The registry changed after the admin reviewed it: nothing is downloaded.
+    $entry = panelEntry('reg-ui', $archive, ['version' => '1.0.1']);
+
+    livewire(ListPlugins::class)
+        ->callAction(TestAction::make('install_from_registry')->table(), data: ['reference' => '@acme/reg-ui', 'approved' => $approved])
+        ->assertNotified(trans('admin/plugin.notifications.install_error'));
+
+    expect(plugin_path('reg-ui'))->not->toBeDirectory();
+    Queue::assertNothingPushed();
+
+    $entry = panelEntry('reg-ui', $archive);
+
+    livewire(ListPlugins::class)
+        ->callAction(TestAction::make('install_from_registry')->table(), data: ['reference' => '@acme/reg-ui', 'approved' => $approved])
+        ->assertNotified(trans('admin/plugin.notifications.install_started'));
+
+    expect(plugin_path('reg-ui', 'plugin.json'))->toBeFile();
+    Queue::assertPushed(InstallPlugin::class, fn (InstallPlugin $job) => $job->pluginId === 'reg-ui' && !$job->reinstall);
+});
+
+it('walks the admin through resolving, reviewing and installing a registry plugin', function () {
+    Queue::fake();
+    registryAdmin();
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-wizard');
+    Http::fake([
+        REGISTRY_URL => Http::response(['name' => 'Acme', 'plugins' => [panelEntry('reg-wizard', $archive, ['author' => 'Wizard Author'])]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    livewire(ListPlugins::class)
+        ->mountAction(TestAction::make('install_from_registry')->table())
+        ->fillForm(['reference' => '@acme/nope'])
+        ->goToNextWizardStep()
+        ->assertNotified(trans('admin/plugin.notifications.install_error'))
+        ->assertWizardCurrentStep(1)
+        ->fillForm(['reference' => '@acme/reg-wizard'])
+        ->goToNextWizardStep()
+        ->assertWizardCurrentStep(2)
+        // The review step shows what the server resolved, before anything is downloaded.
+        ->assertSchemaComponentStateSet('approved_author', 'Wizard Author')
+        ->assertSchemaComponentStateSet('approved_source', 'Acme, @acme (' . REGISTRY_URL . ')')
+        ->assertSchemaComponentStateSet('approved_sha256', hash('sha256', $archive))
+        ->assertSchemaComponentStateSet('approved_signed', trans('admin/plugin.registry.unsigned'))
+        ->assertSchemaComponentHidden('approved_replaces')
+        ->tap(fn () => Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/plugins/')))
+        ->callMountedAction()
+        ->assertNotified(trans('admin/plugin.notifications.install_started'));
+
+    expect(plugin_path('reg-wizard', 'plugin.json'))->toBeFile();
+    Queue::assertPushed(InstallPlugin::class, fn (InstallPlugin $job) => $job->pluginId === 'reg-wizard');
+});
