@@ -30,6 +30,9 @@ class ListPlugins extends ListRecords
 {
     protected static string $resource = PluginResource::class;
 
+    /** Binary files listed at approval; the rest are counted. */
+    private const BINARY_FILES_SHOWN = 20;
+
     private function isWingsTab(): bool
     {
         return $this->activeTab === 'wings';
@@ -84,7 +87,8 @@ class ListPlugins extends ListRecords
                     ? trans('admin/plugin.wings.approval_missing')
                     : trans("admin/plugin.wings.approve_heading_{$pending['action']}", ['name' => $pending['plugin']['name'], 'node' => $pending['node_name']]);
             })
-            ->modalDescription(trans('admin/plugin.wings.approve_description'))
+            // The disclosure every approval carries (contract v3.2, S), before anything is approved
+            ->modalDescription(fn (array $arguments, WingsPluginApprovals $approvals) => self::approvalDisclosure(user() ? $approvals->get(user(), (string) ($arguments['approval'] ?? '')) : null))
             ->modalIcon(TablerIcon::AlertTriangle)
             ->modalIconColor('warning')
             ->schema(fn (array $arguments, WingsPluginApprovals $approvals) => self::approvalSchema(user() ? $approvals->get(user(), (string) ($arguments['approval'] ?? '')) : null))
@@ -201,6 +205,11 @@ class ListPlugins extends ListRecords
         $plugin = $pending['plugin'];
         $list = fn (array $items) => $items === [] ? trans('admin/plugin.wings.none') : implode(', ', $items);
 
+        // A stage kept before this Panel knew contract v3.2 has none of these
+        $form = is_string($pending['form'] ?? null) ? $pending['form'] : null;
+        $binaryFiles = is_array($pending['binary_files'] ?? null) ? $pending['binary_files'] : [];
+        $runsAs = is_string($pending['runs_as'] ?? null) ? $pending['runs_as'] : null;
+
         return [
             TextEntry::make('node')->label(trans('admin/plugin.node'))->state($pending['node_name']),
             TextEntry::make('plugin')->label(trans('admin/plugin.name'))->state(trim($plugin['name'] . ' ' . ($plugin['version'] ?? ''))),
@@ -223,8 +232,63 @@ class ListPlugins extends ListRecords
                 ->label(trans('admin/plugin.wings.signed'))
                 ->state($pending['signed'] ? trans('admin/plugin.wings.signed_yes') : trans('admin/plugin.wings.signed_no'))
                 ->color($pending['signed'] ? 'success' : 'danger'),
+            // Source or binary, and the user it runs as (S); unknown when the node's Wings is older than v3.2
+            TextEntry::make('form')
+                ->label(trans('admin/plugin.wings.form'))
+                ->badge()
+                ->state(trans('admin/plugin.wings.form_' . ($form ?? 'unknown')))
+                ->helperText(trans('admin/plugin.wings.form_' . ($form ?? 'unknown') . '_help'))
+                ->color(match ($form) {
+                    'source' => 'success',
+                    'binary' => 'danger',
+                    default => 'warning',
+                }),
+            TextEntry::make('binary_files')
+                ->label(trans('admin/plugin.wings.binary_files'))
+                ->visible($form === 'binary')
+                ->state(self::binaryFileLines($binaryFiles))
+                ->placeholder(trans('admin/plugin.wings.form_unknown'))
+                ->listWithLineBreaks(),
+            TextEntry::make('runs_as')
+                ->label(trans('admin/plugin.wings.runs_as'))
+                ->state($runsAs ?? trans('admin/plugin.wings.form_unknown'))
+                ->color($runsAs === null || $runsAs === 'root' ? 'danger' : null),
             TextEntry::make('expires_at')->label(trans('admin/plugin.wings.expires_at'))->state($pending['expires_at'])->dateTime(),
         ];
+    }
+
+    /**
+     * Contract S's sentence for the user the plugin runs as, and what neither side can promise.
+     *
+     * @param  array<string, mixed>|null  $pending
+     */
+    private static function approvalDisclosure(?array $pending): ?string
+    {
+        if ($pending === null) {
+            return null;
+        }
+
+        $runsAs = is_string($pending['runs_as'] ?? null) ? $pending['runs_as'] : null;
+
+        return trans('admin/plugin.wings.runs_as_sentence', ['user' => $runsAs ?? trans('admin/plugin.wings.runs_as_unknown_user')])
+            . ' ' . trans('admin/plugin.wings.not_guaranteed');
+    }
+
+    /**
+     * At most 20 binary files (as many as A3 lists), and how many more there are.
+     *
+     * @param  string[]  $files
+     * @return string[]
+     */
+    private static function binaryFileLines(array $files): array
+    {
+        $lines = array_slice($files, 0, self::BINARY_FILES_SHOWN);
+
+        if (count($files) > self::BINARY_FILES_SHOWN) {
+            $lines[] = trans('admin/plugin.wings.binary_files_more', ['count' => count($files) - self::BINARY_FILES_SHOWN]);
+        }
+
+        return $lines;
     }
 
     public function mount(): void

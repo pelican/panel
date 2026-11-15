@@ -36,6 +36,9 @@ use Throwable;
  * @property string|null $kind
  * @property string|null $wings_version
  * @property string|null $trust
+ * @property string|null $form
+ * @property string $binary_files
+ * @property string|null $runs_as
  * @property string $hooks
  * @property string $host_access
  * @property string $settings
@@ -62,6 +65,12 @@ class WingsPlugin extends Plugin
     private const STATUSES = ['enabled', 'disabled', 'errored'];
 
     private const TRUST = ['native', 'trusted', 'untrusted', 'changed'];
+
+    /** What a plugin's files are (contract v3.2, S and A3). */
+    private const FORMS = ['source', 'binary', 'native'];
+
+    /** Wings lists at most this many binary files (A3). */
+    private const BINARY_FILES_MAX = 20;
 
     /** Setting types of contract v3 (A3.1). */
     public const SETTING_TYPES = ['string', 'number', 'boolean', 'select'];
@@ -121,6 +130,9 @@ class WingsPlugin extends Plugin
             'status' => 'string',
             'status_message' => 'string',
             'trust' => 'string',
+            'form' => 'string',
+            'binary_files' => 'string',
+            'runs_as' => 'string',
             'load_order' => 'integer',
             'hooks' => 'string',
             'host_access' => 'string',
@@ -314,6 +326,12 @@ class WingsPlugin extends Plugin
 
         $flag = fn (string $key): int => ($meta[$key] ?? false) === true ? 1 : 0;
 
+        // Contract v3.2 (S): a Wings older than that sends none of these, which shows as unknown (null)
+        $form = in_array($meta['form'] ?? null, self::FORMS, true) ? $meta['form'] : null;
+        $binaryFiles = $form === 'binary' && is_array($meta['binary_files'] ?? null)
+            ? array_slice(array_values(array_filter($meta['binary_files'], 'is_string')), 0, self::BINARY_FILES_MAX)
+            : [];
+
         return [
             // Unique across nodes, as the same plugin is often installed on several
             'id' => $node->id . ':' . $id,
@@ -338,6 +356,9 @@ class WingsPlugin extends Plugin
             'status' => $status->value,
             'status_message' => self::string($meta, 'status_message') ?? self::string($meta, 'error'),
             'trust' => $trust,
+            'form' => $form,
+            'binary_files' => json_encode($binaryFiles, JSON_THROW_ON_ERROR),
+            'runs_as' => self::string($meta, 'runs_as'),
             'load_order' => 0,
 
             'hooks' => implode(',', array_filter($hooks, 'is_string')),
@@ -395,6 +416,9 @@ class WingsPlugin extends Plugin
             'status' => ($type === self::ROW_UNAVAILABLE ? PluginStatus::Unavailable : PluginStatus::Errored)->value,
             'status_message' => $message,
             'trust' => null,
+            'form' => null,
+            'binary_files' => '[]',
+            'runs_as' => null,
             'load_order' => 0,
             'hooks' => '',
             'host_access' => '',
@@ -469,6 +493,18 @@ class WingsPlugin extends Plugin
     public function hostAccessList(): array
     {
         return array_values(array_filter(explode(',', (string) $this->host_access)));
+    }
+
+    /**
+     * The plugin's non-text files, when Wings says it is binary (A3).
+     *
+     * @return string[]
+     */
+    public function binaryFileList(): array
+    {
+        $files = json_decode((string) $this->binary_files, true);
+
+        return is_array($files) ? array_values(array_filter($files, 'is_string')) : [];
     }
 
     /** @return array<int, array<string, mixed>> */

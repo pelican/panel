@@ -343,6 +343,28 @@ class PluginResource extends Resource
                     })
                     ->placeholder('-')
                     ->visible(fn ($livewire) => $livewire->activeTab === 'wings'),
+                // Source or binary, and the OS user it runs as (contract v3.2, S); unknown on an older Wings
+                TextColumn::make('form')
+                    ->label(trans('admin/plugin.wings.form'))
+                    ->badge()
+                    ->state(fn (Plugin $record) => $record instanceof WingsPlugin && $record->isPlugin() ? ($record->form ?? 'unknown') : null)
+                    ->formatStateUsing(fn (string $state) => trans("admin/plugin.wings.form_$state"))
+                    ->color(fn (?string $state) => match ($state) {
+                        'source' => 'success',
+                        'binary' => 'danger',
+                        default => 'gray',
+                    })
+                    ->tooltip(fn (Plugin $record) => $record instanceof WingsPlugin && $record->binaryFileList() !== []
+                        ? trans('admin/plugin.wings.binary_files') . ': ' . implode(', ', $record->binaryFileList())
+                        : null)
+                    ->placeholder('-')
+                    ->visible(fn ($livewire) => $livewire->activeTab === 'wings'),
+                TextColumn::make('runs_as')
+                    ->label(trans('admin/plugin.wings.runs_as'))
+                    ->state(fn (Plugin $record) => $record instanceof WingsPlugin && $record->isPlugin() ? ($record->runs_as ?? trans('admin/plugin.wings.form_unknown')) : null)
+                    ->color(fn (Plugin $record) => $record instanceof WingsPlugin && $record->runs_as === 'root' ? 'danger' : null)
+                    ->placeholder('-')
+                    ->visible(fn ($livewire) => $livewire->activeTab === 'wings'),
                 TextColumn::make('author')
                     ->label(trans('admin/plugin.author'))
                     ->sortable(),

@@ -11,7 +11,7 @@ use InvalidArgumentException;
 use Throwable;
 
 /**
- * Installs, updates and imports Wings staged and that wait for the admin's approval (contract v3, A4).
+ * Installs, updates and imports Wings staged and that wait for the admin's approval (contract v3.2, A4).
  *
  * The approval token, node and endpoint stay on the server: the browser only gets a random handle,
  * tied to the admin who staged the plugin, so it can't send a token to another node or plugin.
@@ -21,6 +21,9 @@ final class WingsPluginApprovals
     private const PREFIX = 'wings_plugins.approval.';
 
     private const RESTAGE_PREFIX = 'wings_plugins.restage.';
+
+    /** What a staged plugin can be (A4); "native" is only for plugins already in Wings (A3). */
+    private const FORMS = ['source', 'binary'];
 
     /** Wings keeps a stage for 10 minutes. */
     private const MAX_MINUTES = 10;
@@ -75,6 +78,11 @@ final class WingsPluginApprovals
             'replaces' => is_string($staged['replaces'] ?? null) && $staged['replaces'] !== '' ? $staged['replaces'] : null,
             // Only true when the archive's signature verified against a key the node trusts (A4)
             'signed' => ($staged['signed'] ?? false) === true,
+            // What the admin is told before approving (contract v3.2, S). A Wings older than v3.2 sends
+            // none of it, and anything this Panel doesn't understand is shown as unknown too (null)
+            'form' => in_array($staged['form'] ?? null, self::FORMS, true) ? $staged['form'] : null,
+            'binary_files' => self::strings($staged['binary_files'] ?? []),
+            'runs_as' => self::string($staged, 'runs_as'),
             'expires_at' => $expiresAt->toIso8601String(),
             'source' => $source,
         ], $expiresAt);

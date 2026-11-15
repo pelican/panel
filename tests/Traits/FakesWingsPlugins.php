@@ -16,7 +16,7 @@ use RuntimeException;
 use Spatie\Permission\Models\Permission;
 
 /**
- * Answers shaped like the Wings plugin API (pelican/wings contract v3, section A).
+ * Answers shaped like the Wings plugin API (pelican/wings contract v3.2, section A).
  */
 trait FakesWingsPlugins
 {
@@ -58,6 +58,9 @@ trait FakesWingsPlugins
                 'can_configure' => false,
                 'can_update' => false,
                 'can_uninstall' => false,
+                'form' => 'source',
+                'binary_files' => [],
+                'runs_as' => 'pelican',
             ], $meta),
         ], $overrides);
     }
@@ -168,6 +171,9 @@ trait FakesWingsPlugins
             'host_access' => ['server.logs'],
             'replaces' => null,
             'signed' => true,
+            'form' => 'source',
+            'binary_files' => [],
+            'runs_as' => 'pelican',
             'approval_token' => $token,
             'expires_at' => now()->addMinutes(10)->toRfc3339String(),
             'approve_with' => ['method' => 'POST', 'path' => $path, 'body' => ['approve' => $token]],
