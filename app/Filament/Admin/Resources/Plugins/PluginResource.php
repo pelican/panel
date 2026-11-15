@@ -10,13 +10,16 @@ use App\Jobs\Plugin\InstallPlugin;
 use App\Jobs\Plugin\UninstallPlugin;
 use App\Jobs\Plugin\UpdatePlugin;
 use App\Models\Plugin;
+use App\Services\Helpers\PluginRegistryService;
 use App\Services\Helpers\PluginService;
+use App\Services\Helpers\RegistryPlugin;
 use App\Services\Helpers\ThemeService;
 use BackedEnum;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
@@ -24,9 +27,13 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Components\Wizard\Step;
+use Filament\Support\Exceptions\Halt;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Http\UploadedFile;
+use RuntimeException;
 
 class PluginResource extends Resource
 {
@@ -367,10 +374,138 @@ class PluginResource extends Resource
                                 ->send();
                         }
                     }),
+                Action::make('install_from_registry')
+                    ->label(trans('admin/plugin.registry.install'))
+                    ->modalHeading(trans('admin/plugin.registry.install'))
+                    ->hiddenLabel()
+                    ->tooltip(trans('admin/plugin.registry.install'))
+                    ->authorize(fn () => user()?->can('create', Plugin::class))
+                    // Without registries the plugins page stays exactly as it was.
+                    ->visible(fn (PluginRegistryService $registries) => $registries->hasRegistries())
+                    ->icon(TablerIcon::PackageImport)
+                    ->steps([
+                        Step::make('reference')
+                            ->label(trans('admin/plugin.registry.reference'))
+                            ->schema([
+                                TextInput::make('reference')
+                                    ->label(trans('admin/plugin.registry.reference'))
+                                    ->helperText(trans('admin/plugin.registry.reference_help'))
+                                    ->placeholder('@namespace/name')
+                                    ->required()
+                                    ->maxLength(2048),
+                                Hidden::make('approved'),
+                            ])
+                            ->afterValidation(function (Get $get, Set $set, PluginRegistryService $registries) {
+                                try {
+                                    $set('approved', self::approval($registries->resolve((string) $get('reference'))));
+                                } catch (Exception $exception) {
+                                    Notification::make()
+                                        ->danger()
+                                        ->title(trans('admin/plugin.notifications.install_error'))
+                                        ->body($exception->getMessage())
+                                        ->send();
+
+                                    throw new Halt();
+                                }
+                            }),
+                        Step::make('review')
+                            ->label(trans('admin/plugin.registry.review'))
+                            ->description(trans('admin/plugin.registry.review_description'))
+                            ->schema(self::registryReviewSchema()),
+                    ])
+                    ->action(function (array $data, $livewire, PluginService $pluginService, PluginRegistryService $registries) {
+                        try {
+                            // Resolved again here, from the server's own config: the review step only says what the admin approved.
+                            $plugin = $registries->resolve((string) $data['reference']);
+
+                            if (($data['approved'] ?? null) !== self::approval($plugin)) {
+                                throw new RuntimeException(trans('admin/plugin.registry.changed'));
+                            }
+
+                            Plugin::refreshRows();
+                            $existing = Plugin::find($plugin->name);
+
+                            // Replacing an installed plugin's files needs permission to update it, as on the Hub page.
+                            if ($existing !== null && !user()?->can('update', $existing)) {
+                                throw new RuntimeException(trans('admin/plugin.hub.no_permission'));
+                            }
+
+                            $wasInstalled = $existing !== null && $existing->status !== PluginStatus::NotInstalled;
+
+                            $id = $pluginService->downloadPluginFromRegistry($plugin);
+
+                            Plugin::refreshRows();
+
+                            InstallPlugin::dispatch(user(), $id, reinstall: $wasInstalled);
+
+                            Notification::make()
+                                ->success()
+                                ->title(trans('admin/plugin.notifications.install_started'))
+                                ->body(trans('admin/plugin.notifications.background_info'))
+                                ->send();
+
+                            redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
+                        } catch (Exception $exception) {
+                            report($exception);
+
+                            Notification::make()
+                                ->danger()
+                                ->title(trans('admin/plugin.notifications.install_error'))
+                                ->body($exception->getMessage())
+                                ->send();
+                        }
+                    }),
             ])
             ->emptyStateIcon(TablerIcon::Packages)
             ->emptyStateDescription('')
             ->emptyStateHeading(trans('admin/plugin.no_plugins'));
+    }
+
+    /**
+     * What the admin reviews before a registry install, compared with a fresh resolve when they confirm.
+     *
+     * @return array<string, string|null>
+     */
+    protected static function approval(RegistryPlugin $plugin): array
+    {
+        return [
+            'name' => $plugin->name,
+            'version' => $plugin->version,
+            'author' => $plugin->author,
+            'description' => $plugin->description,
+            'source' => $plugin->source(),
+            'download' => $plugin->download,
+            'sha256' => $plugin->sha256,
+            'signed' => $plugin->signature !== null ? 'yes' : 'no',
+            'panel_version' => $plugin->panelVersion,
+        ];
+    }
+
+    /** @return Component[] */
+    protected static function registryReviewSchema(): array
+    {
+        $entry = fn (string $key) => TextEntry::make("approved_$key")
+            ->label(trans("admin/plugin.registry.$key"))
+            ->state(fn (Get $get) => $get("approved.$key") ?? '-');
+
+        return [
+            $entry('name'),
+            $entry('version'),
+            $entry('author'),
+            $entry('description'),
+            $entry('source'),
+            $entry('download'),
+            $entry('sha256'),
+            TextEntry::make('approved_signed')
+                ->label(trans('admin/plugin.registry.signature'))
+                ->state(fn (Get $get) => trans($get('approved.signed') === 'yes' ? 'admin/plugin.registry.signed' : 'admin/plugin.registry.unsigned')),
+            $entry('panel_version')
+                ->visible(fn (Get $get) => filled($get('approved.panel_version'))),
+            TextEntry::make('approved_replaces')
+                ->label(trans('admin/plugin.registry.replaces'))
+                ->state(fn (Get $get) => Plugin::find((string) $get('approved.name'))?->version)
+                ->visible(fn (Get $get) => Plugin::find((string) $get('approved.name')) !== null),
+        ];
     }
 
     public static function getPages(): array
