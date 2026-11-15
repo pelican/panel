@@ -245,6 +245,8 @@ class ServerResource extends Resource
                                 ->icons(fn (Server $server) => [$server->condition->value => $server->condition->getIcon()])
                                 ->stateCast(new ServerConditionStateCast())
                                 ->dehydrated(false)
+                                ->required()
+                                ->markAsRequired(false)
                                 ->columnSpan([
                                     'default' => 2,
                                     'sm' => 1,
