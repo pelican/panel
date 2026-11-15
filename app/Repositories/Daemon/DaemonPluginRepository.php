@@ -6,6 +6,7 @@ use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\MultipartStream;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Promises\LazyPromise;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
@@ -73,11 +74,11 @@ class DaemonPluginRepository extends DaemonRepository
      */
     public function getPluginsAsync(): PromiseInterface
     {
-        return $this->getHttpClient()
+        return self::built($this->getHttpClient()
             ->connectTimeout(3)
             ->timeout(15)
             ->async()
-            ->get('/api/plugins')
+            ->get('/api/plugins'))
             ->then(function (Response|Throwable $response) {
                 if ($response instanceof RequestException && self::isFromWings($response->response)) {
                     if ($response->response->notFound()) {
@@ -119,6 +120,16 @@ class DaemonPluginRepository extends DaemonRepository
                     'error' => is_string($body['error'] ?? null) && $body['error'] !== '' ? $body['error'] : null,
                 ];
             });
+    }
+
+    /**
+     * The request behind an async call, sent now. Laravel's LazyPromise sends nothing until it is waited on,
+     * so promises settled together would be asked one after another, and its then() queues the callback and
+     * hands back the lazy promise itself rather than the transformed one.
+     */
+    private static function built(PromiseInterface $promise): PromiseInterface
+    {
+        return $promise instanceof LazyPromise && $promise->promiseNeedsBuilt() ? $promise->buildPromise() : $promise;
     }
 
     /** @return array{available: false, reason: string, panel_access: ?string, required: ?string, enabled: false, directory: null, data: array{}, error: null} */

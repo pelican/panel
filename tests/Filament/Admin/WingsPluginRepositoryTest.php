@@ -3,6 +3,8 @@
 use App\Models\Node;
 use App\Repositories\Daemon\DaemonPluginRepository;
 use App\Tests\Traits\FakesWingsPlugins;
+use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Promise\Utils;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -59,6 +61,47 @@ it('reads the access level from the list', function () {
     expect($list['available'])->toBeTrue()
         ->and($list['panel_access'])->toBe('signed')
         ->and($list['data'])->toHaveCount(1);
+});
+
+it('sends every node\'s list request before waiting, and settles to the read lists', function () {
+    $other = Node::factory()->create();
+
+    // Http::fake records a request only once its answer is read, so the handler counts what was sent
+    $sent = [];
+    Http::fake(function (Request $request) use (&$sent, $other) {
+        $sent[] = parse_url($request->url(), PHP_URL_HOST);
+
+        return $this->sentTo($other, $request)
+            ? $this->wingsForbidden($other, 'off', 'view')
+            : $this->wingsList([$this->wingsPlugin('state-log')], 'signed');
+    });
+
+    $promises = [
+        'listed' => $this->repository->getPluginsAsync(),
+        'forbidden' => (new DaemonPluginRepository())->setNode($other)->getPluginsAsync(),
+    ];
+
+    // Both are on their way before anything waits, so the nodes are asked at the same time
+    expect($sent)->toBe([$this->node->fqdn, $other->fqdn]);
+
+    $results = Utils::settle($promises)->wait();
+
+    expect($results['listed']['state'])->toBe(PromiseInterface::FULFILLED)
+        ->and($results['listed']['value'])->toBeArray()
+        ->and($results['listed']['value']['available'])->toBeTrue()
+        ->and($results['listed']['value']['panel_access'])->toBe('signed')
+        ->and($results['forbidden']['value'])->toBeArray()
+        ->and($results['forbidden']['value']['reason'])->toBe('access');
+});
+
+it('returns the read list, not the response, when waited on', function () {
+    Http::fake(['*/api/plugins' => $this->wingsList([], 'view')]);
+
+    $list = $this->repository->getPluginsAsync()->wait();
+
+    expect($list)->toBeArray()
+        ->and($list['available'])->toBeTrue()
+        ->and($list['panel_access'])->toBe('view');
 });
 
 it('treats a 403 for the access level as not available', function () {
