@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 
 use function Pest\Livewire\livewire;
 
-// A Panel admin may only list or act on the plugins of nodes they can access (contract v2, A7).
+// A Panel admin may only list or act on the plugins of nodes they can access (contract v3, A7).
 
 uses(FakesWingsPlugins::class);
 

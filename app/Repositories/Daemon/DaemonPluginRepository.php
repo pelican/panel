@@ -14,7 +14,7 @@ use InvalidArgumentException;
 use Throwable;
 
 /**
- * The Wings plugin API (pelican/wings contract v2, section A).
+ * The Wings plugin API (pelican/wings contract v3, section A).
  */
 class DaemonPluginRepository extends DaemonRepository
 {
@@ -57,7 +57,7 @@ class DaemonPluginRepository extends DaemonRepository
     /**
      * List every plugin on the node, or why the node can't list them.
      *
-     * @return array{available: bool, reason: ?string, panel_access: ?string, required: ?string, enabled: bool, directory: ?string, data: array<int, mixed>, error: ?string}
+     * @return array{available: bool, reason: ?string, panel_access: ?string, required: ?string, directory: ?string, data: array<int, mixed>, error: ?string}
      *
      * @throws ConnectionException
      */
@@ -70,7 +70,8 @@ class DaemonPluginRepository extends DaemonRepository
      * Same as getPlugins() but doesn't wait, so several nodes can be asked at once.
      *
      * A 403 (the node's access level) and a 404 (a Wings without the plugin API) are answers, not
-     * failures: the promise resolves with available=false and the reason (contract A1, A7).
+     * failures: the promise resolves with available=false and the reason (contract A1, A7). Only this
+     * call reads a 404 as "no plugin API"; on a /api/plugins/{id} path it means "no such plugin".
      */
     public function getPluginsAsync(): PromiseInterface
     {
@@ -111,10 +112,11 @@ class DaemonPluginRepository extends DaemonRepository
                 return [
                     'available' => true,
                     'reason' => null,
-                    // Wings from before contract v2 doesn't send a level; treat it as the lowest that lists
+                    // Contract v3 always sends it. Only defensively, a list without a known level is read as
+                    // the lowest level that can list, so nothing beyond viewing is offered
                     'panel_access' => self::isValidLevel($level) ? $level : 'view',
                     'required' => null,
-                    'enabled' => (bool) ($body['enabled'] ?? false),
+                    // "enabled" is reserved and always true (A2), so it isn't read
                     'directory' => is_string($body['directory'] ?? null) ? $body['directory'] : null,
                     'data' => is_array($body['data'] ?? null) ? array_values($body['data']) : [],
                     'error' => is_string($body['error'] ?? null) && $body['error'] !== '' ? $body['error'] : null,
@@ -132,7 +134,7 @@ class DaemonPluginRepository extends DaemonRepository
         return $promise instanceof LazyPromise && $promise->promiseNeedsBuilt() ? $promise->buildPromise() : $promise;
     }
 
-    /** @return array{available: false, reason: string, panel_access: ?string, required: ?string, enabled: false, directory: null, data: array{}, error: null} */
+    /** @return array{available: false, reason: string, panel_access: ?string, required: ?string, directory: null, data: array{}, error: null} */
     private static function unavailable(string $reason, ?string $level = null, ?string $required = null): array
     {
         return [
@@ -140,7 +142,6 @@ class DaemonPluginRepository extends DaemonRepository
             'reason' => $reason,
             'panel_access' => $level,
             'required' => $required,
-            'enabled' => false,
             'directory' => null,
             'data' => [],
             'error' => null,

@@ -11,7 +11,7 @@ use InvalidArgumentException;
 use Throwable;
 
 /**
- * Installs, updates and imports Wings staged and that wait for the admin's approval (contract v2, A4).
+ * Installs, updates and imports Wings staged and that wait for the admin's approval (contract v3, A4).
  *
  * The approval token, node and endpoint stay on the server: the browser only gets a random handle,
  * tied to the admin who staged the plugin, so it can't send a token to another node or plugin.

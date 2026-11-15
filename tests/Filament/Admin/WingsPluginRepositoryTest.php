@@ -9,7 +9,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
-// The Wings plugin API client (pelican/wings contract v2, section A).
+// The Wings plugin API client (pelican/wings contract v3, section A).
 
 uses(FakesWingsPlugins::class);
 

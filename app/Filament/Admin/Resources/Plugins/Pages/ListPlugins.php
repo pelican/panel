@@ -70,7 +70,7 @@ class ListPlugins extends ListRecords
     }
 
     /**
-     * Second step of a two-step install, update or import (contract v2, A4): shows the admin what the node
+     * Second step of a two-step install, update or import (contract v3, A4): shows the admin what the node
      * staged, and only on approval sends the token back to the endpoint that staged it.
      */
     public function approveWingsPluginAction(): Action

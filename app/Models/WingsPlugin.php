@@ -20,7 +20,7 @@ use Throwable;
 /**
  * A plugin installed on a node's Wings daemon, listed next to the Panel's own plugins.
  *
- * Rows follow the Wings plugin API (pelican/wings contract v2, A3). A node that can't list its plugins
+ * Rows follow the Wings plugin API (pelican/wings contract v3, A3). A node that can't list its plugins
  * gets one row of its own: "unavailable" for its access level or a Wings without the plugin API,
  * "error" when it didn't answer. Only rows of type "plugin" are real plugins.
  *
@@ -247,12 +247,6 @@ class WingsPlugin extends Plugin
                         : trans('admin/plugin.wings.not_available_api');
 
                     $rows[] = self::nodeRow($node, self::ROW_UNAVAILABLE, $message, '.unavailable', $list['panel_access']);
-
-                    continue;
-                }
-
-                if (!$list['enabled']) {
-                    $rows[] = self::nodeRow($node, self::ROW_UNAVAILABLE, trans('admin/plugin.wings.subsystem_disabled'), '.unavailable', $list['panel_access']);
 
                     continue;
                 }

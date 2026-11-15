@@ -7,7 +7,7 @@ use Illuminate\Http\Client\RequestException;
 use Throwable;
 
 /**
- * Turns a failed call to the Wings plugin API into what the admin should read (contract v2, A1).
+ * Turns a failed call to the Wings plugin API into what the admin should read (contract v3, A1).
  */
 final class WingsPluginFailure
 {

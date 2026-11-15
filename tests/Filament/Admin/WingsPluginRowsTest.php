@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 
 use function Pest\Livewire\livewire;
 
-// How nodes and their plugins become rows (contract v2, L, A3 and A7).
+// How nodes and their plugins become rows (contract v3, L, A3 and A7).
 
 uses(FakesWingsPlugins::class);
 
@@ -68,6 +68,42 @@ it('shows a node whose wings has no plugin api as not available', function () {
     expect($row->status)->toBe(PluginStatus::Unavailable)
         ->and($row->error)->toBeNull()
         ->and($row->status_message)->toContain('no plugin API');
+});
+
+it('lists the plugins whatever the reserved enabled field says', function (array $enabled) {
+    $node = Node::factory()->create();
+
+    Http::fake([
+        "*{$node->fqdn}*/api/plugins" => Http::response([
+            ...$enabled,
+            'directory' => '/var/lib/pelican/plugins',
+            'panel_access' => 'view',
+            'data' => [$this->wingsPlugin('state-log')],
+        ]),
+        '*/api/plugins' => $this->wingsList([]),
+    ]);
+
+    $rows = WingsPlugin::scoped()->where('node_id', $node->id)->get();
+
+    // Contract v3: "enabled" is always true and reserved, so it never hides the list
+    expect($rows)->toHaveCount(1)
+        ->and($rows->first()->isPlugin())->toBeTrue()
+        ->and($rows->first()->plugin_id)->toBe('state-log');
+})->with([
+    'missing' => [[]],
+    'false' => [['enabled' => false]],
+]);
+
+it('reads a list without a level as view, the lowest that lists', function () {
+    $node = Node::factory()->create();
+
+    Http::fake([
+        "*{$node->fqdn}*/api/plugins" => Http::response(['enabled' => true, 'data' => [$this->wingsPlugin('state-log')]]),
+        '*/api/plugins' => $this->wingsList([]),
+    ]);
+
+    expect(WingsPlugin::scoped()->where('node_id', $node->id)->first()->panel_access)->toBe('view')
+        ->and(WingsPlugin::nodesAllowing('signed')->has($node->id))->toBeFalse();
 });
 
 it('maps a plugin as wings describes it', function () {

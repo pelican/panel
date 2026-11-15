@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Http;
 
 use function Pest\Livewire\livewire;
 
-// Two-step install, update and import (contract v2, A4) and the levels they need (L).
+// Two-step install, update and import (contract v3, A4) and the levels they need (L).
 
 uses(FakesWingsPlugins::class);
 

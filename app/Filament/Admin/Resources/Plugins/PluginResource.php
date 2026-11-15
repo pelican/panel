@@ -102,7 +102,7 @@ class PluginResource extends Resource
     }
 
     /**
-     * First step of a two-step install, update or import (contract v2, A4): Wings stages the plugin and
+     * First step of a two-step install, update or import (contract v3, A4): Wings stages the plugin and
      * nothing is installed. What it staged is kept on the server and the admin is asked to approve it.
      *
      * @param  Closure(DaemonPluginRepository): array<string, mixed>  $stage

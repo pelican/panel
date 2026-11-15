@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Spatie\Permission\Models\Permission;
 
 /**
- * Answers shaped like the Wings plugin API (pelican/wings contract v2, section A).
+ * Answers shaped like the Wings plugin API (pelican/wings contract v3, section A).
  */
 trait FakesWingsPlugins
 {

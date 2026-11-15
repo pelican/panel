@@ -4,17 +4,20 @@ use App\Filament\Admin\Resources\Plugins\Pages\ListPlugins;
 use App\Models\Node;
 use App\Models\Role;
 use App\Models\WingsPlugin;
+use App\Repositories\Daemon\DaemonPluginRepository;
+use App\Services\Nodes\WingsPluginFailure;
 use App\Tests\Traits\FakesWingsPlugins;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
 use function Pest\Livewire\livewire;
 
-// Row actions on Wings plugins and their settings (contract v2, A2, A3, A3.1 and A7).
+// Row actions on Wings plugins and their settings (contract v3, A2, A3, A3.1 and A7).
 
 uses(FakesWingsPlugins::class);
 
@@ -128,6 +131,20 @@ it('explains a 403 from an action with the level and how to raise it', function 
 
     expect(trans('admin/plugin.wings.forbidden', ['level' => 'view', 'required' => 'signed']))
         ->toContain('wings plugins panel-access signed');
+});
+
+it('reads a 404 on a plugin path as no such plugin, not as a wings without the api', function () {
+    $this->fakeWingsNode($this->node, [], more: [
+        '*/api/plugins/gone/enable' => $this->wingsError($this->node, 404, 'plugin "gone" not found'),
+    ]);
+
+    try {
+        (new DaemonPluginRepository())->setNode($this->node)->enable('gone');
+        $this->fail('Wings answered 404');
+    } catch (RequestException $exception) {
+        expect(WingsPluginFailure::message($exception))->toBe(trans('admin/plugin.wings.not_found'))
+            ->and(WingsPluginFailure::message($exception))->not->toContain('API');
+    }
 });
 
 it('lets an admin configure a disabled plugin', function () {
