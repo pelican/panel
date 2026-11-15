@@ -20,13 +20,13 @@ beforeEach(function () {
     $this->admin->syncRoles(Role::getRootAdmin());
     $this->actingAs($this->admin);
 
-    cache()->forget('wings_plugins.rows');
+    cache()->flush();
     WingsPlugin::flush();
 });
 
 afterEach(function () {
     Filament::setCurrentPanel(null);
-    cache()->forget('wings_plugins.rows');
+    cache()->flush();
     WingsPlugin::flush();
 });
 
@@ -151,9 +151,10 @@ it('lists every node and keeps unreachable ones as error rows', function () {
     Http::fake([
         "*{$reachable->fqdn}*/api/plugins" => Http::response(['enabled' => true, 'data' => []]),
         "*{$unreachable->fqdn}*/api/plugins" => Http::response('unavailable', 500),
+        '*' => Http::response(['enabled' => true, 'data' => []]),
     ]);
 
-    $plugins = WingsPlugin::query()->get();
+    $plugins = WingsPlugin::scoped()->get();
 
     expect($plugins->firstWhere('node_name', 'down-node')->error)->not->toBeNull()
         ->and($plugins->firstWhere('node_name', 'up-node'))->toBeNull();
@@ -214,7 +215,7 @@ it('keeps listing wings plugins when one of them is malformed', function () {
         ]]),
     ]);
 
-    $plugins = WingsPlugin::query()->get();
+    $plugins = WingsPlugin::scoped()->get();
 
     // The broken one is shown as an error row, so a count never hides that something is missing
     expect($plugins->firstWhere('plugin_id', 'fine'))->not->toBeNull()
@@ -237,7 +238,7 @@ it('fills wings plugin settings with their declared defaults', function () {
         ]]]),
     ]);
 
-    expect(WingsPlugin::query()->where('plugin_id', 'trash')->first()->getSettingsFormData())
+    expect(WingsPlugin::scoped()->where('plugin_id', 'trash')->first()->getSettingsFormData())
         ->toBe(['retention_days' => 7, 'folder' => 'bin']);
 });
 
@@ -259,24 +260,31 @@ it('shows an offline node as an error row', function () {
 
     Http::fake([
         "*{$node->fqdn}*/api/plugins" => fn () => throw new ConnectionException('Connection refused'),
+        '*' => Http::response(['enabled' => true, 'data' => []]),
     ]);
 
-    $row = WingsPlugin::query()->get()->firstWhere('node_name', 'offline-node');
+    $row = WingsPlugin::scoped()->get()->firstWhere('node_name', 'offline-node');
 
     expect($row)->not->toBeNull()
         ->and($row->error)->toContain('Connection refused');
 });
 
-it('reports a wings 404 as unsupported when the node is fetched asynchronously', function () {
+it('shows a wings 404 as not available when the node is fetched asynchronously', function () {
     $node = Node::factory()->create(['name' => 'old-node']);
 
     Http::fake([
         "*{$node->fqdn}*/api/plugins" => Http::response('404 page not found', 404, [
             'User-Agent' => "Pelican Wings/vdevelop (id:{$node->daemon_token_id})",
         ]),
+        '*' => Http::response(['enabled' => true, 'data' => []]),
     ]);
 
-    expect(WingsPlugin::query()->get()->firstWhere('node_name', 'old-node'))->toBeNull();
+    // A Wings without the plugin API is not an error: the node says so in its own row (contract A7)
+    $row = WingsPlugin::scoped()->get()->firstWhere('node_name', 'old-node');
+
+    expect($row->status)->toBe(PluginStatus::Unavailable)
+        ->and($row->isPlugin())->toBeFalse()
+        ->and($row->error)->toBeNull();
 });
 
 it('lists a wings plugin with a status the panel does not know as errored', function () {
@@ -294,8 +302,8 @@ it('lists a wings plugin with a status the panel does not know as errored', func
         ]]]),
     ]);
 
-    expect(WingsPlugin::query()->where('plugin_id', 'odd')->first()->status)->toBe(PluginStatus::Errored)
-        ->and(WingsPlugin::query()->where('plugin_id', 'malformed')->first()->status)->toBe(PluginStatus::Errored);
+    expect(WingsPlugin::scoped()->where('plugin_id', 'odd')->first()->status)->toBe(PluginStatus::Errored)
+        ->and(WingsPlugin::scoped()->where('plugin_id', 'malformed')->first()->status)->toBe(PluginStatus::Errored);
 
     livewire(ListPlugins::class)
         ->set('activeTab', 'wings')

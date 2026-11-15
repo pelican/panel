@@ -4,7 +4,6 @@ return [
     'node' => 'Node',
     'tabs_wings' => 'Wings',
     'tabs_panel' => 'Panel',
-    'wings_unreachable' => 'This node did not answer. It may be offline, or running a version of Wings without plugin support.',
     'api_version_missing' => '⚠ plugin.json does not declare an api_version, assuming 1',
     'nav_title' => 'Plugins',
     'model_label' => 'Plugin',
@@ -55,12 +54,23 @@ return [
         'errored' => 'Errored',
         'incompatible' => 'Incompatible',
         'crashed' => 'Crashed',
+        'unavailable' => 'Not available',
     ],
 
     'category_enum' => [
         'plugin' => 'Plugin',
         'theme' => 'Theme',
         'language' => 'Language Pack',
+    ],
+
+    'wings' => [
+        'panel_access' => 'Panel access',
+        'unreachable' => 'This node did not answer: :message',
+        'not_available_level' => 'Not available on this node: its plugin access level is ":level" and listing plugins needs ":required". The node operator can raise it with `wings plugins panel-access :required`.',
+        'not_available_api' => 'Not available on this node: its Wings has no plugin API. Update Wings to manage its plugins here.',
+        'subsystem_disabled' => 'Not available on this node: plugins are turned off in its Wings.',
+        'setting_type_unsupported' => 'This setting has the type ":type", which this Panel can\'t edit. Its stored value is kept.',
+        'setting_secret_hint' => 'Leave ******** to keep the stored value.',
     ],
 
     'hub' => [

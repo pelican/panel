@@ -25,13 +25,13 @@ class ListPlugins extends ListRecords
     }
 
     /**
-     * The rows are cached for everyone, so each user's nodes are filtered here.
+     * Only the nodes this admin can access are asked, and only their rows are listed (contract A7).
      *
      * @return Builder<WingsPlugin>
      */
     private function wingsPlugins(): Builder
     {
-        return WingsPlugin::query()->whereIn('node_id', user()?->accessibleNodes()->pluck('id'));
+        return WingsPlugin::scoped();
     }
 
     // The Wings tab lists the plugins on the nodes
@@ -96,26 +96,31 @@ class ListPlugins extends ListRecords
         return $tabs;
     }
 
-    // Don't ask the nodes just for a badge on the other tabs
+    /**
+     * The number of plugins on the admin's nodes. Nodes are only asked on the Wings tab, and a node that
+     * didn't answer or a plugin that couldn't be read makes the count unknown. A node that doesn't let the
+     * Panel list its plugins is known to have none to show.
+     */
     private function wingsBadge(): ?string
     {
-        if (!$this->isWingsTab() && !cache()->has(WingsPlugin::CACHE_KEY)) {
+        if (!$this->isWingsTab() && !WingsPlugin::isCached()) {
             return null;
         }
 
         try {
-            $plugins = $this->wingsPlugins()->get();
+            $rows = $this->wingsPlugins()->get();
         } catch (Throwable $exception) {
             report($exception);
 
             return null;
         }
 
-        // An unreachable node means the count is incomplete
-        if ($plugins->contains(fn (WingsPlugin $plugin) => $plugin->error !== null)) {
+        if ($rows->contains(fn (WingsPlugin $row) => $row->row_type === WingsPlugin::ROW_ERROR)) {
             return null;
         }
 
-        return $plugins->isNotEmpty() ? (string) $plugins->count() : null;
+        $count = $rows->filter(fn (WingsPlugin $row) => $row->isPlugin())->count();
+
+        return $count > 0 ? (string) $count : null;
     }
 }

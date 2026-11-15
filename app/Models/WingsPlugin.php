@@ -5,40 +5,71 @@ namespace App\Models;
 use App\Enums\PluginStatus;
 use App\Repositories\Daemon\DaemonPluginRepository;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Component;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Promise\Utils;
 use Illuminate\Database\Connection;
-use Illuminate\Support\Arr;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
 /**
  * A plugin installed on a node's Wings daemon, listed next to the Panel's own plugins.
  *
+ * Rows follow the Wings plugin API (pelican/wings contract v2, A3). A node that can't list its plugins
+ * gets one row of its own: "unavailable" for its access level or a Wings without the plugin API,
+ * "error" when it didn't answer. Only rows of type "plugin" are real plugins.
+ *
+ * Rows only ever hold the nodes of one scope (the current admin's accessible nodes): use scoped().
+ *
  * @property int $node_id
  * @property string $node_name
  * @property string $plugin_id
+ * @property string $row_type
+ * @property string|null $panel_access
+ * @property string|null $kind
  * @property string|null $wings_version
- * @property string|null $package
+ * @property string|null $trust
  * @property string $hooks
+ * @property string $host_access
  * @property string $settings
  * @property string $values
  * @property int $is_trusted
  * @property int $can_enable
  * @property int $can_disable
+ * @property int $can_configure
+ * @property int $can_update
  * @property int $can_uninstall
- * @property int $subsystem_enabled
  * @property string|null $error
  */
 class WingsPlugin extends Plugin
 {
     public const RESOURCE_NAME = 'wings_plugin';
 
-    public const CACHE_KEY = 'wings_plugins.rows';
+    public const ROW_PLUGIN = 'plugin';
+
+    public const ROW_UNAVAILABLE = 'unavailable';
+
+    public const ROW_ERROR = 'error';
+
+    /** Statuses Wings sends (A3); anything else is shown as errored. */
+    private const STATUSES = ['enabled', 'disabled', 'errored'];
+
+    private const TRUST = ['native', 'trusted', 'untrusted', 'changed'];
+
+    /** Setting types of contract v2 (A3.1). */
+    public const SETTING_TYPES = ['string', 'number', 'boolean', 'select'];
+
+    /** What Wings shows instead of a stored secret, and keeps it when sent back. */
+    public const MASKED_SECRET = '********';
+
+    private const CACHE_PREFIX = 'wings_plugins.';
+
+    private const CACHE_GENERATION = 'wings_plugins.generation';
 
     private const CACHE_SECONDS = 10;
 
@@ -49,6 +80,13 @@ class WingsPlugin extends Plugin
      */
     protected static $sushiConnection;
 
+    /**
+     * Node ids whose plugins the Sushi table holds; null until scoped() is called, and then no node is asked.
+     *
+     * @var int[]|null
+     */
+    private static ?array $scopeNodeIds = null;
+
     /** @return string[] */
     public function getSchema(): array
     {
@@ -57,29 +95,83 @@ class WingsPlugin extends Plugin
             'node_id' => 'integer',
             'node_name' => 'string',
             'plugin_id' => 'string',
+            'row_type' => 'string',
+            'panel_access' => 'string',
             'name' => 'string',
             'author' => 'string',
             'version' => 'string',
             'description' => 'string',
             'category' => 'string',
+            'kind' => 'string',
             'url' => 'string',
             'update_url' => 'string',
             'wings_version' => 'string',
             'api_version' => 'integer',
-            'package' => 'string',
             'status' => 'string',
             'status_message' => 'string',
+            'trust' => 'string',
             'load_order' => 'integer',
             'hooks' => 'string',
+            'host_access' => 'string',
             'settings' => 'string',
             'values' => 'string',
             'is_trusted' => 'integer',
             'can_enable' => 'integer',
             'can_disable' => 'integer',
+            'can_configure' => 'integer',
+            'can_update' => 'integer',
             'can_uninstall' => 'integer',
-            'subsystem_enabled' => 'integer',
             'error' => 'string',
         ];
+    }
+
+    /**
+     * The Wings plugins of the nodes $user may access (contract A7). Root admins see every node.
+     *
+     * @return Builder<static>
+     */
+    public static function scoped(?User $user = null): Builder
+    {
+        $nodeIds = self::accessibleNodeIds($user ?? user());
+
+        if (self::$scopeNodeIds !== $nodeIds) {
+            self::$scopeNodeIds = $nodeIds;
+
+            static::refreshRows();
+        }
+
+        // Filtered again, in case the table was filled for another scope
+        return static::query()->whereIn('node_id', $nodeIds);
+    }
+
+    /** @return int[] */
+    private static function accessibleNodeIds(?User $user): array
+    {
+        if (!$user) {
+            return [];
+        }
+
+        return $user->accessibleNodes()->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
+     * What each accessible node said about its plugins: its access level, and whether it could list them.
+     *
+     * @return array<int, array{name: string, state: string, panel_access: ?string, required: ?string}>
+     */
+    public static function nodeStates(?User $user = null): array
+    {
+        $nodeIds = self::accessibleNodeIds($user ?? user());
+
+        return $nodeIds === [] ? [] : self::inventory($nodeIds)['nodes'];
+    }
+
+    /** Whether the plugins of $user's nodes are cached, so reading them doesn't ask the nodes. */
+    public static function isCached(?User $user = null): bool
+    {
+        $nodeIds = self::accessibleNodeIds($user ?? user());
+
+        return $nodeIds === [] || cache()->has(self::cacheKey($nodeIds));
     }
 
     /**
@@ -87,8 +179,27 @@ class WingsPlugin extends Plugin
      */
     public function getRows(): array
     {
-        return cache()->remember(self::CACHE_KEY, now()->addSeconds(self::CACHE_SECONDS), function (): array {
-            $nodes = Node::all();
+        $nodeIds = self::$scopeNodeIds ?? [];
+
+        return $nodeIds === [] ? [] : self::inventory($nodeIds)['rows'];
+    }
+
+    /** @param  int[]  $nodeIds */
+    private static function cacheKey(array $nodeIds): string
+    {
+        return self::CACHE_PREFIX . (int) cache()->get(self::CACHE_GENERATION, 0) . '.' . sha1(implode(',', $nodeIds));
+    }
+
+    /**
+     * Asks every node in $nodeIds at once, cached per set of nodes.
+     *
+     * @param  int[]  $nodeIds
+     * @return array{rows: array<int, array<string, mixed>>, nodes: array<int, array{name: string, state: string, panel_access: ?string, required: ?string}>}
+     */
+    private static function inventory(array $nodeIds): array
+    {
+        return cache()->remember(self::cacheKey($nodeIds), now()->addSeconds(self::CACHE_SECONDS), function () use ($nodeIds): array {
+            $nodes = Node::query()->whereIn('id', $nodeIds)->orderBy('id')->get();
 
             $promises = [];
             foreach ($nodes as $node) {
@@ -98,10 +209,10 @@ class WingsPlugin extends Plugin
             $results = Utils::settle($promises)->wait();
 
             $rows = [];
+            $states = [];
             foreach ($nodes as $node) {
                 $result = $results[$node->id];
 
-                // Unreachable nodes get an error row so they don't look empty
                 if ($result['state'] !== PromiseInterface::FULFILLED) {
                     $reason = $result['reason'];
 
@@ -109,118 +220,190 @@ class WingsPlugin extends Plugin
                         report($reason);
                     }
 
-                    $rows[] = self::errorRow($node, $reason instanceof Throwable ? $reason->getMessage() : (string) $reason);
+                    $message = $reason instanceof Throwable ? $reason->getMessage() : (string) $reason;
+                    $rows[] = self::nodeRow($node, self::ROW_ERROR, trans('admin/plugin.wings.unreachable', ['message' => $message]), '.unreachable');
+                    $states[$node->id] = ['name' => $node->name, 'state' => 'unreachable', 'panel_access' => null, 'required' => null];
 
                     continue;
                 }
 
-                // No plugin support, or the subsystem is turned off
-                if (!$result['value']['enabled']) {
+                $list = $result['value'];
+                $states[$node->id] = [
+                    'name' => $node->name,
+                    'state' => $list['available'] ? 'available' : (string) $list['reason'],
+                    'panel_access' => $list['panel_access'],
+                    'required' => $list['required'],
+                ];
+
+                if (!$list['available']) {
+                    $message = $list['reason'] === 'access'
+                        ? trans('admin/plugin.wings.not_available_level', ['level' => $list['panel_access'], 'required' => $list['required']])
+                        : trans('admin/plugin.wings.not_available_api');
+
+                    $rows[] = self::nodeRow($node, self::ROW_UNAVAILABLE, $message, '.unavailable', $list['panel_access']);
+
                     continue;
                 }
 
-                foreach ($result['value']['data'] as $index => $plugin) {
+                if (!$list['enabled']) {
+                    $rows[] = self::nodeRow($node, self::ROW_UNAVAILABLE, trans('admin/plugin.wings.subsystem_disabled'), '.unavailable', $list['panel_access']);
+
+                    continue;
+                }
+
+                // Discovery found a bad manifest; the plugins that loaded are still listed
+                if ($list['error'] !== null) {
+                    $rows[] = self::nodeRow($node, self::ROW_ERROR, $list['error'], '.discovery', $list['panel_access']);
+                }
+
+                foreach ($list['data'] as $index => $plugin) {
                     try {
-                        $rows[] = self::row($node, $plugin);
+                        $rows[] = self::row($node, $plugin, $list['panel_access']);
                     } catch (Throwable $exception) {
                         // One malformed plugin shouldn't hide the others, but it is still reported
                         report($exception);
 
                         $name = is_array($plugin) && is_string($plugin['name'] ?? null) ? $plugin['name'] : null;
-                        $rows[] = self::errorRow($node, $exception->getMessage(), "invalid-$index", $name);
+                        $rows[] = self::nodeRow($node, self::ROW_ERROR, $exception->getMessage(), ".invalid-$index", $list['panel_access'], $name);
                     }
                 }
             }
 
-            return $rows;
+            return ['rows' => $rows, 'nodes' => $states];
         });
     }
 
     /**
-     * @param  array<string, mixed>  $plugin
      * @return array<string, mixed>
      */
-    private static function row(Node $node, array $plugin): array
+    private static function row(Node $node, mixed $plugin, ?string $panelAccess): array
     {
-        $meta = $plugin['meta'] ?? [];
+        if (!is_array($plugin)) {
+            throw new InvalidArgumentException('The node listed a plugin that is not an object.');
+        }
 
-        // An unknown status would throw in the enum cast
-        $rawStatus = $meta['status'] ?? PluginStatus::NotInstalled->value;
-        $status = (is_string($rawStatus) ? PluginStatus::tryFrom($rawStatus) : null) ?? PluginStatus::Errored;
+        $id = $plugin['id'] ?? null;
+        if (!DaemonPluginRepository::isValidId($id)) {
+            throw new InvalidArgumentException('The node listed a plugin with an empty or invalid id.');
+        }
+
+        $meta = is_array($plugin['meta'] ?? null) ? $plugin['meta'] : [];
+
+        $status = is_string($meta['status'] ?? null) && in_array($meta['status'], self::STATUSES, true)
+            ? PluginStatus::from($meta['status'])
+            : PluginStatus::Errored;
+
+        $hooks = $meta['registered']['hooks'] ?? [];
+        if (!is_array($hooks)) {
+            throw new InvalidArgumentException("The plugin \"$id\" listed its hooks as something other than a list.");
+        }
+
+        $settings = $plugin['settings'] ?? [];
+        if (!is_array($settings)) {
+            throw new InvalidArgumentException("The plugin \"$id\" listed its settings as something other than a list.");
+        }
+
+        $values = $meta['values'] ?? [];
+
+        $trust = is_string($meta['trust'] ?? null) && in_array($meta['trust'], self::TRUST, true) ? $meta['trust'] : null;
+
+        $flag = fn (string $key): int => ($meta[$key] ?? false) === true ? 1 : 0;
 
         return [
             // Unique across nodes, as the same plugin is often installed on several
-            'id' => $node->id . ':' . $plugin['id'],
+            'id' => $node->id . ':' . $id,
             'node_id' => $node->id,
             'node_name' => $node->name,
-            'plugin_id' => $plugin['id'],
+            'plugin_id' => $id,
+            'row_type' => self::ROW_PLUGIN,
+            'panel_access' => $panelAccess,
 
-            'name' => $plugin['name'] ?? $plugin['id'],
-            'author' => $plugin['author'] ?? 'Unknown',
-            'version' => $plugin['version'] ?? '0.0.0',
-            'description' => $plugin['description'] ?? null,
-            'category' => $plugin['category'] ?? 'plugin',
-            'url' => Arr::get($plugin, 'url') ?: null,
-            'update_url' => Arr::get($plugin, 'update_url') ?: null,
-
-            'wings_version' => Arr::get($plugin, 'wings_version') ?: null,
-            'api_version' => $plugin['api_version'] ?? null,
-            'package' => $plugin['package'] ?? null,
+            'name' => self::string($plugin, 'name') ?? $id,
+            'author' => self::string($plugin, 'author') ?? '',
+            'version' => self::string($plugin, 'version') ?? '',
+            'description' => self::string($plugin, 'description'),
+            'category' => self::string($plugin, 'category') ?? 'plugin',
+            'kind' => self::string($plugin, 'kind'),
+            // Omitted by Wings when empty
+            'url' => self::string($plugin, 'url'),
+            'update_url' => self::string($plugin, 'update_url'),
+            'wings_version' => self::string($plugin, 'wings_version'),
+            'api_version' => is_int($plugin['api_version'] ?? null) ? $plugin['api_version'] : 0,
 
             'status' => $status->value,
-            'status_message' => Arr::get($meta, 'status_message') ?: null,
-            'load_order' => Arr::integer($meta, 'load_order', 0),
+            'status_message' => self::string($meta, 'status_message') ?? self::string($meta, 'error'),
+            'trust' => $trust,
+            'load_order' => 0,
 
-            'hooks' => implode(',', Arr::get($meta, 'registered.hooks', []) ?? []),
+            'hooks' => implode(',', array_filter($hooks, 'is_string')),
+            'host_access' => implode(',', array_filter(is_array($plugin['host_access'] ?? null) ? $plugin['host_access'] : [], 'is_string')),
 
-            'settings' => json_encode($plugin['settings'] ?? [], JSON_THROW_ON_ERROR),
-            'values' => json_encode($meta['values'] ?? [], JSON_THROW_ON_ERROR),
+            'settings' => json_encode(array_values(array_filter($settings, 'is_array')), JSON_THROW_ON_ERROR),
+            'values' => json_encode(is_array($values) ? (object) $values : (object) [], JSON_THROW_ON_ERROR),
 
-            'is_trusted' => (int) ($meta['is_trusted'] ?? false),
-            'can_enable' => (int) ($meta['can_enable'] ?? false),
-            'can_disable' => (int) ($meta['can_disable'] ?? false),
-            'can_uninstall' => (int) ($meta['can_uninstall'] ?? false),
+            'is_trusted' => $flag('is_trusted'),
+            'can_enable' => $flag('can_enable'),
+            'can_disable' => $flag('can_disable'),
+            'can_configure' => $flag('can_configure'),
+            'can_update' => $flag('can_update'),
+            'can_uninstall' => $flag('can_uninstall'),
 
-            'subsystem_enabled' => 1,
             'error' => null,
         ];
     }
 
-    /** @return array<string, mixed> */
-    private static function errorRow(Node $node, string $message, string $key = 'unreachable', ?string $name = null): array
+    /** @param  array<mixed>  $from */
+    private static function string(array $from, string $key): ?string
+    {
+        $value = $from[$key] ?? null;
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * A row for a node that can't list its plugins, or a plugin that couldn't be read. Its key starts with
+     * "." after the node id, which no plugin id can (A1), so it can never be taken for a plugin.
+     *
+     * @return array<string, mixed>
+     */
+    private static function nodeRow(Node $node, string $type, string $message, string $key, ?string $panelAccess = null, ?string $name = null): array
     {
         return [
             'id' => $node->id . ':' . $key,
             'node_id' => $node->id,
             'node_name' => $node->name,
             'plugin_id' => '',
+            'row_type' => $type,
+            'panel_access' => $panelAccess,
 
             'name' => $name ?? $node->name,
             'author' => '',
             'version' => '',
             'description' => $message,
             'category' => 'plugin',
+            'kind' => null,
             'url' => null,
             'update_url' => null,
-
             'wings_version' => null,
             'api_version' => 0,
-            'package' => null,
 
-            'status' => PluginStatus::Errored->value,
+            'status' => ($type === self::ROW_UNAVAILABLE ? PluginStatus::Unavailable : PluginStatus::Errored)->value,
             'status_message' => $message,
+            'trust' => null,
             'load_order' => 0,
             'hooks' => '',
+            'host_access' => '',
             'settings' => '[]',
             'values' => '{}',
 
             'is_trusted' => 0,
             'can_enable' => 0,
             'can_disable' => 0,
+            'can_configure' => 0,
+            'can_update' => 0,
             'can_uninstall' => 0,
 
-            'subsystem_enabled' => 0,
-            'error' => $message,
+            'error' => $type === self::ROW_ERROR ? $message : null,
         ];
     }
 
@@ -241,17 +424,46 @@ class WingsPlugin extends Plugin
         return Node::find($this->node_id);
     }
 
+    /**
+     * The client for this plugin's node. Refuses anything that isn't a real plugin, or a node the
+     * current admin can't access, so a crafted record can't reach another node (contract A7).
+     */
     public function repository(): DaemonPluginRepository
     {
+        if (!$this->isPlugin()) {
+            throw new RuntimeException('This row is not a plugin.');
+        }
+
         $node = $this->node() ?? throw new RuntimeException('The node of this plugin no longer exists');
 
+        if (!user()?->canTarget($node)) {
+            throw new RuntimeException('You cannot manage plugins on this node.');
+        }
+
         return (new DaemonPluginRepository())->setNode($node);
+    }
+
+    /** Whether this row is a real plugin, rather than a node that couldn't list its plugins. */
+    public function isPlugin(): bool
+    {
+        return $this->row_type === self::ROW_PLUGIN && DaemonPluginRepository::isValidId($this->plugin_id);
+    }
+
+    public function isUnavailable(): bool
+    {
+        return $this->row_type === self::ROW_UNAVAILABLE;
     }
 
     /** @return string[] */
     public function hookList(): array
     {
         return array_values(array_filter(explode(',', (string) $this->hooks)));
+    }
+
+    /** @return string[] */
+    public function hostAccessList(): array
+    {
+        return array_values(array_filter(explode(',', (string) $this->host_access)));
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -266,31 +478,41 @@ class WingsPlugin extends Plugin
         return json_decode((string) $this->values, true, 512, JSON_THROW_ON_ERROR) ?: [];
     }
 
-    public function isReachable(): bool
-    {
-        return (bool) $this->subsystem_enabled;
-    }
-
+    /**
+     * Forgets every cached list, for every scope, and reloads this process's table.
+     */
     public static function flush(): void
     {
-        cache()->forget(self::CACHE_KEY);
+        cache()->forever(self::CACHE_GENERATION, (int) cache()->get(self::CACHE_GENERATION, 0) + 1);
+
+        self::$scopeNodeIds = null;
 
         self::refreshRows();
     }
 
     public function canEnable(): bool
     {
-        return (bool) $this->can_enable;
+        return $this->isPlugin() && (bool) $this->can_enable;
     }
 
     public function canDisable(): bool
     {
-        return (bool) $this->can_disable;
+        return $this->isPlugin() && (bool) $this->can_disable;
+    }
+
+    public function canConfigure(): bool
+    {
+        return $this->isPlugin() && (bool) $this->can_configure && $this->hasSettings();
+    }
+
+    public function canUpdate(): bool
+    {
+        return $this->isPlugin() && (bool) $this->can_update;
     }
 
     public function canUninstall(): bool
     {
-        return (bool) $this->can_uninstall;
+        return $this->isPlugin() && (bool) $this->can_uninstall;
     }
 
     public function isCompatible(): bool
@@ -308,21 +530,34 @@ class WingsPlugin extends Plugin
         return $this->declaredSettings() !== [];
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Stored values, with declared defaults for the keys that have none.
+     *
+     * @return array<string, mixed>
+     */
     public function getSettingsFormData(): array
     {
-        $defaults = [];
+        $values = $this->settingValues();
+
+        $data = [];
         foreach ($this->declaredSettings() as $setting) {
-            if (isset($setting['key']) && array_key_exists('default', $setting)) {
-                $defaults[$setting['key']] = $setting['default'];
+            $key = self::settingKey($setting);
+            if ($key === null) {
+                continue;
+            }
+
+            if (array_key_exists($key, $values)) {
+                $data[$key] = $values[$key];
+            } elseif (array_key_exists('default', $setting)) {
+                $data[$key] = $setting['default'];
             }
         }
 
-        return array_replace($defaults, $this->settingValues());
+        return $data;
     }
 
     /**
-     * Built from the settings declared in the plugin's plugin.json.
+     * Built from the settings schema the plugin declares (A3.1).
      *
      * @return Component[]
      */
@@ -331,31 +566,143 @@ class WingsPlugin extends Plugin
         $fields = [];
 
         foreach ($this->declaredSettings() as $setting) {
-            $key = $setting['key'] ?? null;
-            if (!$key) {
+            $key = self::settingKey($setting);
+            if ($key === null) {
                 continue;
             }
 
-            $field = match ($setting['type'] ?? 'string') {
+            $type = $setting['type'] ?? null;
+            $secret = ($setting['secret'] ?? false) === true;
+
+            $field = match ($type) {
                 'boolean' => Toggle::make($key)->inline(false),
                 'number' => TextInput::make($key)->numeric(),
-                'text' => Textarea::make($key)->rows(4),
-                'secret' => TextInput::make($key)->password()->revealable(),
                 'select' => Select::make($key)
-                    ->options(collect($setting['options'] ?? [])
-                        ->mapWithKeys(fn (array $option): array => [$option['value'] => $option['label']])
-                        ->all())
-                    ->selectablePlaceholder(false),
-                default => TextInput::make($key),
+                    ->options(collect(is_array($setting['options'] ?? null) ? $setting['options'] : [])
+                        ->filter(fn ($option) => is_array($option) && is_scalar($option['value'] ?? null))
+                        ->mapWithKeys(fn (array $option): array => [(string) $option['value'] => (string) ($option['label'] ?? $option['value'])])
+                        ->all()),
+                'string' => $secret ? TextInput::make($key)->password()->revealable() : TextInput::make($key),
+                // Not in contract v2: shown, but never changed (its stored value is sent back as it was)
+                default => TextInput::make($key)
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->formatStateUsing(fn ($state) => is_scalar($state) ? (string) $state : json_encode($state)),
             };
 
+            $description = is_string($setting['description'] ?? null) ? $setting['description'] : null;
+            if (!in_array($type, self::SETTING_TYPES, true)) {
+                $description = trans('admin/plugin.wings.setting_type_unsupported', ['type' => is_string($type) ? $type : '?']);
+            } elseif ($secret) {
+                $description = trim(($description ?? '') . ' ' . trans('admin/plugin.wings.setting_secret_hint'));
+            }
+
+            $label = is_string($setting['label'] ?? null) && $setting['label'] !== '' ? $setting['label'] : $key;
+
             $fields[] = $field
-                ->label(($setting['label'] ?? null) ?: $key)
-                ->helperText($setting['description'] ?? null)
-                ->required((bool) ($setting['required'] ?? false));
+                ->label($label)
+                ->helperText($description)
+                ->required(($setting['required'] ?? false) === true && !array_key_exists('default', $setting) && $type !== 'boolean');
         }
 
         return $fields;
+    }
+
+    /**
+     * Turns the submitted form into the values object Wings expects (A3.1): numbers as JSON numbers,
+     * select values as the option's own value, an unchanged secret as "********" (Wings keeps it), and
+     * keys without a value left out (Wings unsets them, so the default applies).
+     *
+     * @param  array<mixed, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function settingsPayload(array $data): array
+    {
+        $stored = $this->settingValues();
+        $payload = [];
+
+        foreach ($this->declaredSettings() as $setting) {
+            $key = self::settingKey($setting);
+            if ($key === null) {
+                continue;
+            }
+
+            $type = $setting['type'] ?? null;
+
+            // A type the Panel doesn't know can't be edited, so its stored value is kept as it was
+            if (!in_array($type, self::SETTING_TYPES, true)) {
+                if (array_key_exists($key, $stored)) {
+                    $payload[$key] = $stored[$key];
+                }
+
+                continue;
+            }
+
+            $value = $data[$key] ?? null;
+
+            $value = match ($type) {
+                'boolean' => $value === null ? null : (bool) $value,
+                'number' => self::toNumber($value),
+                'select' => self::toOption($setting, $value),
+                default => is_scalar($value) && $value !== '' ? (string) $value : null,
+            };
+
+            if ($value === null) {
+                continue;
+            }
+
+            // A default the admin didn't change stays a default, so a newer default still applies
+            if (!array_key_exists($key, $stored) && array_key_exists('default', $setting) && $value === $setting['default']) {
+                continue;
+            }
+
+            $payload[$key] = $value;
+        }
+
+        return $payload;
+    }
+
+    /** @param  array<mixed>  $setting */
+    private static function settingKey(array $setting): ?string
+    {
+        $key = $setting['key'] ?? null;
+
+        return is_string($key) && $key !== '' ? $key : null;
+    }
+
+    private static function toNumber(mixed $value): int|float|string|null
+    {
+        if (is_int($value) || is_float($value)) {
+            return $value;
+        }
+
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        $value = trim($value);
+        if (!is_numeric($value)) {
+            // Sent as it is, so Wings answers with a message for this field
+            return $value;
+        }
+
+        return preg_match('/^-?\d+$/', $value) ? (int) $value : (float) $value;
+    }
+
+    /** @param  array<mixed>  $setting */
+    private static function toOption(array $setting, mixed $value): mixed
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        foreach (is_array($setting['options'] ?? null) ? $setting['options'] : [] as $option) {
+            if (is_array($option) && is_scalar($option['value'] ?? null) && (string) $option['value'] === (string) $value) {
+                return $option['value'];
+            }
+        }
+
+        return $value;
     }
 
     /**
@@ -363,9 +710,23 @@ class WingsPlugin extends Plugin
      */
     public function saveSettings(array $data): void
     {
-        $this->repository()->saveSettings($this->plugin_id, $data);
+        try {
+            $this->repository()->saveSettings($this->plugin_id, $this->settingsPayload($data));
+        } finally {
+            self::flush();
+        }
+    }
 
-        self::flush();
+    /**
+     * Names of the accessible nodes, keyed by id, that listed their plugins at $level or higher.
+     *
+     * @return Collection<int, string>
+     */
+    public static function nodesAllowing(string $level, ?User $user = null): Collection
+    {
+        return collect(self::nodeStates($user))
+            ->filter(fn (array $state) => $state['state'] === 'available' && DaemonPluginRepository::levelAllows($state['panel_access'], $level))
+            ->map(fn (array $state) => $state['name']);
     }
 
     public function getReadme(): ?string

@@ -109,6 +109,18 @@ class PluginResource extends Resource
                     ->badge()
                     ->sortable()
                     ->visible(fn ($livewire) => $livewire->activeTab === 'wings'),
+                // How much the Panel may do on the node; only its operator can change it (contract L)
+                TextColumn::make('panel_access')
+                    ->label(trans('admin/plugin.wings.panel_access'))
+                    ->badge()
+                    ->color(fn (?string $state) => match ($state) {
+                        'full' => 'danger',
+                        'signed' => 'warning',
+                        'view' => 'success',
+                        default => 'gray',
+                    })
+                    ->placeholder('-')
+                    ->visible(fn ($livewire) => $livewire->activeTab === 'wings'),
                 TextColumn::make('author')
                     ->label(trans('admin/plugin.author'))
                     ->sortable(),
