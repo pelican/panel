@@ -18,6 +18,7 @@ use App\Repositories\Daemon\DaemonBackupRepository;
 use App\Services\Backups\DeleteBackupService;
 use App\Services\Backups\DownloadLinkService;
 use App\Services\Backups\InitiateBackupService;
+use App\Services\Backups\ServerRestoreService;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
@@ -33,7 +34,8 @@ class BackupController extends ClientApiController
         private readonly DeleteBackupService $deleteBackupService,
         private readonly InitiateBackupService $initiateBackupService,
         private readonly DownloadLinkService $downloadLinkService,
-        private readonly BackupAdapterService $backupService
+        private readonly BackupAdapterService $backupService,
+        private readonly ServerRestoreService $restoreService,
     ) {
         parent::__construct();
     }
@@ -247,6 +249,8 @@ class BackupController extends ClientApiController
         throw_unless(is_null($server->status), new BadRequestHttpException('This server is not currently in a state that allows for a backup to be restored.'));
 
         throw_if($backup->status !== BackupStatus::Successful, new BadRequestHttpException('This backup cannot be restored at this time: not completed or failed.'));
+
+        throw_if($this->restoreService->isRestoringIntoNewServer($backup, $server->node_id), new BadRequestHttpException(trans('admin/backup.restore.restoring_into_new_server')));
 
         $log = Activity::event('server:backup.restore')
             ->subject($backup)

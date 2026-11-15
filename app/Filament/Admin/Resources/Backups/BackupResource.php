@@ -75,7 +75,10 @@ class BackupResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['server', 'node', 'backupHost']);
+        // Like servers, admins only see the backups on the nodes they can access.
+        return parent::getEloquentQuery()
+            ->whereIn('backups.id', Backup::query()->accessibleBy(user())->select('backups.id'))
+            ->with(['server', 'node', 'backupHost']);
     }
 
     /** @throws Exception */
@@ -164,7 +167,10 @@ class BackupResource extends Resource
                     }),
             ])
             ->toolbarActions([
-                CreateServerFromBackupAction::make('create_from_source'),
+                CreateServerFromBackupAction::make('create_from_source')
+                    ->label(trans('admin/backup.restore.action_source'))
+                    ->tooltip(null)
+                    ->icon(TablerIcon::FileImport),
             ])
             ->emptyStateIcon(TablerIcon::FileZip)
             ->emptyStateDescription('')

@@ -60,7 +60,7 @@ class CreateServerFromBackupAction extends Action
                 ->getSearchResultsUsing(fn (?string $search) => $this->backupOptions($search))
                 ->options(fn () => $this->backupOptions(null))
                 // Search can find backups older than the ones listed by default.
-                ->getOptionLabelUsing(fn ($value) => ($backup = Backup::query()->restorable()->with('server')->find($value)) ? $this->backupLabel($backup) : null),
+                ->getOptionLabelUsing(fn ($value) => ($backup = Backup::query()->restorable()->accessibleBy(user())->with('server')->find($value)) ? $this->backupLabel($backup) : null),
             Select::make('backup_host_id')
                 ->label(trans('admin/backup.restore.backup_host'))
                 ->visible(fn (Get $get) => $get('type') === RestoreSource::TYPE_S3)
@@ -104,6 +104,7 @@ class CreateServerFromBackupAction extends Action
     {
         return Backup::query()
             ->restorable()
+            ->accessibleBy(user())
             ->with('server')
             ->when($search, fn ($query) => $query->where(fn ($query) => $query
                 ->where('name', 'like', "%$search%")

@@ -17,6 +17,7 @@ use App\Repositories\Daemon\DaemonBackupRepository;
 use App\Services\Backups\DeleteBackupService;
 use App\Services\Backups\DownloadLinkService;
 use App\Services\Backups\InitiateBackupService;
+use App\Services\Backups\ServerRestoreService;
 use App\Traits\Filament\BlockAccessInConflict;
 use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanCustomizeRelations;
@@ -190,7 +191,7 @@ class BackupResource extends Resource
                             Checkbox::make('truncate')
                                 ->label(trans('server/backup.actions.restore.delete_all')),
                         ])
-                        ->action(function (Backup $backup, $data, DaemonBackupRepository $daemonRepository, DownloadLinkService $downloadLinkService) use ($server) {
+                        ->action(function (Backup $backup, $data, DaemonBackupRepository $daemonRepository, DownloadLinkService $downloadLinkService, ServerRestoreService $restoreService) use ($server) {
                             if (!is_null($server->status)) {
                                 return Notification::make()
                                     ->title(trans('server/backup.actions.restore.notification_fail'))
@@ -203,6 +204,14 @@ class BackupResource extends Resource
                                 return Notification::make()
                                     ->title(trans('server/backup.actions.restore.notification_fail'))
                                     ->body(trans('server/backup.actions.restore.notification_fail_body_2'))
+                                    ->danger()
+                                    ->send();
+                            }
+
+                            if ($restoreService->isRestoringIntoNewServer($backup, $server->node_id)) {
+                                return Notification::make()
+                                    ->title(trans('server/backup.actions.restore.notification_fail'))
+                                    ->body(trans('admin/backup.restore.restoring_into_new_server'))
                                     ->danger()
                                     ->send();
                             }

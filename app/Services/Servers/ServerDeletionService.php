@@ -99,6 +99,8 @@ class ServerDeletionService
             foreach ($server->backups()->with(['backupHost', 'server.node', 'node'])->get() as $backup) {
                 // Finished backups are kept, and stay in the Panel without a server.
                 if ($this->keepBackups && $backup->is_successful) {
+                    $backup->update(['server_id' => null]);
+
                     continue;
                 }
 

@@ -23,6 +23,7 @@ use App\Services\Backups\ServerRestoreService;
 use App\Services\Servers\ServerDeletionService;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -393,4 +394,52 @@ it('lets only administrators who can create servers see all backups', function (
 
     expect($policy->viewAny(User::factory()->create()))->toBeFalse()
         ->and($policy->create(User::factory()->create()))->toBeFalse();
+});
+
+it('still deletes backups with a server deleted outside the deletion service', function () {
+    $host = BackupHost::factory()->create();
+    [$server] = serverWithVariables();
+    $backup = Backup::factory()->create(['server_id' => $server->id, 'server_uuid' => $server->uuid, 'backup_host_id' => $host->id]);
+
+    $server->allocations()->update(['server_id' => null]);
+    $server->delete();
+
+    expect(Backup::query()->find($backup->id))->toBeNull();
+});
+
+it('does not restore a backup in place while it is restored into a new server on the same node', function () {
+    $host = BackupHost::factory()->create();
+    [$server] = serverWithVariables();
+    $server->update(['status' => null]);
+    $backup = Backup::factory()->create(['server_id' => $server->id, 'server_uuid' => $server->uuid, 'node_id' => $server->node_id, 'backup_host_id' => $host->id]);
+    $new = createServerModel(['node_id' => $server->node_id]);
+
+    $daemon = $this->mock(DaemonBackupRepository::class);
+    $daemon->allows('setServer')->andReturnSelf();
+    $daemon->expects('restoreInto')->andReturn(new Response(new PsrResponse(202)));
+    $daemon->expects('restore')->never();
+
+    $service = app(ServerRestoreService::class);
+    $service->start($service->create($new, RestoreSource::backup($backup), false));
+
+    expect($service->isRestoringIntoNewServer($backup, $server->node_id))->toBeTrue();
+
+    $this->actingAs($server->user)
+        ->postJson("/api/client/servers/$server->uuid/backups/$backup->uuid/restore", ['truncate' => false])
+        ->assertBadRequest();
+
+    expect($server->refresh()->status)->toBeNull();
+});
+
+it('fills in the server and node of existing backups when migrating', function () {
+    $host = BackupHost::factory()->create();
+    [$server] = serverWithVariables();
+    $backup = Backup::factory()->create(['server_id' => $server->id, 'backup_host_id' => $host->id]);
+    DB::table('backups')->where('id', $backup->id)->update(['server_uuid' => null, 'node_id' => null]);
+
+    (require database_path('migrations/2026_11_11_000000_add_restore_columns_to_backups_table.php'))->up();
+
+    $backup->refresh();
+    expect($backup->server_uuid)->toBe($server->uuid)
+        ->and($backup->node_id)->toBe($server->node_id);
 });

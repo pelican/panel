@@ -140,3 +140,39 @@ it('lets administrators unlock a locked backup of a deleted server', function ()
 
     expect($backup->refresh()->is_locked)->toBeFalse();
 });
+
+it('only shows admins the backups on the nodes they can access', function () {
+    $visibleNode = Node::factory()->create();
+    $hiddenNode = Node::factory()->create();
+    $visible = keptBackup($visibleNode, Egg::factory()->create(), 25596);
+    $hidden = keptBackup($hiddenNode, Egg::factory()->create(), 25595);
+
+    $role = Role::query()->create(['name' => 'Node admin', 'guard_name' => 'web']);
+    $role->givePermissionTo(Permission::findOrCreate(RolePermissionModels::Server->create(), 'web'));
+    $role->nodes()->sync([$visibleNode->id]);
+    [$nodeAdmin] = generateTestAccount();
+    $nodeAdmin->syncRoles($role);
+    $this->actingAs($nodeAdmin);
+
+    livewire(ListBackups::class)
+        ->assertCanSeeTableRecords([$visible])
+        ->assertCanNotSeeTableRecords([$hidden]);
+
+    expect(Backup::query()->accessibleBy($nodeAdmin)->pluck('id')->all())->toBe([$visible->id])
+        ->and(Backup::query()->accessibleBy($this->admin)->count())->toBe(2);
+});
+
+it('starts the wizard on the backup\'s node', function () {
+    $backupNode = Node::factory()->create();
+    $otherNode = Node::factory()->create();
+    $allocation = Allocation::factory()->create(['node_id' => $backupNode->id, 'server_id' => null, 'ip' => '127.0.0.1', 'port' => 25594]);
+    $backup = keptBackup($backupNode, Egg::factory()->create(), 25594);
+
+    session()->put('last_utilized_node', $otherNode->id);
+    session()->put('restore_source.node', RestoreSource::backup($backup)->toArray());
+
+    Livewire::withQueryParams(['restore' => 'node'])
+        ->test(CreateServer::class)
+        ->assertFormSet(['node_id' => $backupNode->id, 'allocation_id' => $allocation->id])
+        ->assertSet('restoreMissingAllocations', []);
+});

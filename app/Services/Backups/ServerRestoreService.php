@@ -222,6 +222,21 @@ class ServerRestoreService
     }
 
     /**
+     * Whether the node is restoring the backup into a new server under the backup's
+     * own uuid. The node reports a restore of the backup into its own server with
+     * the same uuid, so that restore has to wait.
+     */
+    public function isRestoringIntoNewServer(Backup $backup, int $nodeId, ?ServerRestore $except = null): bool
+    {
+        return ServerRestore::query()
+            ->when($except, fn ($query) => $query->whereKeyNot($except->id))
+            ->where('status', ServerRestore::STATUS_RUNNING)
+            ->where('callback_uuid', $backup->uuid)
+            ->whereHas('server', fn ($query) => $query->where('node_id', $nodeId))
+            ->exists();
+    }
+
+    /**
      * Whether the node is already restoring this backup under its own uuid, into
      * another new server or into the server it belongs to.
      */
@@ -229,14 +244,8 @@ class ServerRestoreService
     {
         $node = $restore->server->node_id;
 
-        $otherRestore = ServerRestore::query()
-            ->whereKeyNot($restore->id)
-            ->where('status', ServerRestore::STATUS_RUNNING)
-            ->where('callback_uuid', $backup->uuid)
-            ->whereHas('server', fn ($query) => $query->where('node_id', $node))
-            ->exists();
-
-        return $otherRestore || ($backup->server?->node_id === $node && $backup->server->status === ServerState::RestoringBackup);
+        return $this->isRestoringIntoNewServer($backup, $node, $restore)
+            || ($backup->server?->node_id === $node && $backup->server->status === ServerState::RestoringBackup);
     }
 
     private function sourceDescription(ServerRestore $restore): string

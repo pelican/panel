@@ -314,6 +314,15 @@ class CreateServer extends CreateRecord
                         ->prefixIcon(TablerIcon::Server2)
                         ->selectablePlaceholder(false)
                         ->default(function () {
+                            // A server created from a backup starts on the backup's node, where its
+                            // allocations are.
+                            $backupNode = $this->restoreSource ? RestoreSource::fromArray($this->restoreSource)->getBackup()?->sourceNode() : null;
+                            if ($backupNode && user()?->accessibleNodes()->whereKey($backupNode->id)->exists()) {
+                                $this->node = $backupNode;
+
+                                return $this->node->id;
+                            }
+
                             $lastUsedNode = session()->get('last_utilized_node');
 
                             if ($lastUsedNode && user()?->accessibleNodes()->where('id', $lastUsedNode)->exists()) {

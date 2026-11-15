@@ -12,6 +12,8 @@ return [
     'delete_failed' => 'Could not delete the backup',
     'restore' => [
         'action' => 'Create server from backup',
+        'action_source' => 'Create server from a backup',
+        'restoring_into_new_server' => 'This backup is being restored into a new server on this node. Try again once that has finished.',
         'source' => 'Backup location',
         'source_backup' => 'Panel backup',
         'source_s3' => 'S3 object',

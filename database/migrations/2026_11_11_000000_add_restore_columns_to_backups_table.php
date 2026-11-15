@@ -27,23 +27,10 @@ return new class extends Migration
 
         DB::table('backups')
             ->whereNull('server_uuid')
-            ->orderBy('id')
-            ->chunkById(500, function ($backups) {
-                $servers = DB::table('servers')
-                    ->whereIn('id', $backups->pluck('server_id')->unique())
-                    ->get(['id', 'uuid', 'node_id'])
-                    ->keyBy('id');
-
-                foreach ($backups as $backup) {
-                    $server = $servers->get($backup->server_id);
-                    if ($server) {
-                        DB::table('backups')->where('id', $backup->id)->update([
-                            'server_uuid' => $server->uuid,
-                            'node_id' => $server->node_id,
-                        ]);
-                    }
-                }
-            });
+            ->update([
+                'server_uuid' => DB::table('servers')->select('uuid')->whereColumn('servers.id', 'backups.server_id'),
+                'node_id' => DB::table('servers')->select('node_id')->whereColumn('servers.id', 'backups.server_id'),
+            ]);
 
         Schema::table('backups', function (Blueprint $table) {
             if (in_array(['server_id'], array_column(Schema::getForeignKeys('backups'), 'columns'))) {
@@ -56,7 +43,9 @@ return new class extends Migration
         });
 
         Schema::table('backups', function (Blueprint $table) {
-            $table->foreign('server_id')->references('id')->on('servers')->nullOnDelete();
+            // Backups are still deleted with their server. ServerDeletionService detaches
+            // the ones it keeps first.
+            $table->foreign('server_id')->references('id')->on('servers')->cascadeOnDelete();
 
             if (!in_array(['node_id'], array_column(Schema::getForeignKeys('backups'), 'columns'))) {
                 $table->foreign('node_id')->references('id')->on('nodes')->nullOnDelete();
