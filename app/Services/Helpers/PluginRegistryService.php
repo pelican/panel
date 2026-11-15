@@ -1,0 +1,328 @@
+<?php
+
+namespace App\Services\Helpers;
+
+use GuzzleHttp\Exception\TransferException;
+use GuzzleHttp\Psr7\Uri;
+use GuzzleHttp\Psr7\UriResolver;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Http;
+use JsonException;
+use Psr\Http\Message\ResponseInterface;
+use RuntimeException;
+
+/**
+ * Finds Panel plugins in plugin registries: pelican/wings plugin contract v1, sections R1 to R3.
+ *
+ * A registry is one https JSON document `{"name", "plugins": [...]}`. The Panel only uses entries with
+ * `target: "panel"`; a missing target means "wings", so registries written before targets existed only
+ * ever hold Wings plugins. Registries are configured in PANEL_PLUGIN_REGISTRIES (see PluginRegistryConfig).
+ *
+ * A plugin is asked for as:
+ *  - `@namespace/name`: that configured registry only, with its credentials;
+ *  - `https://host/registry.json#name`: that URL only, never with credentials;
+ *  - `name`: every configured registry. It must be listed (for the Panel) by exactly one of them, and every
+ *    one of them must be readable, so a public registry can't take over a name a private one uses.
+ */
+class PluginRegistryService
+{
+    public const MAX_DOCUMENT_BYTES = 1024 * 1024;
+
+    public const MAX_REDIRECTS = 10;
+
+    /** Whether any registry is configured. A panel without one keeps behaving exactly as before. */
+    public function hasRegistries(): bool
+    {
+        return config('panel.plugin.registries') !== [] && config('panel.plugin.registries') !== null;
+    }
+
+    /** Whether the reference can only mean a registry plugin (`@namespace/name` or `url#name`), never a local plugin id. */
+    public function isReference(string $reference): bool
+    {
+        return str_starts_with($reference, '@') || str_contains($reference, '#');
+    }
+
+    /**
+     * The configured registries by namespace, sorted by namespace.
+     *
+     * @return array<string, array{url: string, token: ?string, headers: array<string, string>, error: ?string}>
+     *
+     * @throws RuntimeException when PANEL_PLUGIN_REGISTRIES can't be read at all
+     */
+    public function registries(): array
+    {
+        $registries = config('panel.plugin.registries') ?? [];
+
+        if (is_string($registries)) {
+            throw new RuntimeException($registries);
+        }
+
+        ksort($registries);
+
+        return $registries;
+    }
+
+    /** @throws RuntimeException */
+    public function resolve(string $reference): RegistryPlugin
+    {
+        $reference = trim($reference);
+
+        if (str_contains($reference, '#')) {
+            [$url, $name] = explode('#', $reference, 2);
+
+            return $this->find($this->readDocument($url, null), $name, null, $url)
+                ?? throw new RuntimeException(trans('admin/plugin.registry.not_found_in', ['name' => $name, 'registry' => $url]));
+        }
+
+        if (str_starts_with($reference, '@')) {
+            [$namespace, $name] = array_pad(explode('/', substr($reference, 1), 2), 2, '');
+
+            if ($namespace === '' || $name === '') {
+                throw new RuntimeException(trans('admin/plugin.registry.invalid_reference', ['reference' => $reference]));
+            }
+
+            $registry = $this->registries()[$namespace] ?? throw new RuntimeException(trans('admin/plugin.registry.unknown_namespace', ['namespace' => $namespace]));
+
+            return $this->find($this->readRegistry($namespace, $registry), $name, $namespace, $registry['url'])
+                ?? throw new RuntimeException(trans('admin/plugin.registry.not_found_in', ['name' => $name, 'registry' => "@$namespace"]));
+        }
+
+        return $this->resolveBareName($reference);
+    }
+
+    /**
+     * Downloads a registry URL or an archive: https on every hop, at most MAX_REDIRECTS redirects, and the
+     * namespace's credentials only on requests to that registry's own origin (scheme, host and port). Once a
+     * redirect leaves that origin the credentials are gone for the rest of the chain.
+     *
+     * @throws RuntimeException
+     */
+    public function fetch(string $url, ?string $namespace, int $maxBytes, int $timeout = 15): string
+    {
+        $credentials = [];
+        $credentialOrigin = null;
+
+        if ($namespace !== null) {
+            $registry = $this->registries()[$namespace] ?? throw new RuntimeException(trans('admin/plugin.registry.unknown_namespace', ['namespace' => $namespace]));
+
+            if ($registry['error'] !== null) {
+                throw new RuntimeException(trans('admin/plugin.registry.misconfigured', ['namespace' => $namespace, 'error' => $registry['error']]));
+            }
+
+            $credentials = $registry['headers'];
+            if ($registry['token'] !== null && $registry['token'] !== '') {
+                $credentials['Authorization'] = 'Bearer ' . $registry['token'];
+            }
+            $credentialOrigin = self::origin($registry['url']);
+        }
+
+        for ($redirects = 0; ; $redirects++) {
+            $origin = self::origin($url) ?? throw new RuntimeException(trans('admin/plugin.registry.https_only', ['url' => $url]));
+
+            if ($origin !== $credentialOrigin) {
+                $credentials = [];
+            }
+
+            try {
+                $response = Http::withHeaders($credentials)
+                    ->withoutRedirecting()
+                    ->timeout($timeout)
+                    ->connectTimeout(5)
+                    ->withOptions([
+                        // Refuse an oversized body from its headers, before downloading it.
+                        'on_headers' => function (ResponseInterface $response) use ($maxBytes) {
+                            if ((int) $response->getHeaderLine('Content-Length') > $maxBytes) {
+                                throw new RuntimeException('Response too large.');
+                            }
+                        },
+                    ])
+                    ->get($url);
+            } catch (ConnectionException|TransferException $exception) {
+                // Includes a body refused by the on_headers check above.
+                throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => $exception->getMessage()]), previous: $exception);
+            }
+
+            if ($response->redirect()) {
+                if ($redirects >= self::MAX_REDIRECTS) {
+                    throw new RuntimeException(trans('admin/plugin.registry.too_many_redirects', ['url' => $url]));
+                }
+
+                $location = $response->header('Location');
+                if ($location === '') {
+                    throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => 'redirect without a Location']));
+                }
+
+                $url = (string) UriResolver::resolve(new Uri($url), new Uri($location));
+
+                continue;
+            }
+
+            try {
+                $response->throw();
+            } catch (RequestException $exception) {
+                throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => 'HTTP ' . $exception->response->status()]), previous: $exception);
+            }
+
+            $body = $response->body();
+
+            if (strlen($body) > $maxBytes) {
+                throw new RuntimeException(trans('admin/plugin.registry.too_large', ['url' => $url]));
+            }
+
+            return $body;
+        }
+    }
+
+    /**
+     * The `target: "panel"` entries of a registry document, as raw arrays with a string `name` (R1).
+     * Unknown fields are kept and ignored; entries for Wings, including those without a `target`, are dropped.
+     *
+     * @param  array<mixed>  $document
+     * @return array<int, array<string, mixed>>
+     */
+    public function panelEntries(array $document): array
+    {
+        return collect($document['plugins'])
+            ->filter(fn ($entry) => is_array($entry) && is_string($entry['name'] ?? null) && ($entry['target'] ?? 'wings') === 'panel')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Fetches and decodes a registry document, refusing anything that isn't one (R1).
+     *
+     * @return array<mixed>
+     *
+     * @throws RuntimeException
+     */
+    public function readDocument(string $url, ?string $namespace): array
+    {
+        $body = $this->fetch($url, $namespace, self::MAX_DOCUMENT_BYTES);
+
+        try {
+            $document = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new RuntimeException(trans('admin/plugin.registry.invalid_document', ['url' => $url]), previous: $exception);
+        }
+
+        // `plugins` must be an array; an empty one is valid, `null` or a missing one is not.
+        if (!is_array($document) || !is_array($document['plugins'] ?? null) || !array_is_list($document['plugins'])) {
+            throw new RuntimeException(trans('admin/plugin.registry.invalid_document', ['url' => $url]));
+        }
+
+        return $document;
+    }
+
+    /**
+     * @param  array{url: string, token: ?string, headers: array<string, string>, error: ?string}  $registry
+     * @return array<mixed>
+     *
+     * @throws RuntimeException
+     */
+    private function readRegistry(string $namespace, array $registry): array
+    {
+        if ($registry['error'] !== null) {
+            throw new RuntimeException(trans('admin/plugin.registry.misconfigured', ['namespace' => $namespace, 'error' => $registry['error']]));
+        }
+
+        return $this->readDocument($registry['url'], $namespace);
+    }
+
+    /** @throws RuntimeException */
+    private function resolveBareName(string $name): RegistryPlugin
+    {
+        $registries = $this->registries();
+
+        if ($registries === []) {
+            throw new RuntimeException(trans('admin/plugin.registry.none_configured'));
+        }
+
+        $found = [];
+
+        foreach ($registries as $namespace => $registry) {
+            try {
+                $document = $this->readRegistry($namespace, $registry);
+            } catch (RuntimeException $exception) {
+                // A registry that can't be read might be the one that holds the plugin the admin meant.
+                throw new RuntimeException(trans('admin/plugin.registry.unreadable', ['namespace' => $namespace, 'error' => $exception->getMessage()]), previous: $exception);
+            }
+
+            if ($plugin = $this->find($document, $name, $namespace, $registry['url'])) {
+                $found[] = $plugin;
+            }
+        }
+
+        return match (count($found)) {
+            0 => throw new RuntimeException(trans('admin/plugin.registry.not_found', ['name' => $name])),
+            1 => $found[0],
+            default => throw new RuntimeException(trans('admin/plugin.registry.ambiguous', [
+                'name' => $name,
+                'choices' => implode(', ', array_map(fn (RegistryPlugin $plugin) => $plugin->reference(), $found)),
+            ])),
+        };
+    }
+
+    /**
+     * The first Panel entry with exactly this name, validated, or null when the registry doesn't list it.
+     *
+     * @param  array<mixed>  $document
+     *
+     * @throws RuntimeException when the entry is listed but can't be installed safely
+     */
+    private function find(array $document, string $name, ?string $namespace, string $registryUrl): ?RegistryPlugin
+    {
+        $entry = collect($this->panelEntries($document))->first(fn (array $entry) => $entry['name'] === $name);
+
+        if ($entry === null) {
+            return null;
+        }
+
+        $invalid = fn (string $reason) => new RuntimeException(trans('admin/plugin.registry.invalid_entry', ['name' => $name, 'reason' => $reason]));
+
+        // The name becomes the plugin's directory and must equal the id in its plugin.json (R1).
+        if (preg_match('/\A[a-z0-9][a-z0-9._-]*\z/', $name) !== 1 || str_contains($name, '..')) {
+            throw $invalid('name');
+        }
+
+        if (!is_string($entry['version'] ?? null) || trim($entry['version']) === '') {
+            throw $invalid('version');
+        }
+
+        if (!is_string($entry['download'] ?? null) || self::origin($entry['download']) === null) {
+            throw $invalid('download');
+        }
+
+        if (!is_string($entry['sha256'] ?? null) || preg_match('/\A[a-f0-9]{64}\z/i', $entry['sha256']) !== 1) {
+            throw $invalid('sha256');
+        }
+
+        $optional = fn (string $key) => is_string($entry[$key] ?? null) && $entry[$key] !== '' ? $entry[$key] : null;
+
+        return new RegistryPlugin(
+            name: $name,
+            version: $entry['version'],
+            download: $entry['download'],
+            sha256: strtolower($entry['sha256']),
+            signature: $optional('signature'),
+            author: $optional('author'),
+            description: $optional('description'),
+            panelVersion: $optional('panel_version'),
+            namespace: $namespace,
+            registryUrl: $registryUrl,
+            registryName: is_string($document['name'] ?? null) && $document['name'] !== '' ? $document['name'] : null,
+        );
+    }
+
+    /** Lowercased `https://host:port` of an https URL (default port 443), or null for anything that isn't https. */
+    public static function origin(string $url): ?string
+    {
+        $parts = parse_url($url);
+
+        if (!is_array($parts) || strtolower($parts['scheme'] ?? '') !== 'https' || blank($parts['host'] ?? null)) {
+            return null;
+        }
+
+        return 'https://' . strtolower($parts['host']) . ':' . ($parts['port'] ?? 443);
+    }
+}
