@@ -23,6 +23,7 @@ use App\Services\Backups\ServerRestoreService;
 use App\Services\Servers\ServerDeletionService;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -443,4 +444,53 @@ it('fills in the server and node of existing backups when migrating', function (
     $backup->refresh();
     expect($backup->server_uuid)->toBe($server->uuid)
         ->and($backup->node_id)->toBe($server->node_id);
+});
+
+it('holds the backup restore lock while an in-place restore starts', function () {
+    $host = BackupHost::factory()->create();
+    [$server] = serverWithVariables();
+    $server->update(['status' => null]);
+    $backup = Backup::factory()->create(['server_id' => $server->id, 'server_uuid' => $server->uuid, 'node_id' => $server->node_id, 'backup_host_id' => $host->id]);
+
+    $daemon = $this->mock(DaemonBackupRepository::class);
+    $daemon->allows('setServer')->andReturnSelf();
+    // A new-server restore of the same backup can't start while the node is asked to restore it in place.
+    $daemon->expects('restore')->andReturnUsing(function () use ($backup) {
+        expect(Cache::lock("backup-restore:$backup->uuid")->get())->toBeFalse();
+
+        return new Response(new PsrResponse(204));
+    });
+
+    $this->actingAs($server->user)
+        ->postJson("/api/client/servers/$server->uuid/backups/$backup->uuid/restore", ['truncate' => false])
+        ->assertNoContent();
+
+    expect($server->refresh()->status)->toBe(ServerState::RestoringBackup)
+        ->and(Cache::lock("backup-restore:$backup->uuid")->get())->toBeTrue();
+});
+
+it('holds the backup restore lock while a new-server restore records how the node reports it', function () {
+    $host = BackupHost::factory()->create();
+    [$old] = serverWithVariables();
+    $backup = Backup::factory()->create(['server_id' => null, 'server_uuid' => $old->uuid, 'node_id' => $old->node_id, 'backup_host_id' => $host->id]);
+    $new = createServerModel(['node_id' => $old->node_id]);
+
+    $daemon = $this->mock(DaemonBackupRepository::class);
+    $daemon->allows('setServer')->andReturnSelf();
+    $daemon->allows('restoreInto')->andReturn(new Response(new PsrResponse(202)));
+
+    $service = app(ServerRestoreService::class);
+    $restore = $service->create($new, RestoreSource::backup($backup), false);
+
+    $lockedWhileRecorded = null;
+    ServerRestore::updating(function (ServerRestore $model) use ($backup, &$lockedWhileRecorded) {
+        if ($model->isDirty('callback_uuid')) {
+            $lockedWhileRecorded = !Cache::lock("backup-restore:$backup->uuid")->get();
+        }
+    });
+
+    $service->start($restore);
+
+    expect($lockedWhileRecorded)->toBeTrue()
+        ->and($restore->refresh()->callback_uuid)->toBe($backup->uuid);
 });

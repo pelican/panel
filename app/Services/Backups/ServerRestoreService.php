@@ -13,9 +13,12 @@ use App\Models\Server;
 use App\Models\ServerRestore;
 use App\Repositories\Daemon\DaemonBackupRepository;
 use App\Repositories\Daemon\DaemonServerRepository;
+use Closure;
 use Exception;
 use Filament\Notifications\Notification;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Ramsey\Uuid\Uuid;
 use Throwable;
 
@@ -28,6 +31,12 @@ class ServerRestoreService
 {
     /** How long download links for a restore stay valid, in minutes. */
     public const LINK_LIFETIME = 60;
+
+    /** How long the lock for restoring a backup is held at most, in seconds. */
+    private const LOCK_SECONDS = 60;
+
+    /** How long a restore waits for that lock, in seconds. */
+    private const LOCK_WAIT_SECONDS = 15;
 
     public function __construct(
         private readonly BackupAdapterService $backupAdapterService,
@@ -72,9 +81,15 @@ class ServerRestoreService
         $server = $restore->server;
 
         try {
-            [$identifier, $adapter, $sourceServer, $url] = $this->payload($restore);
+            // Choosing the uuid the node reports back with checks what else is restoring the
+            // backup, and recording it is what those checks look for.
+            [$identifier, $adapter, $sourceServer, $url] = $this->whileRestoring($restore->backup, function () use ($restore) {
+                $payload = $this->payload($restore);
+                $restore->update(['callback_uuid' => $payload[0]]);
 
-            $restore->update(['callback_uuid' => $identifier]);
+                return $payload;
+            });
+
             // A suspended server stays suspended while its files are restored. The update
             // checks the stored status, so a suspension made meanwhile is not overwritten.
             Server::query()
@@ -224,6 +239,27 @@ class ServerRestoreService
         }
 
         throw new Exception(trans('admin/backup.restore.missing_backup'));
+    }
+
+    /**
+     * Runs $callback holding the lock for restoring the given backup. Restores of a
+     * backup into a new server and into its own server both check what the other is
+     * doing and then start, which has to happen under one lock.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T
+     *
+     * @throws LockTimeoutException
+     */
+    public function whileRestoring(?Backup $backup, Closure $callback): mixed
+    {
+        if (!$backup) {
+            return $callback();
+        }
+
+        return Cache::lock("backup-restore:$backup->uuid", self::LOCK_SECONDS)->block(self::LOCK_WAIT_SECONDS, $callback);
     }
 
     /**

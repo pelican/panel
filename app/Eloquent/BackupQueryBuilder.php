@@ -25,10 +25,8 @@ class BackupQueryBuilder extends Builder
 
     /**
      * Backups kept after their server was deleted.
-     *
-     * @return $this
      */
-    public function orphaned(): static
+    public function orphaned(): self
     {
         $this->whereNull('server_id');
 
@@ -37,10 +35,8 @@ class BackupQueryBuilder extends Builder
 
     /**
      * Backups that finished successfully and can be restored.
-     *
-     * @return $this
      */
-    public function restorable(): static
+    public function restorable(): self
     {
         $this->whereNotNull('completed_at')->where('is_successful', true);
 
@@ -51,7 +47,7 @@ class BackupQueryBuilder extends Builder
      * Backups on the nodes the user can access. Backups without a node fall back
      * to their server's node.
      */
-    public function accessibleBy(?User $user): static
+    public function accessibleBy(?User $user): self
     {
         if ($user?->isRootAdmin()) {
             return $this;

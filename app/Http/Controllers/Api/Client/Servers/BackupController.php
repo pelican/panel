@@ -250,20 +250,24 @@ class BackupController extends ClientApiController
 
         throw_if($backup->status !== BackupStatus::Successful, new BadRequestHttpException('This backup cannot be restored at this time: not completed or failed.'));
 
-        throw_if($this->restoreService->isRestoringIntoNewServer($backup, $server->node_id), new BadRequestHttpException(trans('admin/backup.restore.restoring_into_new_server')));
-
         $log = Activity::event('server:backup.restore')
             ->subject($backup)
             ->property(['name' => $backup->name, 'truncate' => $request->input('truncate')]);
 
-        $log->transaction(function () use ($backup, $server, $request) {
-            $url = $this->downloadLinkService->handle($backup, $request->user());
+        // The node reports this restore with the backup's uuid, like a restore of the backup
+        // into a new server on the same node, so only one of them may start at a time.
+        $this->restoreService->whileRestoring($backup, function () use ($log, $backup, $server, $request) {
+            throw_if($this->restoreService->isRestoringIntoNewServer($backup, $server->node_id), new BadRequestHttpException(trans('admin/backup.restore.restoring_into_new_server')));
 
-            // Update the status right away for the server so that we know not to allow certain
-            // actions against it via the Panel API.
-            $server->update(['status' => ServerState::RestoringBackup]);
+            $log->transaction(function () use ($backup, $server, $request) {
+                $url = $this->downloadLinkService->handle($backup, $request->user());
 
-            $this->daemonRepository->setServer($server)->restore($backup, $url, $request->input('truncate'));
+                // Update the status right away for the server so that we know not to allow certain
+                // actions against it via the Panel API.
+                $server->update(['status' => ServerState::RestoringBackup]);
+
+                $this->daemonRepository->setServer($server)->restore($backup, $url, $request->input('truncate'));
+            });
         });
 
         return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);

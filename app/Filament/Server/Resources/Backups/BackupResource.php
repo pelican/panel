@@ -208,27 +208,37 @@ class BackupResource extends Resource
                                     ->send();
                             }
 
-                            if ($restoreService->isRestoringIntoNewServer($backup, $server->node_id)) {
+                            $log = Activity::event('server:backup.restore')
+                                ->subject($backup)
+                                ->property(['name' => $backup->name, 'truncate' => $data['truncate']]);
+
+                            // The node reports this restore with the backup's uuid, like a restore of the backup
+                            // into a new server on the same node, so only one of them may start at a time.
+                            $started = $restoreService->whileRestoring($backup, function () use ($restoreService, $log, $downloadLinkService, $daemonRepository, $backup, $server, $data) {
+                                if ($restoreService->isRestoringIntoNewServer($backup, $server->node_id)) {
+                                    return false;
+                                }
+
+                                $log->transaction(function () use ($downloadLinkService, $daemonRepository, $backup, $server, $data) {
+                                    $url = $downloadLinkService->handle($backup, user());
+
+                                    // Update the status right away for the server so that we know not to allow certain
+                                    // actions against it via the Panel API.
+                                    $server->update(['status' => ServerState::RestoringBackup]);
+
+                                    $daemonRepository->setServer($server)->restore($backup, $url, $data['truncate']);
+                                });
+
+                                return true;
+                            });
+
+                            if (!$started) {
                                 return Notification::make()
                                     ->title(trans('server/backup.actions.restore.notification_fail'))
                                     ->body(trans('admin/backup.restore.restoring_into_new_server'))
                                     ->danger()
                                     ->send();
                             }
-
-                            $log = Activity::event('server:backup.restore')
-                                ->subject($backup)
-                                ->property(['name' => $backup->name, 'truncate' => $data['truncate']]);
-
-                            $log->transaction(function () use ($downloadLinkService, $daemonRepository, $backup, $server, $data) {
-                                $url = $downloadLinkService->handle($backup, user());
-
-                                // Update the status right away for the server so that we know not to allow certain
-                                // actions against it via the Panel API.
-                                $server->update(['status' => ServerState::RestoringBackup]);
-
-                                $daemonRepository->setServer($server)->restore($backup, $url, $data['truncate']);
-                            });
 
                             return Notification::make()
                                 ->title(trans('server/backup.actions.restore.notification_started'))
