@@ -7,6 +7,7 @@ use App\Exceptions\Service\InvalidFileUploadException;
 use App\Models\Plugin;
 use App\Models\Role;
 use App\Models\User;
+use Closure;
 use Composer\Autoload\ClassLoader;
 use Exception;
 use Filament\Facades\Filament;
@@ -394,9 +395,11 @@ class PluginService
      */
     public function downloadPluginFromFile(UploadedFile $file, ?string $expectedId = null, ?string $signature = null): string
     {
-        $this->app->make(PluginSignatures::class)->enforce((string) hash_file('sha256', $file->getPathname(), true), $signature);
+        return $this->withoutStagingPaths(function () use ($file, $expectedId, $signature) {
+            $this->app->make(PluginSignatures::class)->enforce((string) hash_file('sha256', $file->getPathname(), true), $signature);
 
-        return $this->importArchive($file, $expectedId);
+            return $this->importArchive($file, $expectedId);
+        });
     }
 
     /**
@@ -457,10 +460,9 @@ class PluginService
 
         $zip->close();
 
-        // Locate plugin.json, either at the archive root (flat zip) or one level deep
-        // (single top-level folder). Prefer the shallowest match.
+        // plugin.json is at the archive's root, or in its only top-level folder (contract v3.2, R1)
         $manifest = $this->locatePluginManifest($extractPath);
-        throw_if($manifest === null, new Exception(trans('admin/plugin.notifications.import_no_manifest')));
+        throw_if($manifest === null, new InvalidFileUploadException(trans('admin/plugin.notifications.import_layout')));
 
         $data = File::json($manifest, JSON_THROW_ON_ERROR);
         $id = $data['id'] ?? null;
@@ -527,24 +529,73 @@ class PluginService
     }
 
     /**
-     * Find a plugin.json inside an extracted archive, either at its root or within a single
-     * top-level directory. Returns the absolute path to the manifest, or null if none exists.
+     * The plugin.json of an extracted archive (contract v3.2, R1): at its root, or inside a single top-level
+     * directory with nothing else at the top level, which is how GitHub release archives and the Hub package
+     * plugins. Null for any other layout.
      */
     private function locatePluginManifest(string $path): ?string
     {
         $rootManifest = join_paths($path, 'plugin.json');
-        if (File::exists($rootManifest)) {
+        if (File::isFile($rootManifest)) {
             return $rootManifest;
         }
 
-        foreach (File::directories($path) as $directory) {
-            $manifest = join_paths($directory, 'plugin.json');
-            if (File::exists($manifest)) {
-                return $manifest;
-            }
+        $topLevel = array_values(array_diff(scandir($path) ?: [], ['.', '..']));
+        if (count($topLevel) !== 1 || !File::isDirectory($directory = join_paths($path, $topLevel[0]))) {
+            return null;
         }
 
-        return null;
+        $manifest = join_paths($directory, 'plugin.json');
+
+        return File::isFile($manifest) ? $manifest : null;
+    }
+
+    /**
+     * Runs an import so that no error it throws shows where the Panel stages archives (contract v3.2, R1): the
+     * system temp directory or a dot directory under plugins/. A path inside the archive is shown relative to it.
+     * The original error is kept as the previous one, for the log.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $import
+     * @return T
+     *
+     * @throws Exception
+     */
+    private function withoutStagingPaths(Closure $import): mixed
+    {
+        try {
+            return $import();
+        } catch (Throwable $exception) {
+            $message = self::stripStagingPaths($exception->getMessage());
+
+            if ($message === $exception->getMessage()) {
+                throw $exception;
+            }
+
+            // An archive the Panel refuses stays a refusal (400 on the API); anything else stays a server error
+            throw $exception instanceof InvalidFileUploadException
+                ? new InvalidFileUploadException($message, $exception)
+                : new Exception($message, 0, $exception);
+        }
+    }
+
+    private static function stripStagingPaths(string $message): string
+    {
+        $plugins = preg_quote(rtrim(base_path('plugins'), '/'), '#');
+        $temp = preg_quote(rtrim(sys_get_temp_dir(), '/'), '#');
+        $end = '[^\s\'",;:()]*';
+
+        return (string) preg_replace(
+            [
+                // A file inside an extracted archive, relative to the archive
+                "#$plugins/\.import-[A-Za-z0-9]+/contents/#",
+                "#$plugins/\.$end#",
+                "#$temp/$end#",
+            ],
+            ['', '(staging directory)', '(temporary file)'],
+            $message,
+        );
     }
 
     /**
@@ -557,35 +608,37 @@ class PluginService
      */
     public function downloadPluginFromUrl(string $url, ?string $expectedId = null, ?string $expectedSha256 = null, ?string $signature = null): string
     {
-        $basename = pathinfo($url, PATHINFO_BASENAME);
-        $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
-        $tmpPath = $tmpDir->path($basename);
+        return $this->withoutStagingPaths(function () use ($url, $expectedId, $expectedSha256, $signature) {
+            $basename = pathinfo($url, PATHINFO_BASENAME);
+            $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
+            $tmpPath = $tmpDir->path($basename);
 
-        // Validate file size to prevent zip bombs, while the bytes arrive (contract R2.4).
-        $maxSize = (int) config('panel.plugin.max_import_size');
-        $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
-        $tooLarge = new InvalidFileUploadException("Zip file too large. ($maxSizeLabel MiB)");
+            // Validate file size to prevent zip bombs, while the bytes arrive (contract R2.4).
+            $maxSize = (int) config('panel.plugin.max_import_size');
+            $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
+            $tooLarge = new InvalidFileUploadException("Zip file too large. ($maxSizeLabel MiB)");
 
-        $deadline = PluginRegistryService::deadline(60);
+            $deadline = PluginRegistryService::deadline(60);
 
-        try {
-            $response = PluginRegistryService::bounded(HubCredentials::request($url), $maxSize, $deadline)->throw()->get($url);
-        } catch (ConnectionException|TransferException $exception) {
-            throw PluginRegistryService::refusedAsTooLarge($exception) ? $tooLarge : $exception;
-        }
+            try {
+                $response = PluginRegistryService::bounded(HubCredentials::request($url), $maxSize, $deadline)->throw()->get($url);
+            } catch (ConnectionException|TransferException $exception) {
+                throw PluginRegistryService::refusedAsTooLarge($exception) ? $tooLarge : $exception;
+            }
 
-        $content = PluginRegistryService::readBody($response, $maxSize, $deadline) ?? throw $tooLarge;
+            $content = PluginRegistryService::readBody($response, $maxSize, $deadline) ?? throw $tooLarge;
 
-        // Any advertised checksum must match, including an empty or malformed one.
-        if ($expectedSha256 !== null) {
-            throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
-        }
+            // Any advertised checksum must match, including an empty or malformed one.
+            if ($expectedSha256 !== null) {
+                throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
+            }
 
-        $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $signature);
+            $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $signature);
 
-        throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
+            throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
 
-        return $this->importArchive(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
+            return $this->importArchive(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
+        });
     }
 
     /**
@@ -598,27 +651,29 @@ class PluginService
      */
     public function downloadPluginFromRegistry(RegistryPlugin $plugin): string
     {
-        $compatibility = (new Plugin())->forceFill(['panel_version' => $plugin->panelVersion]);
-        throw_unless($compatibility->isCompatible(), new InvalidFileUploadException(trans('admin/plugin.registry.incompatible', ['version' => $plugin->panelVersion])));
+        return $this->withoutStagingPaths(function () use ($plugin) {
+            $compatibility = (new Plugin())->forceFill(['panel_version' => $plugin->panelVersion]);
+            throw_unless($compatibility->isCompatible(), new InvalidFileUploadException(trans('admin/plugin.registry.incompatible', ['version' => $plugin->panelVersion])));
 
-        $content = $this->app->make(PluginRegistryService::class)
-            ->fetch($plugin->download, $plugin->namespace, (int) config('panel.plugin.max_import_size'), 60);
+            $content = $this->app->make(PluginRegistryService::class)
+                ->fetch($plugin->download, $plugin->namespace, (int) config('panel.plugin.max_import_size'), 60);
 
-        throw_unless(hash_equals($plugin->sha256, hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.registry.checksum_mismatch')));
+            throw_unless(hash_equals($plugin->sha256, hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.registry.checksum_mismatch')));
 
-        $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $plugin->signature);
+            $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $plugin->signature);
 
-        // Panel archives are zip only; .tar.gz is for Wings plugins (contract v3, R1).
-        throw_if(str_starts_with($content, "\x1f\x8b"), new InvalidFileUploadException(trans('admin/plugin.registry.tar_unsupported')));
-        throw_unless(str_starts_with($content, "PK\x03\x04") || str_starts_with($content, "PK\x05\x06"), new InvalidFileUploadException(trans('admin/plugin.registry.not_a_zip')));
+            // Panel archives are zip only; .tar.gz is for Wings plugins (contract v3, R1).
+            throw_if(str_starts_with($content, "\x1f\x8b"), new InvalidFileUploadException(trans('admin/plugin.registry.tar_unsupported')));
+            throw_unless(str_starts_with($content, "PK\x03\x04") || str_starts_with($content, "PK\x05\x06"), new InvalidFileUploadException(trans('admin/plugin.registry.not_a_zip')));
 
-        $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
-        $tmpPath = $tmpDir->path($plugin->name . '.zip');
-        throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
+            $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
+            $tmpPath = $tmpDir->path($plugin->name . '.zip');
+            throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
 
-        $this->assertNoLinksAndFewEntries($tmpPath);
+            $this->assertNoLinksAndFewEntries($tmpPath);
 
-        return $this->importArchive(new UploadedFile($tmpPath, $plugin->name . '.zip', 'application/zip'), $plugin->name, $plugin->version);
+            return $this->importArchive(new UploadedFile($tmpPath, $plugin->name . '.zip', 'application/zip'), $plugin->name, $plugin->version);
+        });
     }
 
     /**

@@ -174,6 +174,7 @@ return [
         'imported' => 'Plugin imported',
         'import_exists' => 'A plugin with that id already exists',
         'import_no_manifest' => 'The zip does not contain a valid plugin.json',
+        'import_layout' => 'The archive must have plugin.json at its top level, or inside one folder that is the only thing at its top level (how GitHub release archives and the Plugin Hub package plugins). This archive has neither.',
         'import_invalid_id' => 'The plugin.json contains an invalid id',
         'import_reserved_id' => 'The plugin id ":id" is reserved by the Panel',
         'import_id_mismatch' => 'The zip is for plugin ":actual", not ":expected"',

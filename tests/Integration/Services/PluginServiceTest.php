@@ -131,7 +131,7 @@ class PluginServiceTest extends IntegrationTestCase
         ]);
 
         $this->expectException(Exception::class);
-        $this->expectExceptionMessage(trans('admin/plugin.notifications.import_no_manifest'));
+        $this->expectExceptionMessage(trans('admin/plugin.notifications.import_layout'));
 
         $this->service->downloadPluginFromFile($file);
     }
@@ -174,14 +174,14 @@ class PluginServiceTest extends IntegrationTestCase
 
     public function test_import_ignores_a_plugin_json_nested_too_deep(): void
     {
-        // locatePluginManifest only looks at the root and one level deep; anything deeper is
-        // not treated as a plugin.
+        // plugin.json is only looked for at the root and in a single top-level folder (contract
+        // v3.2, R1); anything deeper is refused as a layout the Panel doesn't accept.
         $file = $this->makeUpload('deep.zip', [
             'a/b/plugin.json' => $this->manifest('too-deep'),
         ]);
 
         $this->expectException(Exception::class);
-        $this->expectExceptionMessage(trans('admin/plugin.notifications.import_no_manifest'));
+        $this->expectExceptionMessage(trans('admin/plugin.notifications.import_layout'));
 
         $this->service->downloadPluginFromFile($file);
     }
