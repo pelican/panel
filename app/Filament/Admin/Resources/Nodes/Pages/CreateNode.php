@@ -185,6 +185,7 @@ class CreateNode extends CreateRecord
                         ->label(trans('admin/node.ssl'))
                         ->columnSpan(2)
                         ->inline()
+                        ->required()
                         ->helperText(function () {
                             if (request()->isSecure()) {
                                 return trans('admin/node.panel_on_ssl');
@@ -235,6 +236,7 @@ class CreateNode extends CreateRecord
                 ])
                 ->schema([
                     ToggleButtons::make('maintenance_mode')
+                        ->required()
                         ->label(trans('admin/node.maintenance_mode'))->inline()
                         ->columnSpan(1)
                         ->default(false)
@@ -248,6 +250,7 @@ class CreateNode extends CreateRecord
                             false => 'success',
                         ]),
                     ToggleButtons::make('public')
+                        ->required()
                         ->default(true)
                         ->columnSpan(1)
                         ->label(trans('admin/node.use_for_deploy'))->inline()
@@ -301,6 +304,7 @@ class CreateNode extends CreateRecord
                                 ->afterStateUpdated(fn (Set $set) => $set('memory_overallocate', 0))
                                 ->formatStateUsing(fn (Get $get) => $get('memory') == 0)
                                 ->live()
+                                ->required()
                                 ->options([
                                     true => trans('admin/node.unlimited'),
                                     false => trans('admin/node.limited'),
@@ -340,6 +344,7 @@ class CreateNode extends CreateRecord
                                 ->dehydrated()
                                 ->label(trans('admin/node.disk'))->inlineLabel()->inline()
                                 ->live()
+                                ->required()
                                 ->afterStateUpdated(fn (Set $set) => $set('disk', 0))
                                 ->afterStateUpdated(fn (Set $set) => $set('disk_overallocate', 0))
                                 ->formatStateUsing(fn (Get $get) => $get('disk') == 0)
@@ -382,6 +387,7 @@ class CreateNode extends CreateRecord
                                 ->dehydrated()
                                 ->label(trans('admin/node.cpu'))->inlineLabel()->inline()
                                 ->live()
+                                ->required()
                                 ->afterStateUpdated(fn (Set $set) => $set('cpu', 0))
                                 ->afterStateUpdated(fn (Set $set) => $set('cpu_overallocate', 0))
                                 ->formatStateUsing(fn (Get $get) => $get('cpu') == 0)

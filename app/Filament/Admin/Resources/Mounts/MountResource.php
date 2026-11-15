@@ -150,6 +150,7 @@ class MountResource extends Resource
                             true => 'success',
                         ])
                         ->inline()
+                        ->required()
                         ->default(false),
                     ToggleButtons::make('user_mountable')
                         ->label(trans('admin/mount.user_mountable'))
@@ -168,6 +169,7 @@ class MountResource extends Resource
                             true => 'success',
                         ])
                         ->inline()
+                        ->required()
                         ->default(true),
                     TextInput::make('source')
                         ->label(trans('admin/mount.source'))

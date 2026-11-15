@@ -236,6 +236,7 @@ class Settings extends Page implements HasSchemas
             ToggleButtons::make('PANEL_USE_BINARY_PREFIX')
                 ->label(trans('admin/setting.general.unit_prefix'))
                 ->inline()
+                ->required()
                 ->options([
                     0 => trans('admin/setting.general.decimal_prefix'),
                     1 => trans('admin/setting.general.binary_prefix'),
@@ -245,6 +246,7 @@ class Settings extends Page implements HasSchemas
             ToggleButtons::make('FILAMENT_DEFAULT_NAVIGATION')
                 ->label(trans('admin/setting.general.default_navigation'))
                 ->inline()
+                ->required()
                 ->options([
                     'sidebar' => trans('admin/setting.general.sidebar'),
                     'topbar' => trans('admin/setting.general.topbar'),
@@ -272,6 +274,7 @@ class Settings extends Page implements HasSchemas
             ToggleButtons::make('APP_2FA_REQUIRED')
                 ->label(trans('admin/setting.general.2fa_requirement'))
                 ->inline()
+                ->required()
                 ->options([
                     0 => trans('admin/setting.general.not_required'),
                     1 => trans('admin/setting.general.admins_only'),
@@ -386,6 +389,7 @@ class Settings extends Page implements HasSchemas
                 ->label(trans('admin/setting.mail.mail_driver'))
                 ->columnSpanFull()
                 ->inline()
+                ->required()
                 ->options([
                     'log' => '/storage/logs Directory',
                     'smtp' => 'SMTP Server',

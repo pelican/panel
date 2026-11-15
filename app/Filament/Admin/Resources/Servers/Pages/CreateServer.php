@@ -553,6 +553,7 @@ class CreateServer extends CreateRecord
                                         ->default(true)
                                         ->afterStateUpdated(fn (Set $set) => $set('cpu', 0))
                                         ->live()
+                                        ->required()
                                         ->options([
                                             true => trans('admin/server.unlimited'),
                                             false => trans('admin/server.limited'),
@@ -585,6 +586,7 @@ class CreateServer extends CreateRecord
                                         ->default(true)
                                         ->afterStateUpdated(fn (Set $set) => $set('memory', 0))
                                         ->live()
+                                        ->required()
                                         ->options([
                                             true => trans('admin/server.unlimited'),
                                             false => trans('admin/server.limited'),
@@ -616,6 +618,7 @@ class CreateServer extends CreateRecord
                                         ->label(trans('admin/server.disk'))->inlineLabel()->inline()
                                         ->default(true)
                                         ->live()
+                                        ->required()
                                         ->afterStateUpdated(fn (Set $set) => $set('disk', 0))
                                         ->options([
                                             true => trans('admin/server.unlimited'),
@@ -664,6 +667,7 @@ class CreateServer extends CreateRecord
                                         ->default(false)
                                         ->afterStateUpdated(fn (Set $set) => $set('threads', []))
                                         ->live()
+                                        ->required()
                                         ->options([
                                             false => trans('admin/server.disabled'),
                                             true => trans('admin/server.enabled'),
@@ -694,6 +698,7 @@ class CreateServer extends CreateRecord
                                         ->inlineLabel()
                                         ->inline()
                                         ->columnSpan(2)
+                                        ->required()
                                         ->default('disabled')
                                         ->afterStateUpdated(function ($state, Set $set) {
                                             $value = match ($state) {
@@ -741,6 +746,7 @@ class CreateServer extends CreateRecord
                                         ->inlineLabel()->inline()
                                         ->default(false)
                                         ->columnSpan(2)
+                                        ->required()
                                         ->options([
                                             false => trans('admin/server.disabled'),
                                             true => trans('admin/server.enabled'),

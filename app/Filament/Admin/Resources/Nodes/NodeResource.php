@@ -292,6 +292,7 @@ class NodeResource extends Resource
                     ToggleButtons::make('connection')
                         ->label(trans('admin/node.ssl'))
                         ->columnSpan(2)
+                        ->required()
                         ->inline()
                         ->helperText(function () {
                             if (request()->isSecure()) {
@@ -425,6 +426,7 @@ class NodeResource extends Resource
                         ])
                         ->label(trans('admin/node.use_for_deploy'))
                         ->inline()
+                        ->required()
                         ->stateCast(new BooleanStateCast(false, true))
                         ->options([
                             1 => trans('admin/node.yes'),
@@ -443,6 +445,7 @@ class NodeResource extends Resource
                         ])
                         ->label(trans('admin/node.maintenance_mode'))
                         ->inline()
+                        ->required()
                         ->hintIcon(TablerIcon::QuestionMark, trans('admin/node.maintenance_mode_help'))
                         ->stateCast(new BooleanStateCast(false, true))
                         ->options([
@@ -469,6 +472,7 @@ class NodeResource extends Resource
                                 ->afterStateUpdated(fn (Set $set) => $set('memory_overallocate', 0))
                                 ->formatStateUsing(fn (Get $get) => $get('memory') == 0)
                                 ->live()
+                                ->required()
                                 ->stateCast(new BooleanStateCast(false, true))
                                 ->options([
                                     1 => trans('admin/node.unlimited'),
@@ -527,6 +531,7 @@ class NodeResource extends Resource
                                 ->dehydrated()
                                 ->label(trans('admin/node.disk'))->inlineLabel()->inline()
                                 ->live()
+                                ->required()
                                 ->afterStateUpdated(fn (Set $set) => $set('disk', 0))
                                 ->afterStateUpdated(fn (Set $set) => $set('disk_overallocate', 0))
                                 ->formatStateUsing(fn (Get $get) => $get('disk') == 0)
@@ -583,6 +588,7 @@ class NodeResource extends Resource
                                 ->dehydrated()
                                 ->label(trans('admin/node.cpu'))->inlineLabel()->inline()
                                 ->live()
+                                ->required()
                                 ->afterStateUpdated(fn (Set $set) => $set('cpu', 0))
                                 ->afterStateUpdated(fn (Set $set) => $set('cpu_overallocate', 0))
                                 ->formatStateUsing(fn (Get $get) => $get('cpu') == 0)
@@ -1100,10 +1106,12 @@ class NodeResource extends Resource
                                 ->hintIcon(TablerIcon::QuestionMark)->inline()
                                 ->hintIconTooltip(trans('admin/node.diagnostics.include_endpoints_hint'))
                                 ->formatStateUsing(fn () => 1)
+                                ->required()
                                 ->boolean(),
                             ToggleButtons::make('include_logs')
                                 ->label(trans('admin/node.diagnostics.include_logs'))
                                 ->live()
+                                ->required()
                                 ->hintIcon(TablerIcon::QuestionMark)->inline()
                                 ->hintIconTooltip(trans('admin/node.diagnostics.include_logs_hint'))
                                 ->formatStateUsing(fn () => 1)
