@@ -180,3 +180,16 @@ it('passes an up to date answer through', function () {
 
     expect($this->repository->update('state-log')['status'])->toBe('up_to_date');
 });
+
+it('sends settings as a json object, even for numeric or no keys', function (array $values, string $json) {
+    Http::fake(['*' => Http::response(['status' => 'saved', 'values' => []])]);
+
+    $this->repository->saveSettings('notify', $values);
+
+    // A setting named "0" becomes an integer PHP key; as a list it would go out as a JSON array, which Wings refuses
+    Http::assertSent(fn (Request $request) => $request->method() === 'PUT' && $request->body() === $json);
+})->with([
+    'a key named 0' => [['0' => 'x'], '{"0":"x"}'],
+    'no values' => [[], '{}'],
+    'ordinary keys' => [['level' => 'warn', 'retries' => 3], '{"level":"warn","retries":3}'],
+]);

@@ -313,9 +313,12 @@ class DaemonPluginRepository extends DaemonRepository
      */
     public function saveSettings(string $plugin, array $values): array
     {
+        // Always a JSON object: a setting named "0" is an integer PHP key, and a list (or no values) would
+        // otherwise go out as a JSON array, which Wings refuses
         return $this->getHttpClient()
             ->timeout(30)
-            ->put($this->path($plugin, 'settings'), $values)
+            ->withBody(json_encode((object) $values, JSON_THROW_ON_ERROR), 'application/json')
+            ->put($this->path($plugin, 'settings'))
             ->json() ?? [];
     }
 
