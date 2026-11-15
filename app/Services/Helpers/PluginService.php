@@ -623,7 +623,8 @@ class PluginService
 
     /**
      * Zip entries are only files and directories once extracted, except for unix symlinks, which a registry
-     * archive may not contain at all (R2.4); hard links don't exist in zips.
+     * archive may not contain at all (R2.4); hard links don't exist in zips. The entry cap counts what extraction
+     * creates: extractTo() also makes every missing parent directory, so `a/b/c/file` is four entries, not one.
      *
      * @throws Exception
      */
@@ -632,8 +633,14 @@ class PluginService
         $zip = new ZipArchive();
         throw_unless($zip->open($path) === true, new InvalidFileUploadException('Could not open zip file.'));
 
+        $tooMany = new InvalidFileUploadException(trans('admin/plugin.registry.too_many_entries', ['max' => self::MAX_REGISTRY_ARCHIVE_ENTRIES]));
+
         try {
-            throw_if($zip->numFiles > self::MAX_REGISTRY_ARCHIVE_ENTRIES, new InvalidFileUploadException(trans('admin/plugin.registry.too_many_entries', ['max' => self::MAX_REGISTRY_ARCHIVE_ENTRIES])));
+            throw_if($zip->numFiles > self::MAX_REGISTRY_ARCHIVE_ENTRIES, $tooMany);
+
+            // Every path extraction creates, as a tree of "parent id/segment" => id, so a key is never longer
+            // than one segment and the tree stops growing one past the cap.
+            $paths = [];
 
             for ($i = 0; $i < $zip->numFiles; $i++) {
                 $opsys = $attributes = 0;
@@ -641,6 +648,16 @@ class PluginService
 
                 // The unix mode sits in the high 16 bits; 0120000 is S_IFLNK.
                 throw_if($opsys === ZipArchive::OPSYS_UNIX && (($attributes >> 16) & 0170000) === 0120000, new InvalidFileUploadException(trans('admin/plugin.registry.links_unsupported')));
+
+                $parent = 0;
+                foreach (preg_split('#/+#', (string) $zip->getNameIndex($i), flags: PREG_SPLIT_NO_EMPTY) ?: [] as $segment) {
+                    if ($segment === '.') {
+                        continue;
+                    }
+
+                    $parent = $paths["$parent/$segment"] ??= count($paths) + 1;
+                    throw_if(count($paths) > self::MAX_REGISTRY_ARCHIVE_ENTRIES, $tooMany);
+                }
             }
         } finally {
             $zip->close();

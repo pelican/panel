@@ -474,6 +474,31 @@ it('refuses an archive that is not exactly what the entry says', function (strin
     'not an archive' => fn () => ['<html>', 'not a zip'],
 ]);
 
+it('counts the directories extraction would create against the entry limit, not just the zip records', function () {
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    // 12 records, but extractTo() would create 11 x 1900 nested directories for them: 20,901 entries.
+    $dir = TemporaryDirectory::make();
+    $zip = new ZipArchive();
+    $zip->open($dir->path('plugin.zip'), ZipArchive::CREATE);
+    $zip->addFromString('reg-deep/plugin.json', json_encode(['id' => 'reg-deep', 'name' => 'Deep', 'author' => 'Example', 'version' => '1.0.0', 'category' => 'plugin', 'namespace' => 'Deep', 'class' => 'Deep']));
+    for ($i = 0; $i < 11; $i++) {
+        $zip->addFromString("reg-deep/t$i/" . str_repeat('d/', 1899) . 'f', '');
+    }
+    $zip->close();
+    $archive = file_get_contents($dir->path('plugin.zip'));
+    $dir->delete();
+
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-deep', $archive)]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    expect(fn () => app(PluginService::class)->downloadPluginFromRegistry(registries()->resolve('@acme/reg-deep')))->toThrow(Exception::class, 'more than 20000 entries');
+    expect(plugin_path('reg-deep'))->not->toBeDirectory()
+        ->and(File::glob(plugin_path('.import-*')))->toBe([]);
+});
+
 it('refuses a plugin that needs another panel version before downloading it', function () {
     config()->set('app.version', '1.2.0');
     configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
