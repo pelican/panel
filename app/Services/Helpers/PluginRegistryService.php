@@ -2,12 +2,17 @@
 
 namespace App\Services\Helpers;
 
+use GuzzleHttp\Exception\ConnectTimeoutException;
+use GuzzleHttp\Exception\NetworkTimeoutException;
+use GuzzleHttp\Exception\ResponseTimeoutException;
 use GuzzleHttp\Exception\TransferException;
+use GuzzleHttp\Handler\CurlHandler;
 use GuzzleHttp\Psr7\Exception\TimeoutException;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
 use GuzzleHttp\RequestOptions;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -35,7 +40,8 @@ class PluginRegistryService
 
     public const MAX_REDIRECTS = 10;
 
-    private const TOO_LARGE = 'Response too large.';
+    /** What BoundedStreamFactory and bounded() refuse a body over the cap with; see refusedAsTooLarge(). */
+    public const TOO_LARGE = 'Response too large.';
 
     /** Whether any registry is configured. A panel without one keeps behaving exactly as before. */
     public function hasRegistries(): bool
@@ -101,7 +107,7 @@ class PluginRegistryService
      * Downloads a registry URL or an archive: https on every hop, at most MAX_REDIRECTS redirects, and the
      * namespace's credentials only on requests to that registry's own origin (scheme, host and port). Once a
      * redirect leaves that origin the credentials are gone for the rest of the chain. $timeout covers the whole
-     * chain: every request and every body read gets only what is left of it.
+     * chain: every request (connecting, the headers and the body) gets only what is left of it.
      *
      * @throws RuntimeException
      */
@@ -133,21 +139,17 @@ class PluginRegistryService
                 $credentials = [];
             }
 
-            $remaining = $deadline - self::now();
-            if ($remaining <= 0) {
-                throw self::timedOut($url);
-            }
+            self::assertBefore($deadline, $url);
 
             try {
-                $response = Http::withHeaders($credentials)
-                    ->withoutRedirecting()
-                    ->timeout($remaining)
-                    ->connectTimeout(min(5, $remaining))
-                    ->withOptions(self::boundedOptions($maxBytes, $deadline))
-                    ->get($url);
+                $response = self::bounded(Http::withHeaders($credentials)->withoutRedirecting(), $maxBytes, $deadline)->get($url);
             } catch (ConnectionException|TransferException $exception) {
                 if (self::refusedAsTooLarge($exception)) {
                     throw new RuntimeException(trans('admin/plugin.registry.too_large', ['url' => $url]), previous: $exception);
+                }
+
+                if (self::timedOutTransfer($exception)) {
+                    throw self::timedOut($url, $exception);
                 }
 
                 throw new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => $exception->getMessage()]), previous: $exception);
@@ -185,38 +187,41 @@ class PluginRegistryService
         return (float) now()->format('U.u');
     }
 
-    /** The deadline of a download that may take $seconds from now, for boundedOptions() and readBody(). */
+    /** The deadline of a download that may take $seconds from now, for bounded() and readBody(). */
     public static function deadline(float $seconds): float
     {
         return self::now() + $seconds;
     }
 
     /**
-     * Guzzle options for a download whose body is read with readBody(): the body is streamed instead of
-     * buffered whole, and one that announces more than $maxBytes is refused from its headers (R2.4). With a
-     * $deadline (see deadline()), no read from the connection waits past it.
+     * $request set up for a download whose body is read with readBody(), due by $deadline (see deadline()).
      *
-     * @return array<string, mixed>
+     * It runs on curl, whose timeout covers the whole request: connecting, the TLS handshake, the headers and the
+     * body all have to be done by the deadline. (Guzzle sends `stream` requests to its stream handler instead,
+     * where waiting for the headers is only bounded per read, so a server sending a byte now and then could hold
+     * a request open well past the deadline.) A response that announces more than $maxBytes is refused from its
+     * headers, and one without a length as soon as more than $maxBytes of it arrive (R2.4).
      */
-    public static function boundedOptions(int $maxBytes, ?float $deadline = null): array
+    public static function bounded(PendingRequest $request, int $maxBytes, float $deadline): PendingRequest
     {
-        $options = [
-            'stream' => true,
-            'on_headers' => function (ResponseInterface $response) use ($maxBytes) {
-                if ((int) $response->getHeaderLine('Content-Length') > $maxBytes) {
-                    throw new RuntimeException(self::TOO_LARGE);
-                }
-            },
-        ];
+        // Guzzle refuses a timeout under a millisecond, and 0 would mean none at all.
+        $remaining = max($deadline - self::now(), 0.001);
 
-        if ($deadline !== null) {
-            $options[RequestOptions::STREAM_FACTORY] = new DeadlineStreamFactory($deadline);
-        }
-
-        return $options;
+        return $request
+            ->setHandler(new CurlHandler())
+            ->timeout($remaining)
+            ->connectTimeout(min(5, $remaining))
+            ->withOptions([
+                RequestOptions::ON_HEADERS => function (ResponseInterface $response) use ($maxBytes) {
+                    if ((int) $response->getHeaderLine('Content-Length') > $maxBytes) {
+                        throw new RuntimeException(self::TOO_LARGE);
+                    }
+                },
+                RequestOptions::STREAM_FACTORY => new BoundedStreamFactory($maxBytes),
+            ]);
     }
 
-    /** Whether a failed request was refused by boundedOptions() because its Content-Length was over the cap. */
+    /** Whether a failed request was refused by bounded() because its body was over the cap. */
     public static function refusedAsTooLarge(Throwable $exception): bool
     {
         for ($cause = $exception; $cause !== null; $cause = $cause->getPrevious()) {
@@ -228,8 +233,20 @@ class PluginRegistryService
         return false;
     }
 
+    /** Whether a failed request ran out of time: connecting, waiting for the headers or reading the body. */
+    private static function timedOutTransfer(Throwable $exception): bool
+    {
+        for ($cause = $exception; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof ConnectTimeoutException || $cause instanceof NetworkTimeoutException || $cause instanceof ResponseTimeoutException) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
-     * The body of a response requested with boundedOptions(), read in chunks so that no more than $maxBytes + 1
+     * The body of a response requested with bounded(), read in chunks so that no more than $maxBytes + 1
      * bytes are ever read, whatever the server says or doesn't say about its length (R2.4). Null when the body
      * is larger than $maxBytes.
      *
@@ -285,14 +302,15 @@ class PluginRegistryService
     /** @throws RuntimeException */
     private static function assertBefore(float $deadline, string $url): void
     {
-        if (self::now() >= $deadline) {
+        // Guzzle can't wait less than a millisecond, see bounded().
+        if ($deadline - self::now() < 0.001) {
             throw self::timedOut($url);
         }
     }
 
-    private static function timedOut(string $url): RuntimeException
+    private static function timedOut(string $url, ?Throwable $previous = null): RuntimeException
     {
-        return new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => 'timed out']));
+        return new RuntimeException(trans('admin/plugin.registry.fetch_failed', ['url' => $url, 'error' => 'timed out']), previous: $previous);
     }
 
     /**

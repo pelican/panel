@@ -569,7 +569,7 @@ class PluginService
         $deadline = PluginRegistryService::deadline(60);
 
         try {
-            $response = HubCredentials::request($url)->timeout(60)->connectTimeout(5)->withOptions(PluginRegistryService::boundedOptions($maxSize, $deadline))->throw()->get($url);
+            $response = PluginRegistryService::bounded(HubCredentials::request($url), $maxSize, $deadline)->throw()->get($url);
         } catch (ConnectionException|TransferException $exception) {
             throw PluginRegistryService::refusedAsTooLarge($exception) ? $tooLarge : $exception;
         }
