@@ -77,6 +77,9 @@ class InstallPluginCommand extends Command
         // A registry can never push code: the admin sees what this is and where it comes from first.
         $this->table(['', ''], $this->details($entry, $installed));
 
+        // What the plugin can do once installed, said plainly (contract v3.2, S)
+        $this->warn(trans('admin/plugin.registry.runs_in_panel'));
+
         if (!$this->option('force') && !$this->confirm('Install this plugin? It runs inside the panel, so only install plugins from authors you trust.')) {
             $this->info('Nothing was installed.');
 

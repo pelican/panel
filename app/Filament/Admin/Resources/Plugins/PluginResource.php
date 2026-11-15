@@ -30,6 +30,7 @@ use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Components\Wizard\Step;
+use Filament\Support\Enums\FontWeight;
 use Filament\Support\Exceptions\Halt;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -513,6 +514,13 @@ class PluginResource extends Resource
             ->state(fn (Get $get) => $get("approved.$key") ?? '-');
 
         return [
+            // What the plugin can do once installed, said plainly before anything else (contract v3.2, S)
+            TextEntry::make('runs_in_panel')
+                ->hiddenLabel()
+                ->state(trans('admin/plugin.registry.runs_in_panel'))
+                ->color('danger')
+                ->icon(TablerIcon::AlertTriangle)
+                ->weight(FontWeight::Bold),
             $entry('name'),
             $entry('version'),
             $entry('author'),

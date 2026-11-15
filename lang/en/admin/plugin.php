@@ -106,7 +106,9 @@ return [
         'reference' => 'Plugin',
         'reference_help' => '@namespace/name for a configured registry, https://host/registry.json#name for a registry URL, or a name listed by exactly one configured registry.',
         'review' => 'Review',
-        'review_description' => 'Check what will be installed. It runs inside the panel, so only install plugins from authors you trust.',
+        'review_description' => 'Check what will be installed. Only install plugins from authors you trust.',
+        // Contract v3.2, S, for Panel plugins: said plainly at every registry install
+        'runs_in_panel' => 'A Panel plugin runs inside the Panel, with full access to its data and database: every user, server, node and setting the Panel holds. Nothing limits what it can do there, and neither the Panel nor the registry can tell whether its code is safe.',
         'name' => 'Name',
         'version' => 'Version',
         'author' => 'Author',

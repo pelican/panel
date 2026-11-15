@@ -22,7 +22,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 use function Pest\Livewire\livewire;
 
-// pelican/wings plugin contract v3, section R, for Panel plugins. All HTTP is faked.
+// pelican/wings plugin contract v3.2, sections R and S, for Panel plugins. All HTTP is faked.
 
 const REGISTRY_URL = 'https://registry.example.test/registry.json';
 const REGISTRY_HOST = 'https://registry.example.test';
@@ -800,6 +800,30 @@ it('shows the registry entry and installs it only after the admin confirms', fun
     expect(Plugin::findOrFail('reg-cli')->status)->toBe(PluginStatus::Enabled);
 });
 
+it('says plainly that a panel plugin runs inside the panel with full access to its data and database before asking', function () {
+    // Contract v3.2, S, for the Panel's own plugins
+    expect(trans('admin/plugin.registry.runs_in_panel'))
+        ->toContain('runs inside the Panel')
+        ->toContain('full access to its data and database');
+
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-cli-warn');
+    Http::fake([
+        REGISTRY_URL => Http::response(['name' => 'Acme', 'plugins' => [panelEntry('reg-cli-warn', $archive)]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    $this->artisan('p:plugin:install', ['id' => '@acme/reg-cli-warn'])
+        ->expectsOutputToContain('Acme, @acme (' . REGISTRY_URL . ')')
+        ->expectsOutputToContain(trans('admin/plugin.registry.runs_in_panel'))
+        ->expectsConfirmation('Install this plugin? It runs inside the panel, so only install plugins from authors you trust.', 'no')
+        ->expectsOutput('Nothing was installed.')
+        ->assertSuccessful();
+
+    expect(plugin_path('reg-cli-warn'))->not->toBeDirectory();
+});
+
 it('keeps the install command as it was for panels without registries', function () {
     Http::fake();
 
@@ -874,6 +898,28 @@ it('installs from a registry what the admin reviewed, and nothing else', functio
 
     expect(plugin_path('reg-ui', 'plugin.json'))->toBeFile();
     Queue::assertPushed(InstallPlugin::class, fn (InstallPlugin $job) => $job->pluginId === 'reg-ui' && !$job->reinstall);
+});
+
+it('says in the review step that a panel plugin runs inside the panel with full access to its data and database', function () {
+    registryAdmin();
+    configureRegistries(['acme' => ['url' => REGISTRY_URL]]);
+
+    $archive = registryZip('reg-review-warn');
+    Http::fake([
+        REGISTRY_URL => Http::response(['name' => 'Acme', 'plugins' => [panelEntry('reg-review-warn', $archive)]]),
+        REGISTRY_HOST . '/plugins/*' => Http::response($archive),
+    ]);
+
+    livewire(ListPlugins::class)
+        ->mountAction(TestAction::make('install_from_registry')->table())
+        ->fillForm(['reference' => '@acme/reg-review-warn'])
+        ->goToNextWizardStep()
+        ->assertWizardCurrentStep(2)
+        ->assertSchemaComponentStateSet('runs_in_panel', trans('admin/plugin.registry.runs_in_panel'))
+        ->assertMountedActionModalSee(trans('admin/plugin.registry.runs_in_panel'));
+
+    // Shown before anything is downloaded
+    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/plugins/'));
 });
 
 it('asks for a signature on imports only when trusted keys are configured, and checks it', function () {
