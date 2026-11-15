@@ -7,7 +7,9 @@ use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Models\Backup;
 use App\Models\BackupHost;
+use App\Services\Backups\BackupConfigResolver;
 use App\Services\Backups\RestoreSource;
+use Closure;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -79,13 +81,20 @@ class CreateServerFromBackupAction extends Action
                 ->visible(fn (Get $get) => $get('type') === RestoreSource::TYPE_URL)
                 ->required(fn (Get $get) => $get('type') === RestoreSource::TYPE_URL)
                 ->url()
-                ->startsWith(['http://', 'https://']),
+                ->startsWith(['http://', 'https://'])
+                // The Panel reads the configuration from the link and the node downloads it,
+                // so it may not point at either one's own network.
+                ->rule(fn (BackupConfigResolver $resolver) => function (string $attribute, mixed $value, Closure $fail) use ($resolver) {
+                    if (is_string($value) && !$resolver->isPublicUrl($value)) {
+                        $fail(trans('admin/backup.restore.url_not_public'));
+                    }
+                }),
         ]);
 
         $this->action(function (array $data, ?Backup $record = null) {
             $source = match (true) {
                 $record !== null => RestoreSource::backup($record),
-                $data['type'] === RestoreSource::TYPE_BACKUP => RestoreSource::backup(Backup::query()->restorable()->findOrFail($data['backup_id'])),
+                $data['type'] === RestoreSource::TYPE_BACKUP => RestoreSource::backup(Backup::query()->restorable()->accessibleBy(user())->findOrFail($data['backup_id'])),
                 $data['type'] === RestoreSource::TYPE_S3 => RestoreSource::s3(BackupHost::query()->findOrFail($data['backup_host_id']), $data['key']),
                 default => RestoreSource::url($data['url']),
             };

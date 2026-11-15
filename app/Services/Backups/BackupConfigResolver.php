@@ -6,7 +6,9 @@ use App\Extensions\BackupAdapter\BackupAdapterService;
 use App\Extensions\BackupAdapter\Schemas\S3BackupSchema;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
 use Exception;
+use GuzzleHttp\Handler\CurlHandler;
 use Illuminate\Support\Facades\Http;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Finds the .pelicanconfig for a restore source. Wings stores it as the first
@@ -99,22 +101,32 @@ class BackupConfigResolver
      */
     public function fromUrl(string $url, bool $external = false): ?array
     {
-        $options = ['stream' => true, 'read_timeout' => 5, 'allow_redirects' => ['max' => 3, 'protocols' => ['http', 'https']]];
+        $compressed = $external ? $this->readExternal($url) : $this->readInternal($url);
 
-        if ($external) {
-            $resolve = $this->publicAddress($url);
-            if ($resolve === null) {
-                return null;
-            }
+        return $compressed === null ? null : $this->fromArchiveStart($compressed);
+    }
 
-            $options['allow_redirects'] = false;
-            $options['curl'] = [CURLOPT_RESOLVE => [$resolve]];
-        }
+    /**
+     * Whether a link only points at public addresses, so the Panel and its nodes
+     * may fetch it.
+     */
+    public function isPublicUrl(string $url): bool
+    {
+        return $this->publicAddress($url) !== null;
+    }
 
+    /**
+     * Reads the start of a link the Panel generated itself, like a node's download
+     * link, which may be on a private network.
+     */
+    private function readInternal(string $url): ?string
+    {
         $deadline = microtime(true) + self::READ_DEADLINE;
 
         try {
-            $response = Http::timeout(10)->connectTimeout(5)->withOptions($options)->get($url);
+            $response = Http::timeout(10)->connectTimeout(5)
+                ->withOptions(['stream' => true, 'read_timeout' => 5, 'allow_redirects' => ['max' => 3, 'protocols' => ['http', 'https']]])
+                ->get($url);
 
             if (!$response->successful()) {
                 return null;
@@ -131,15 +143,74 @@ class BackupConfigResolver
         }
 
         // Past the deadline the partial start is still read, the configuration may be in it.
-        return $this->fromArchiveStart($compressed);
+        return $compressed;
+    }
+
+    /**
+     * Reads the start of an administrator's link over cURL, the only Guzzle handler
+     * that can connect to the address that was checked. The download goes to a
+     * temporary file and is stopped once enough of it has arrived.
+     */
+    private function readExternal(string $url): ?string
+    {
+        $resolve = $this->publicAddress($url);
+        if ($resolve === null || !function_exists('curl_init')) {
+            return null;
+        }
+
+        $sink = fopen('php://temp', 'w+b');
+        if ($sink === false) {
+            return null;
+        }
+
+        $successful = false;
+
+        try {
+            $response = Http::setHandler(new CurlHandler())
+                ->timeout(self::READ_DEADLINE)
+                ->connectTimeout(5)
+                ->withHeaders(['Range' => 'bytes=0-' . (self::MAX_READ_BYTES - 1)])
+                ->withOptions([
+                    'allow_redirects' => false,
+                    'curl' => [CURLOPT_RESOLVE => [$resolve]],
+                    'sink' => $sink,
+                    'on_headers' => function (ResponseInterface $response) use (&$successful) {
+                        $successful = $response->getStatusCode() >= 200 && $response->getStatusCode() < 300;
+                        if (!$successful) {
+                            throw new Exception('The archive could not be downloaded.');
+                        }
+                    },
+                    'progress' => function ($total, int $downloaded) {
+                        if ($downloaded >= self::MAX_READ_BYTES) {
+                            throw new Exception('Enough of the archive was downloaded.');
+                        }
+                    },
+                ])
+                ->get($url);
+
+            $successful = $response->successful();
+        } catch (Exception) {
+            // Stopping the download, or the deadline, ends the request with an error.
+            // What arrived before that is still in the sink.
+        }
+
+        rewind($sink);
+        $compressed = $successful ? stream_get_contents($sink, self::MAX_READ_BYTES) : false;
+        fclose($sink);
+
+        return is_string($compressed) && $compressed !== '' ? $compressed : null;
     }
 
     /**
      * The curl resolve entry (host:port:address) for a link whose host only has
-     * public addresses, or null when it has none or any of them is private or reserved.
+     * public addresses, or null when it has none or any of them is not public.
      */
     private function publicAddress(string $url): ?string
     {
+        if (!in_array(parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true)) {
+            return null;
+        }
+
         $host = parse_url($url, PHP_URL_HOST);
         if (!is_string($host) || $host === '') {
             return null;
@@ -160,7 +231,9 @@ class BackupConfigResolver
         }
 
         foreach ($addresses as $address) {
-            if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            // Global addresses only, which also leaves out shared (100.64.0.0/10) and
+            // benchmarking (198.18.0.0/15) ranges that are neither private nor reserved.
+            if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_GLOBAL_RANGE) === false) {
                 return null;
             }
         }

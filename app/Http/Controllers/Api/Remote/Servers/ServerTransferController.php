@@ -6,12 +6,12 @@ use App\Exceptions\Http\HttpForbiddenException;
 use App\Http\Controllers\Controller;
 use App\Jobs\AdvanceServerTransferBatch;
 use App\Models\Allocation;
-use App\Models\Backup;
 use App\Models\Node;
 use App\Models\Server;
 use App\Models\ServerTransfer;
 use App\Models\ServerTransferBatchItem;
 use App\Repositories\Daemon\DaemonServerRepository;
+use App\Services\Servers\ServerTransferBatchService;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +29,7 @@ class ServerTransferController extends Controller
     public function __construct(
         private ConnectionInterface $connection,
         private DaemonServerRepository $daemonServerRepository,
+        private ServerTransferBatchService $batchService,
     ) {}
 
     /**
@@ -87,11 +88,13 @@ class ServerTransferController extends Controller
             $data['node_id'] = $transfer->new_node;
             $server->update($data);
 
-            // The backups sent with the transfer are now on the new node.
-            Backup::query()
-                ->where('server_id', $server->id)
-                ->whereIn('uuid', $transfer->backup_uuids ?? [])
-                ->update(['node_id' => $transfer->new_node]);
+            // The node's own backups sent with the transfer are now on the new node. The old
+            // node deletes the rest with the server, like a batch transfer that leaves them.
+            foreach ($this->batchService->localBackups($server) as $backup) {
+                in_array($backup->uuid, $transfer->backup_uuids ?? [], true)
+                    ? $backup->update(['node_id' => $transfer->new_node])
+                    : $backup->delete();
+            }
 
             $server = $server->fresh();
             $server->transfer->update(['successful' => true]);

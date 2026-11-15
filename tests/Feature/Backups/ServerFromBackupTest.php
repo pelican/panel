@@ -378,7 +378,8 @@ it('does not fetch links to internal addresses', function () {
     Http::fake();
     $resolver = app(BackupConfigResolver::class);
 
-    foreach (['http://127.0.0.1/backup.tar.gz', 'http://10.0.0.5/backup.tar.gz', 'http://[::1]/backup.tar.gz', 'http://169.254.169.254/latest'] as $url) {
+    foreach (['http://127.0.0.1/backup.tar.gz', 'http://10.0.0.5/backup.tar.gz', 'http://[::1]/backup.tar.gz', 'http://169.254.169.254/latest', 'http://100.64.0.1/backup.tar.gz', 'http://198.18.0.1/backup.tar.gz'] as $url) {
+        expect($resolver->isPublicUrl($url))->toBeFalse();
         expect($resolver->resolve(RestoreSource::url($url)))->toBeNull();
     }
 

@@ -14,6 +14,7 @@ use App\Models\ServerRestore;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Backups\RestoreSource;
 use App\Services\Backups\ServerConfigExporterService;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
@@ -175,4 +176,12 @@ it('starts the wizard on the backup\'s node', function () {
         ->test(CreateServer::class)
         ->assertFormSet(['node_id' => $backupNode->id, 'allocation_id' => $allocation->id])
         ->assertSet('restoreMissingAllocations', []);
+});
+
+it('refuses links to internal addresses as a restore source', function () {
+    livewire(ListBackups::class)
+        ->callAction(TestAction::make('create_from_source')->table(), ['type' => RestoreSource::TYPE_URL, 'url' => 'http://10.0.0.5/backup.tar.gz'])
+        ->assertHasFormErrors(['url']);
+
+    expect(session()->get('restore_source'))->toBeEmpty();
 });

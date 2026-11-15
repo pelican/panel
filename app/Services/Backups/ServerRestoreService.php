@@ -75,10 +75,13 @@ class ServerRestoreService
             [$identifier, $adapter, $sourceServer, $url] = $this->payload($restore);
 
             $restore->update(['callback_uuid' => $identifier]);
-            // A suspended server stays suspended while its files are restored.
-            if ($server->status !== ServerState::Suspended) {
-                $server->update(['status' => ServerState::RestoringBackup]);
-            }
+            // A suspended server stays suspended while its files are restored. The update
+            // checks the stored status, so a suspension made meanwhile is not overwritten.
+            Server::query()
+                ->whereKey($server->id)
+                ->where(fn ($query) => $query->whereNull('status')->orWhere('status', '!=', ServerState::Suspended))
+                ->update(['status' => ServerState::RestoringBackup]);
+            $server->refresh();
 
             $this->daemonBackupRepository->setServer($server)->restoreInto($identifier, $adapter, $sourceServer, $url);
 
@@ -162,10 +165,12 @@ class ServerRestoreService
      */
     private function clearRestoringStatus(Server $server): void
     {
+        Server::query()
+            ->whereKey($server->id)
+            ->where('status', ServerState::RestoringBackup)
+            ->update(['status' => null]);
+
         $server->refresh();
-        if ($server->status === ServerState::RestoringBackup) {
-            $server->update(['status' => null]);
-        }
     }
 
     /**

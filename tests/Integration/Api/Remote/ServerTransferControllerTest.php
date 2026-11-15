@@ -62,12 +62,14 @@ class ServerTransferControllerTest extends IntegrationTestCase
         $this->assertTrue($this->transfer->refresh()->successful);
     }
 
-    public function test_successful_transfer_moves_only_the_transferred_backups_to_the_new_node(): void
+    public function test_successful_transfer_moves_the_transferred_backups_and_forgets_the_rest(): void
     {
         $server = $this->transfer->server;
         $host = BackupHost::factory()->create();
+        $s3 = BackupHost::factory()->create(['schema' => 's3']);
         $moved = Backup::factory()->create(['server_id' => $server->id, 'node_id' => $server->node_id, 'backup_host_id' => $host->id]);
         $left = Backup::factory()->create(['server_id' => $server->id, 'node_id' => $server->node_id, 'backup_host_id' => $host->id]);
+        $remote = Backup::factory()->create(['server_id' => $server->id, 'node_id' => $server->node_id, 'backup_host_id' => $s3->id]);
         $this->transfer->update(['backup_uuids' => [$moved->uuid]]);
 
         $newNode = $this->transfer->newNode;
@@ -76,8 +78,10 @@ class ServerTransferControllerTest extends IntegrationTestCase
             ->assertNoContent();
 
         $this->assertSame($newNode->id, $moved->refresh()->node_id);
-        $this->assertSame($this->transfer->old_node, $left->refresh()->node_id);
-        $this->assertSame($this->transfer->old_node, $left->sourceNode()?->id);
+        // The old node deleted it with the server.
+        $this->assertNull(Backup::query()->find($left->id));
+        // Not stored on a node, so the transfer does not affect it.
+        $this->assertNotNull(Backup::query()->find($remote->id));
     }
 
     public function test_a_restarting_node_fails_restores_waiting_for_an_interrupted_install(): void

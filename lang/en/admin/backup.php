@@ -24,6 +24,7 @@ return [
         'key_help' => 'The path of the archive in the bucket, usually {server uuid}/{backup uuid}.tar.gz.',
         'url' => 'Link to the archive',
         'url_help' => 'A direct link to a .tar.gz backup. The node the server is created on downloads it, so it must be reachable from there.',
+        'url_not_public' => 'The link must point at a public address.',
         'banner_title' => 'Creating a server from a backup',
         'banner_body' => 'The files from :source are restored once the server has been created. The install script is skipped.',
         'missing_allocations' => 'Addresses not available on this node',
