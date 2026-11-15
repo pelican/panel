@@ -13,6 +13,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use GuzzleHttp\Psr7\PumpStream;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -642,6 +643,74 @@ it('refuses an update whose manifest has a malformed signature, even when signat
     'a number' => [5],
 ]);
 
+// R2.5: "require signatures" covers every install path, uploads and url imports included
+
+function uploadedZip(string $archive): UploadedFile
+{
+    $path = tempnam(sys_get_temp_dir(), 'upload');
+    file_put_contents($path, $archive);
+
+    return new UploadedFile($path, 'plugin.zip', 'application/zip', null, true);
+}
+
+it('applies the signature policy to uploaded archives', function () {
+    $key = testSigningKey();
+    config()->set('panel.plugin.trusted_keys', $key['public']);
+    $archive = registryZip('reg-upload');
+
+    // Signatures not required: an unsigned upload imports as before.
+    expect(app(PluginService::class)->downloadPluginFromFile(uploadedZip($archive)))->toBe('reg-upload');
+    File::deleteDirectory(plugin_path('reg-upload'));
+
+    // A signature that doesn't verify is refused either way.
+    expect(fn () => app(PluginService::class)->downloadPluginFromFile(uploadedZip($archive), signature: signArchive($archive, testSigningKey()['secret'])))->toThrow(RuntimeException::class, 'does not match any trusted key');
+
+    config()->set('panel.plugin.require_signatures', true);
+
+    expect(fn () => app(PluginService::class)->downloadPluginFromFile(uploadedZip($archive)))->toThrow(RuntimeException::class, 'requires signed plugins');
+    expect(plugin_path('reg-upload'))->not->toBeDirectory();
+
+    expect(app(PluginService::class)->downloadPluginFromFile(uploadedZip($archive), signature: signArchive($archive, $key['secret'])))->toBe('reg-upload');
+});
+
+it('applies the signature policy to url imports, with or without a checksum', function () {
+    $key = testSigningKey();
+    config()->set('panel.plugin.trusted_keys', $key['public']);
+    $archive = registryZip('reg-url-import');
+    $url = 'https://downloads.example.test/reg-url-import.zip';
+    Http::fake(['https://downloads.example.test/*' => Http::response($archive)]);
+
+    // Signatures not required: an unsigned url import works as before.
+    expect(app(PluginService::class)->downloadPluginFromUrl($url))->toBe('reg-url-import');
+    File::deleteDirectory(plugin_path('reg-url-import'));
+
+    // A signature that doesn't verify is refused, even without a checksum to go with it.
+    expect(fn () => app(PluginService::class)->downloadPluginFromUrl($url, signature: signArchive($archive, testSigningKey()['secret'])))->toThrow(RuntimeException::class, 'does not match any trusted key');
+
+    config()->set('panel.plugin.require_signatures', true);
+
+    expect(fn () => app(PluginService::class)->downloadPluginFromUrl($url))->toThrow(RuntimeException::class, 'requires signed plugins');
+    expect(plugin_path('reg-url-import'))->not->toBeDirectory();
+
+    expect(app(PluginService::class)->downloadPluginFromUrl($url, signature: signArchive($archive, $key['secret'])))->toBe('reg-url-import');
+});
+
+it('refuses an unsigned update when signatures are required, even without a checksum in the feed', function () {
+    Process::fake();
+    config()->set('panel.plugin.require_signatures', true);
+
+    $plugin = updatablePlugin('reg-update', 'https://updates.example.test/reg-update.json');
+    $archive = registryZip('reg-update', '2.0.0');
+
+    Http::fake([
+        'https://updates.example.test/reg-update.json' => Http::response(['version' => '2.0.0', 'download' => 'https://updates.example.test/reg-update-2.0.0.zip']),
+        'https://updates.example.test/reg-update-2.0.0.zip' => Http::response($archive),
+    ]);
+
+    expect(fn () => app(PluginService::class)->updatePlugin($plugin))->toThrow(RuntimeException::class, 'requires signed plugins');
+    expect(File::json(plugin_path('reg-update', 'plugin.json'))['version'])->toBe('1.0.0');
+});
+
 // The install command
 
 it('shows the registry entry and installs it only after the admin confirms', function () {
@@ -748,6 +817,39 @@ it('installs from a registry what the admin reviewed, and nothing else', functio
 
     expect(plugin_path('reg-ui', 'plugin.json'))->toBeFile();
     Queue::assertPushed(InstallPlugin::class, fn (InstallPlugin $job) => $job->pluginId === 'reg-ui' && !$job->reinstall);
+});
+
+it('asks for a signature on imports only when trusted keys are configured, and checks it', function () {
+    registryAdmin();
+
+    $key = testSigningKey();
+    $archive = registryZip('reg-ui-import');
+    $url = 'https://downloads.example.test/reg-ui-import.zip';
+    Http::fake(['https://downloads.example.test/*' => Http::response($archive)]);
+
+    // Without trusted keys the import forms stay as they were.
+    livewire(ListPlugins::class)
+        ->mountAction(TestAction::make('import_from_url')->table())
+        ->assertSchemaComponentHidden('signature');
+
+    config()->set('panel.plugin.trusted_keys', $key['public']);
+    config()->set('panel.plugin.require_signatures', true);
+
+    livewire(ListPlugins::class)
+        ->mountAction(TestAction::make('import_from_url')->table())
+        ->assertSchemaComponentVisible('signature');
+
+    livewire(ListPlugins::class)
+        ->callAction(TestAction::make('import_from_url')->table(), data: ['url' => $url])
+        ->assertNotified(trans('admin/plugin.notifications.import_failed'));
+
+    expect(plugin_path('reg-ui-import'))->not->toBeDirectory();
+
+    livewire(ListPlugins::class)
+        ->callAction(TestAction::make('import_from_url')->table(), data: ['url' => $url, 'signature' => signArchive($archive, $key['secret'])])
+        ->assertNotified(trans('admin/plugin.notifications.imported'));
+
+    expect(plugin_path('reg-ui-import', 'plugin.json'))->toBeFile();
 });
 
 it('walks the admin through resolving, reviewing and installing a registry plugin', function () {

@@ -141,6 +141,8 @@ return [
         'not_a_zip' => 'The downloaded file is not a zip archive.',
         'links_unsupported' => 'The archive contains a symbolic link, which isn\'t allowed.',
         'too_many_entries' => 'The archive contains more than :max entries.',
+        'signature_help' => 'Optional. The base64 Ed25519 signature of the archive from its author; it must match a trusted key.',
+        'signature_help_required' => 'This panel requires signed plugins: the base64 Ed25519 signature of the archive from its author, matching a trusted key.',
         'signature_required' => 'This panel requires signed plugins, and this archive is not signed.',
         'signature_malformed' => 'The archive\'s signature is malformed.',
         'signature_untrusted' => 'The archive\'s signature does not match any trusted key.',

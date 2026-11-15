@@ -114,8 +114,8 @@ return [
         // variables. The token and headers are only ever sent to the registry's own host. See PluginRegistryConfig.
         'registries' => PluginRegistryConfig::parse(env('PANEL_PLUGIN_REGISTRIES'), fn (string $name) => env($name)),
         // Base64 Ed25519 public keys (optionally `id:key`), separated by commas, that may sign plugin archives.
-        // A signature that is present must always verify; with require_signatures, unsigned archives from a
-        // registry or an update feed are refused too.
+        // A signature that is present must always verify; with require_signatures, an archive without one is
+        // refused on every install path: registries, update feeds, the Hub, url imports and uploads.
         'trusted_keys' => env('PANEL_PLUGIN_TRUSTED_KEYS'),
         'require_signatures' => env('PANEL_PLUGIN_REQUIRE_SIGNATURES', false),
     ],

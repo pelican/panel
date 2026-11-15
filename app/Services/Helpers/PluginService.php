@@ -386,8 +386,25 @@ class PluginService
         }
     }
 
-    /** @throws Exception */
-    public function downloadPluginFromFile(UploadedFile $file, ?string $expectedId = null, ?string $expectedVersion = null): string
+    /**
+     * Imports an uploaded plugin archive. It passes the signature policy first (contract R2.5): a signature, when
+     * given, must verify against a trusted key, and with signatures required an archive without one is refused.
+     *
+     * @throws Exception
+     */
+    public function downloadPluginFromFile(UploadedFile $file, ?string $expectedId = null, ?string $signature = null): string
+    {
+        $this->app->make(PluginSignatures::class)->enforce((string) hash_file('sha256', $file->getPathname(), true), $signature);
+
+        return $this->importArchive($file, $expectedId);
+    }
+
+    /**
+     * Validates and extracts a plugin archive into the plugins directory. Callers check where it came from first.
+     *
+     * @throws Exception
+     */
+    private function importArchive(UploadedFile $file, ?string $expectedId = null, ?string $expectedVersion = null): string
     {
         // Validate file size to prevent zip bombs
         $maxSize = config('panel.plugin.max_import_size');
@@ -531,8 +548,10 @@ class PluginService
     }
 
     /**
-     * A signature only means something next to an advertised checksum, so it (and the require-signatures
-     * policy) is only checked for downloads that come with one: update feeds and Hub releases.
+     * Downloads and imports a plugin archive: url imports, update feeds and Hub releases. An advertised checksum
+     * must match, and the archive passes the signature policy whether or not it came with a checksum (contract
+     * R2.5): a signature, when given, must verify against a trusted key, and with signatures required an archive
+     * without one is refused.
      *
      * @throws Exception
      */
@@ -558,13 +577,13 @@ class PluginService
         // Any advertised checksum must match, including an empty or malformed one.
         if ($expectedSha256 !== null) {
             throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
-
-            $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $signature);
         }
+
+        $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $signature);
 
         throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
 
-        return $this->downloadPluginFromFile(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
+        return $this->importArchive(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
     }
 
     /**
@@ -597,7 +616,7 @@ class PluginService
 
         $this->assertNoLinksAndFewEntries($tmpPath);
 
-        return $this->downloadPluginFromFile(new UploadedFile($tmpPath, $plugin->name . '.zip', 'application/zip'), $plugin->name, $plugin->version);
+        return $this->importArchive(new UploadedFile($tmpPath, $plugin->name . '.zip', 'application/zip'), $plugin->name, $plugin->version);
     }
 
     /**

@@ -12,6 +12,7 @@ use App\Jobs\Plugin\UpdatePlugin;
 use App\Models\Plugin;
 use App\Services\Helpers\PluginRegistryService;
 use App\Services\Helpers\PluginService;
+use App\Services\Helpers\PluginSignatures;
 use App\Services\Helpers\RegistryPlugin;
 use App\Services\Helpers\ThemeService;
 use BackedEnum;
@@ -307,13 +308,14 @@ class PluginResource extends Resource
                             ->preserveFilenames()
                             ->previewable(false)
                             ->storeFiles(false),
+                        self::signatureInput(),
                     ])
                     ->action(function ($data, $livewire, PluginService $pluginService) {
                         try {
                             /** @var UploadedFile $file */
                             $file = $data['file'];
 
-                            $id = $pluginService->downloadPluginFromFile($file);
+                            $id = $pluginService->downloadPluginFromFile($file, signature: self::signature($data));
 
                             // Importing over an installed plugin is an update: reinstall it in the background.
                             if ($pluginService->isInstalled($id)) {
@@ -348,10 +350,11 @@ class PluginResource extends Resource
                             ->required()
                             ->url()
                             ->endsWith('.zip'),
+                        self::signatureInput(),
                     ])
                     ->action(function ($data, $livewire, PluginService $pluginService) {
                         try {
-                            $id = $pluginService->downloadPluginFromUrl($data['url']);
+                            $id = $pluginService->downloadPluginFromUrl($data['url'], signature: self::signature($data));
 
                             // Importing over an installed plugin is an update: reinstall it in the background.
                             if ($pluginService->isInstalled($id)) {
@@ -459,6 +462,27 @@ class PluginResource extends Resource
             ->emptyStateIcon(TablerIcon::Packages)
             ->emptyStateDescription('')
             ->emptyStateHeading(trans('admin/plugin.no_plugins'));
+    }
+
+    /**
+     * The archive's signature for a file or url import. Shown only when this panel has trusted keys, since a
+     * signature can't verify without one; without keys the import forms stay as they were.
+     */
+    protected static function signatureInput(): TextInput
+    {
+        return TextInput::make('signature')
+            ->label(trans('admin/plugin.registry.signature'))
+            ->helperText(fn (PluginSignatures $signatures) => trans($signatures->required() ? 'admin/plugin.registry.signature_help_required' : 'admin/plugin.registry.signature_help'))
+            ->visible(fn (PluginSignatures $signatures) => $signatures->trustedKeys() !== [])
+            ->maxLength(256);
+    }
+
+    /** @param  array<string, mixed>  $data */
+    protected static function signature(array $data): ?string
+    {
+        $signature = $data['signature'] ?? null;
+
+        return is_string($signature) && trim($signature) !== '' ? trim($signature) : null;
     }
 
     /**
