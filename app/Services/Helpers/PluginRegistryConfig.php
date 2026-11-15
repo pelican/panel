@@ -3,6 +3,7 @@
 namespace App\Services\Helpers;
 
 use Closure;
+use stdClass;
 
 /**
  * Parses PANEL_PLUGIN_REGISTRIES while the config loads (pelican/wings plugin contract v1, section R).
@@ -35,12 +36,14 @@ final class PluginRegistryConfig
             return [];
         }
 
-        $decoded = is_string($json) ? json_decode($json, true) : null;
-
-        // A JSON object decodes to an associative array; a list (or `[]`) is accepted only when empty.
-        if (!is_array($decoded) || ($decoded !== [] && array_is_list($decoded))) {
+        // Classify the JSON root before converting it to an array: `{"0": ...}` and `[...]` both decode to a PHP
+        // list, but only the object is a set of registries (a namespace may be "0"). `[]` is accepted as empty.
+        $root = is_string($json) ? json_decode($json) : null;
+        if (!$root instanceof stdClass && $root !== []) {
             return 'PANEL_PLUGIN_REGISTRIES must be a JSON object of registries keyed by namespace.';
         }
+
+        $decoded = (array) json_decode((string) $json, true);
 
         $registries = [];
         foreach ($decoded as $namespace => $registry) {

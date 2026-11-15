@@ -452,6 +452,31 @@ it('reads ${NAME} from the environment and never keeps a registry with an unset 
         ->and(PluginRegistryConfig::parse('[{"url": "https://x"}]', fn () => null))->toBeString();
 });
 
+it('accepts numeric namespaces like "0", which a JSON object may use as keys', function () {
+    $registries = PluginRegistryConfig::parse('{"0": {"url": "' . REGISTRY_URL . '"}, "1": {"url": "' . OTHER_REGISTRY_URL . '"}}', fn () => null);
+
+    expect($registries)->toBeArray()
+        ->and($registries['0']['url'])->toBe(REGISTRY_URL)
+        ->and($registries['1']['url'])->toBe(OTHER_REGISTRY_URL);
+
+    config()->set('panel.plugin.registries', $registries);
+
+    $archive = registryZip('reg-zero');
+    Http::fake([
+        REGISTRY_URL => Http::response(['plugins' => [panelEntry('reg-zero', $archive)]]),
+        OTHER_REGISTRY_URL => Http::response(['plugins' => []]),
+    ]);
+
+    expect(registries()->resolve('@0/reg-zero')->reference())->toBe('@0/reg-zero')
+        ->and(registries()->resolve('reg-zero')->reference())->toBe('@0/reg-zero');
+
+    // A JSON list is still not a registry object, even though it decodes to the same PHP keys.
+    expect(PluginRegistryConfig::parse('[{"url": "' . REGISTRY_URL . '"}]', fn () => null))->toBeString()
+        ->and(PluginRegistryConfig::parse('[]', fn () => null))->toBe([])
+        ->and(PluginRegistryConfig::parse('{}', fn () => null))->toBe([])
+        ->and(PluginRegistryConfig::parse('"acme"', fn () => null))->toBeString();
+});
+
 it('refuses to use a registry whose config is broken', function () {
     config()->set('panel.plugin.registries', PluginRegistryConfig::parse('{not json', fn () => null));
     Http::fake();

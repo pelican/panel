@@ -317,6 +317,9 @@ class PluginRegistryService
         $found = [];
 
         foreach ($registries as $namespace => $registry) {
+            // PHP stores a numeric namespace like "0" as an integer key.
+            $namespace = (string) $namespace;
+
             try {
                 $document = $this->readRegistry($namespace, $registry);
             } catch (RuntimeException $exception) {
