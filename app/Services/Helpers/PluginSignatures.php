@@ -5,7 +5,7 @@ namespace App\Services\Helpers;
 use RuntimeException;
 
 /**
- * Ed25519 signatures on plugin archives (pelican/wings plugin contract v1, R2.5), the same rules as Wings:
+ * Ed25519 signatures on plugin archives (pelican/wings plugin contract v3, R2.5), the same rules as Wings:
  *
  *  - a signature that is present must verify against one of the trusted keys, whatever the policy,
  *    because one that doesn't means the archive or its listing was tampered with;

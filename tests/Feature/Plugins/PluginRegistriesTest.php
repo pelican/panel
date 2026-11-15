@@ -22,7 +22,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 use function Pest\Livewire\livewire;
 
-// pelican/wings plugin contract v1, section R, for Panel plugins. All HTTP is faked.
+// pelican/wings plugin contract v3, section R, for Panel plugins. All HTTP is faked.
 
 const REGISTRY_URL = 'https://registry.example.test/registry.json';
 const REGISTRY_HOST = 'https://registry.example.test';
@@ -423,7 +423,7 @@ it('refuses an archive that is not exactly what the entry says', function (strin
     'another plugin' => fn () => [registryZip('reg-other'), 'is for plugin "reg-other"'],
     'another version' => fn () => [registryZip('reg-mismatch', '2.0.0'), 'is version "2.0.0", not "1.0.0"'],
     'a symlink' => fn () => [registryZip('reg-mismatch', symlink: true), 'symbolic link'],
-    'a tar.gz' => fn () => [gzencode('tar'), '.tar.gz'],
+    'a tar.gz' => fn () => [gzencode('tar'), 'Panel plugins must be .zip archives (plugin contract v3, R1)'],
     'not an archive' => fn () => ['<html>', 'not a zip'],
 ]);
 

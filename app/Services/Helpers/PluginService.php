@@ -587,7 +587,7 @@ class PluginService
     }
 
     /**
-     * Downloads a plugin a registry lists (pelican/wings plugin contract v1, R2) and puts it in place like an
+     * Downloads a plugin a registry lists (pelican/wings plugin contract v3, R2) and puts it in place like an
      * import, without installing it. The archive must match the entry's sha256 before anything is extracted, pass
      * the signature policy, be a zip without links, and hold the plugin.json of exactly the entry's name and
      * version. Callers show the admin the entry and get their approval first.
@@ -606,7 +606,7 @@ class PluginService
 
         $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $plugin->signature);
 
-        // Registries may serve .tar.gz (R1), which only Wings can unpack today.
+        // Panel archives are zip only; .tar.gz is for Wings plugins (contract v3, R1).
         throw_if(str_starts_with($content, "\x1f\x8b"), new InvalidFileUploadException(trans('admin/plugin.registry.tar_unsupported')));
         throw_unless(str_starts_with($content, "PK\x03\x04") || str_starts_with($content, "PK\x05\x06"), new InvalidFileUploadException(trans('admin/plugin.registry.not_a_zip')));
 

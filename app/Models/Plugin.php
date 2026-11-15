@@ -329,7 +329,7 @@ class Plugin extends Model implements HasPluginSettings
 
     /**
      * The update feed, as releases keyed by panel version (`*` for any). Accepts both shapes of the
-     * pelican/wings plugin contract v1, R4: the plain `{"version", "download", "sha256", "signature"}`, and the
+     * pelican/wings plugin contract v3, R4: the plain `{"version", "download", "sha256", "signature"}`, and the
      * Pelican Hub's `{"*": {"version", "download_url", "sha256"}}` (`[]` when there is no release), plus
      * feeds that cover several plugins keyed by plugin id.
      *

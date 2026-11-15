@@ -137,7 +137,7 @@ return [
         'checksum_mismatch' => 'The downloaded archive does not match the checksum from the registry.',
         'version_mismatch' => 'The archive is version ":actual", not ":expected" as the registry says.',
         'incompatible' => 'This plugin needs Panel version :version.',
-        'tar_unsupported' => 'The archive is a .tar.gz, which the panel can\'t install yet. Ask the registry for a .zip.',
+        'tar_unsupported' => 'The archive is a .tar.gz. Panel plugins must be .zip archives (plugin contract v3, R1); .tar.gz is for Wings plugins only.',
         'not_a_zip' => 'The downloaded file is not a zip archive.',
         'links_unsupported' => 'The archive contains a symbolic link, which isn\'t allowed.',
         'too_many_entries' => 'The archive contains more than :max entries.',

@@ -6,7 +6,7 @@ use Closure;
 use stdClass;
 
 /**
- * Parses PANEL_PLUGIN_REGISTRIES while the config loads (pelican/wings plugin contract v1, section R).
+ * Parses PANEL_PLUGIN_REGISTRIES while the config loads (pelican/wings plugin contract v3, section R).
  *
  * The value is a JSON object keyed by namespace:
  *

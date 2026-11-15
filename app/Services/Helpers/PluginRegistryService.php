@@ -15,7 +15,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Finds Panel plugins in plugin registries: pelican/wings plugin contract v1, sections R1 to R3.
+ * Finds Panel plugins in plugin registries: pelican/wings plugin contract v3, sections R1 to R3.
  *
  * A registry is one https JSON document `{"name", "plugins": [...]}`. The Panel only uses entries with
  * `target: "panel"`; a missing target means "wings", so registries written before targets existed only
