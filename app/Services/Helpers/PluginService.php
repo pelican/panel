@@ -7,16 +7,19 @@ use App\Exceptions\Service\InvalidFileUploadException;
 use App\Models\Plugin;
 use App\Models\Role;
 use App\Models\User;
+use Closure;
 use Composer\Autoload\ClassLoader;
 use Exception;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Panel;
+use GuzzleHttp\Exception\TransferException;
 use Illuminate\Console\Application as ConsoleApplication;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Foundation\Application;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -31,6 +34,9 @@ use ZipArchive;
 
 class PluginService
 {
+    /** Most entries a registry archive may hold, like Wings, so a small archive can't exhaust the plugins volume's inodes. */
+    public const MAX_REGISTRY_ARCHIVE_ENTRIES = 20000;
+
     public function __construct(private Application $app) {}
 
     public function loadPlugins(): void
@@ -336,7 +342,7 @@ class PluginService
         $download = $plugin->getUpdateDownload();
         throw_unless($download, new Exception('No download url found.'));
 
-        $this->downloadPluginFromUrl($download['url'], $plugin->id, $download['sha256']);
+        $this->downloadPluginFromUrl($download['url'], $plugin->id, $download['sha256'], $download['signature']);
 
         Plugin::refreshRows();
         $plugin = Plugin::findOrFail($plugin->id);
@@ -381,8 +387,27 @@ class PluginService
         }
     }
 
-    /** @throws Exception */
-    public function downloadPluginFromFile(UploadedFile $file, ?string $expectedId = null): string
+    /**
+     * Imports an uploaded plugin archive. It passes the signature policy first (contract R2.5): a signature, when
+     * given, must verify against a trusted key, and with signatures required an archive without one is refused.
+     *
+     * @throws Exception
+     */
+    public function downloadPluginFromFile(UploadedFile $file, ?string $expectedId = null, ?string $signature = null): string
+    {
+        return $this->withoutStagingPaths(function () use ($file, $expectedId, $signature) {
+            $this->app->make(PluginSignatures::class)->enforce((string) hash_file('sha256', $file->getPathname(), true), $signature);
+
+            return $this->importArchive($file, $expectedId);
+        });
+    }
+
+    /**
+     * Validates and extracts a plugin archive into the plugins directory. Callers check where it came from first.
+     *
+     * @throws Exception
+     */
+    private function importArchive(UploadedFile $file, ?string $expectedId = null, ?string $expectedVersion = null): string
     {
         // Validate file size to prevent zip bombs
         $maxSize = config('panel.plugin.max_import_size');
@@ -435,10 +460,9 @@ class PluginService
 
         $zip->close();
 
-        // Locate plugin.json, either at the archive root (flat zip) or one level deep
-        // (single top-level folder). Prefer the shallowest match.
+        // plugin.json is at the archive's root, or in its only top-level folder (contract v3.2, R1)
         $manifest = $this->locatePluginManifest($extractPath);
-        throw_if($manifest === null, new Exception(trans('admin/plugin.notifications.import_no_manifest')));
+        throw_if($manifest === null, new InvalidFileUploadException(trans('admin/plugin.notifications.import_layout')));
 
         $data = File::json($manifest, JSON_THROW_ON_ERROR);
         $id = $data['id'] ?? null;
@@ -455,6 +479,10 @@ class PluginService
         // When updating a known plugin, the archive must be for that same plugin — reject a
         // mismatched id before moving anything, so an update can't overwrite a different plugin.
         throw_if($expectedId !== null && $pluginName !== $expectedId, new Exception(trans('admin/plugin.notifications.import_id_mismatch', ['expected' => $expectedId, 'actual' => $pluginName])));
+
+        // A registry install must get the version the admin approved (plugin.json defaults to 1.0.0, see Plugin::getRows()).
+        $version = $data['version'] ?? '1.0.0';
+        throw_if($expectedVersion !== null && $version !== $expectedVersion, new Exception(trans('admin/plugin.registry.version_mismatch', ['expected' => $expectedVersion, 'actual' => is_scalar($version) ? (string) $version : '?'])));
 
         $target = plugin_path($pluginName);
         $source = dirname($manifest);
@@ -501,48 +529,194 @@ class PluginService
     }
 
     /**
-     * Find a plugin.json inside an extracted archive, either at its root or within a single
-     * top-level directory. Returns the absolute path to the manifest, or null if none exists.
+     * The plugin.json of an extracted archive (contract v3.2, R1): at its root, or inside a single top-level
+     * directory with nothing else at the top level, which is how GitHub release archives and the Hub package
+     * plugins. Null for any other layout.
      */
     private function locatePluginManifest(string $path): ?string
     {
         $rootManifest = join_paths($path, 'plugin.json');
-        if (File::exists($rootManifest)) {
+        if (File::isFile($rootManifest)) {
             return $rootManifest;
         }
 
-        foreach (File::directories($path) as $directory) {
-            $manifest = join_paths($directory, 'plugin.json');
-            if (File::exists($manifest)) {
-                return $manifest;
-            }
+        $topLevel = array_values(array_diff(scandir($path) ?: [], ['.', '..']));
+        if (count($topLevel) !== 1 || !File::isDirectory($directory = join_paths($path, $topLevel[0]))) {
+            return null;
         }
 
-        return null;
+        $manifest = join_paths($directory, 'plugin.json');
+
+        return File::isFile($manifest) ? $manifest : null;
     }
 
-    /** @throws Exception */
-    public function downloadPluginFromUrl(string $url, ?string $expectedId = null, ?string $expectedSha256 = null): string
+    /**
+     * Runs an import so that no error it throws shows where the Panel stages archives (contract v3.2, R1): the
+     * system temp directory or a dot directory under plugins/. A path inside the archive is shown relative to it.
+     * The original error is kept as the previous one, for the log.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $import
+     * @return T
+     *
+     * @throws Exception
+     */
+    private function withoutStagingPaths(Closure $import): mixed
     {
-        $basename = pathinfo($url, PATHINFO_BASENAME);
-        $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
-        $tmpPath = $tmpDir->path($basename);
+        try {
+            return $import();
+        } catch (Throwable $exception) {
+            $message = self::stripStagingPaths($exception->getMessage());
 
-        $content = HubCredentials::request($url)->timeout(60)->connectTimeout(5)->throw()->get($url)->body();
+            if ($message === $exception->getMessage()) {
+                throw $exception;
+            }
 
-        // Any advertised checksum must match, including an empty or malformed one.
-        if ($expectedSha256 !== null) {
-            throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
+            // An archive the Panel refuses stays a refusal (400 on the API); anything else stays a server error
+            throw $exception instanceof InvalidFileUploadException
+                ? new InvalidFileUploadException($message, $exception)
+                : new Exception($message, 0, $exception);
         }
+    }
 
-        // Validate file size to prevent zip bombs
-        $maxSize = config('panel.plugin.max_import_size');
-        $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
-        throw_if(strlen($content) > $maxSize, new InvalidFileUploadException("Zip file too large. ($maxSizeLabel MiB)"));
+    private static function stripStagingPaths(string $message): string
+    {
+        $plugins = preg_quote(rtrim(base_path('plugins'), '/'), '#');
+        $temp = preg_quote(rtrim(sys_get_temp_dir(), '/'), '#');
+        $end = '[^\s\'",;:()]*';
 
-        throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
+        return (string) preg_replace(
+            [
+                // A file inside an extracted archive, relative to the archive
+                "#$plugins/\.import-[A-Za-z0-9]+/contents/#",
+                "#$plugins/\.$end#",
+                "#$temp/$end#",
+            ],
+            ['', '(staging directory)', '(temporary file)'],
+            $message,
+        );
+    }
 
-        return $this->downloadPluginFromFile(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
+    /**
+     * Downloads and imports a plugin archive: url imports, update feeds and Hub releases. An advertised checksum
+     * must match, and the archive passes the signature policy whether or not it came with a checksum (contract
+     * R2.5): a signature, when given, must verify against a trusted key, and with signatures required an archive
+     * without one is refused.
+     *
+     * @throws Exception
+     */
+    public function downloadPluginFromUrl(string $url, ?string $expectedId = null, ?string $expectedSha256 = null, ?string $signature = null): string
+    {
+        return $this->withoutStagingPaths(function () use ($url, $expectedId, $expectedSha256, $signature) {
+            $basename = pathinfo($url, PATHINFO_BASENAME);
+            $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
+            $tmpPath = $tmpDir->path($basename);
+
+            // Validate file size to prevent zip bombs, while the bytes arrive (contract R2.4).
+            $maxSize = (int) config('panel.plugin.max_import_size');
+            $maxSizeLabel = round($maxSize / 1024 / 1024, 2);
+            $tooLarge = new InvalidFileUploadException("Zip file too large. ($maxSizeLabel MiB)");
+
+            $deadline = PluginRegistryService::deadline(60);
+
+            try {
+                $response = PluginRegistryService::bounded(HubCredentials::request($url), $maxSize, $deadline)->throw()->get($url);
+            } catch (ConnectionException|TransferException $exception) {
+                throw PluginRegistryService::refusedAsTooLarge($exception) ? $tooLarge : $exception;
+            }
+
+            $content = PluginRegistryService::readBody($response, $maxSize, $deadline) ?? throw $tooLarge;
+
+            // Any advertised checksum must match, including an empty or malformed one.
+            if ($expectedSha256 !== null) {
+                throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
+            }
+
+            $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $signature);
+
+            throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
+
+            return $this->importArchive(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
+        });
+    }
+
+    /**
+     * Downloads a plugin a registry lists (pelican/wings plugin contract v3, R2) and puts it in place like an
+     * import, without installing it. The archive must match the entry's sha256 before anything is extracted, pass
+     * the signature policy, be a zip without links, and hold the plugin.json of exactly the entry's name and
+     * version. Callers show the admin the entry and get their approval first.
+     *
+     * @throws Exception
+     */
+    public function downloadPluginFromRegistry(RegistryPlugin $plugin): string
+    {
+        return $this->withoutStagingPaths(function () use ($plugin) {
+            $compatibility = (new Plugin())->forceFill(['panel_version' => $plugin->panelVersion]);
+            throw_unless($compatibility->isCompatible(), new InvalidFileUploadException(trans('admin/plugin.registry.incompatible', ['version' => $plugin->panelVersion])));
+
+            $content = $this->app->make(PluginRegistryService::class)
+                ->fetch($plugin->download, $plugin->namespace, (int) config('panel.plugin.max_import_size'), 60);
+
+            throw_unless(hash_equals($plugin->sha256, hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.registry.checksum_mismatch')));
+
+            $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $plugin->signature);
+
+            // Panel archives are zip only; .tar.gz is for Wings plugins (contract v3, R1).
+            throw_if(str_starts_with($content, "\x1f\x8b"), new InvalidFileUploadException(trans('admin/plugin.registry.tar_unsupported')));
+            throw_unless(str_starts_with($content, "PK\x03\x04") || str_starts_with($content, "PK\x05\x06"), new InvalidFileUploadException(trans('admin/plugin.registry.not_a_zip')));
+
+            $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
+            $tmpPath = $tmpDir->path($plugin->name . '.zip');
+            throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
+
+            $this->assertNoLinksAndFewEntries($tmpPath);
+
+            return $this->importArchive(new UploadedFile($tmpPath, $plugin->name . '.zip', 'application/zip'), $plugin->name, $plugin->version);
+        });
+    }
+
+    /**
+     * Zip entries are only files and directories once extracted, except for unix symlinks, which a registry
+     * archive may not contain at all (R2.4); hard links don't exist in zips. The entry cap counts what extraction
+     * creates: extractTo() also makes every missing parent directory, so `a/b/c/file` is four entries, not one.
+     *
+     * @throws Exception
+     */
+    private function assertNoLinksAndFewEntries(string $path): void
+    {
+        $zip = new ZipArchive();
+        throw_unless($zip->open($path) === true, new InvalidFileUploadException('Could not open zip file.'));
+
+        $tooMany = new InvalidFileUploadException(trans('admin/plugin.registry.too_many_entries', ['max' => self::MAX_REGISTRY_ARCHIVE_ENTRIES]));
+
+        try {
+            throw_if($zip->numFiles > self::MAX_REGISTRY_ARCHIVE_ENTRIES, $tooMany);
+
+            // Every path extraction creates, as a tree of "parent id/segment" => id, so a key is never longer
+            // than one segment and the tree stops growing one past the cap.
+            $paths = [];
+
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $opsys = $attributes = 0;
+                $zip->getExternalAttributesIndex($i, $opsys, $attributes);
+
+                // The unix mode sits in the high 16 bits; 0120000 is S_IFLNK.
+                throw_if($opsys === ZipArchive::OPSYS_UNIX && (($attributes >> 16) & 0170000) === 0120000, new InvalidFileUploadException(trans('admin/plugin.registry.links_unsupported')));
+
+                $parent = 0;
+                foreach (preg_split('#/+#', (string) $zip->getNameIndex($i), flags: PREG_SPLIT_NO_EMPTY) ?: [] as $segment) {
+                    if ($segment === '.') {
+                        continue;
+                    }
+
+                    $parent = $paths["$parent/$segment"] ??= count($paths) + 1;
+                    throw_if(count($paths) > self::MAX_REGISTRY_ARCHIVE_ENTRIES, $tooMany);
+                }
+            }
+        } finally {
+            $zip->close();
+        }
     }
 
     public function deletePlugin(Plugin $plugin): void

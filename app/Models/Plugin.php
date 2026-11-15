@@ -327,7 +327,14 @@ class Plugin extends Model implements HasPluginSettings
         return $this->category === PluginCategory::Language;
     }
 
-    /** @return null|array<string, array{version: string, download_url: string, sha256?: string}> */
+    /**
+     * The update feed, as releases keyed by panel version (`*` for any). Accepts both shapes of the
+     * pelican/wings plugin contract v3, R4: the plain `{"version", "download", "sha256", "signature"}`, and the
+     * Pelican Hub's `{"*": {"version", "download_url", "sha256"}}` (`[]` when there is no release), plus
+     * feeds that cover several plugins keyed by plugin id.
+     *
+     * @return null|array<string, array<string, mixed>>
+     */
     private function getUpdateData(): ?array
     {
         if (!$this->update_url) {
@@ -339,9 +346,19 @@ class Plugin extends Model implements HasPluginSettings
                 $data = HubCredentials::request($this->update_url)
                     ->timeout(5)->connectTimeout(1)->get($this->update_url)->throw()->json();
 
+                // A misbehaving feed can return any JSON value, like `true` or a bare string.
+                if (!is_array($data)) {
+                    return [];
+                }
+
                 // Support update jsons that cover multiple plugins
-                if (array_key_exists($this->id, $data)) {
+                if (is_array($data[$this->id] ?? null)) {
                     $data = $data[$this->id];
+                }
+
+                // The plain shape is one release for every panel version.
+                if (is_string($data['version'] ?? null)) {
+                    return ['*' => $data];
                 }
 
                 return $data;
@@ -353,7 +370,7 @@ class Plugin extends Model implements HasPluginSettings
         });
     }
 
-    /** @return null|array{version: string, download_url: string, sha256?: string} */
+    /** @return null|array{version: string, download_url?: string, sha256?: mixed, signature?: mixed} */
     private function getUpdateEntry(): ?array
     {
         $panelVersion = App::call(fn (SoftwareVersionService $service) => $service->currentComparableVersion());
@@ -363,17 +380,20 @@ class Plugin extends Model implements HasPluginSettings
         }
 
         $updateData = $this->getUpdateData();
-        if ($updateData) {
-            if (array_key_exists($panelVersion, $updateData)) {
-                return $updateData[$panelVersion];
-            }
+        $entry = $updateData[$panelVersion] ?? $updateData['*'] ?? null;
 
-            if (array_key_exists('*', $updateData)) {
-                return $updateData['*'];
-            }
+        if (!is_array($entry) || !is_scalar($entry['version'] ?? null)) {
+            return null;
         }
 
-        return null;
+        $entry['version'] = (string) $entry['version'];
+
+        // `download_url` (the Hub's name) and `download` (the plain one) mean the same.
+        if (!array_key_exists('download_url', $entry) && array_key_exists('download', $entry)) {
+            $entry['download_url'] = $entry['download'];
+        }
+
+        return $entry;
     }
 
     public function isUpdateAvailable(): bool
@@ -398,7 +418,9 @@ class Plugin extends Model implements HasPluginSettings
      * only when the feed doesn't include one; a present but empty or invalid
      * value is kept so verification rejects it.
      *
-     * @return null|array{url: string, sha256: ?string}
+     * The signature, when the feed has one, must verify against a trusted key (see PluginSignatures).
+     *
+     * @return null|array{url: string, sha256: ?string, signature: ?string}
      */
     public function getUpdateDownload(): ?array
     {
@@ -413,7 +435,14 @@ class Plugin extends Model implements HasPluginSettings
             $sha256 = (string) $entry['sha256'];
         }
 
-        return ['url' => (string) $entry['download_url'], 'sha256' => $sha256];
+        // Null only when the feed has no signature. A present one that isn't a non-empty string is malformed,
+        // never "unsigned" (contract R1), so it's kept as '' for the signature check to reject.
+        $signature = null;
+        if (array_key_exists('signature', $entry)) {
+            $signature = is_string($entry['signature']) ? $entry['signature'] : '';
+        }
+
+        return ['url' => (string) $entry['download_url'], 'sha256' => $sha256, 'signature' => $signature];
     }
 
     public function hasSettings(): bool

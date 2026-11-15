@@ -240,6 +240,40 @@ it('refuses a release it cannot verify', function (array $release) {
     'insecure download' => [['download_url' => 'http://hub.example.test/plugins/hub-free-plugin/download/1/hub-free-plugin.zip']],
 ]);
 
+it('verifies the signature of a hub release', function (Closure $setUp, bool $installs) {
+    Queue::fake();
+    config()->set('panel.plugin.require_signatures', false);
+
+    $zip = hubPluginZip('hub-free-plugin');
+    $pair = sodium_crypto_sign_keypair();
+    config()->set('panel.plugin.trusted_keys', base64_encode(sodium_crypto_sign_publickey($pair)));
+    $sign = fn (string $secret) => base64_encode(sodium_crypto_sign_detached(hash('sha256', $zip, true), $secret));
+
+    fakeHub(hubPlugin('hub-free-plugin'), $zip, release: $setUp($sign, sodium_crypto_sign_secretkey($pair)));
+    actingAsRootAdmin();
+
+    livewire(BrowsePlugins::class)
+        ->loadTable()
+        ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->assertNotified(trans($installs ? 'admin/plugin.notifications.install_started' : 'admin/plugin.notifications.install_error'));
+
+    expect(File::exists(plugin_path('hub-free-plugin', 'plugin.json')))->toBe($installs);
+})->with([
+    'signed by a trusted key, signatures required' => [function (Closure $sign, string $secret) {
+        config()->set('panel.plugin.require_signatures', true);
+
+        return ['signature' => $sign($secret)];
+    }, true],
+    'signed by another key' => [fn (Closure $sign) => ['signature' => $sign(sodium_crypto_sign_secretkey(sodium_crypto_sign_keypair()))], false],
+    'malformed signature' => [fn () => ['signature' => ''], false],
+    'unsigned, signatures required' => [function () {
+        config()->set('panel.plugin.require_signatures', true);
+
+        return [];
+    }, false],
+    'unsigned, signatures not required' => [fn () => [], true],
+]);
+
 it('filters to installed plugins', function () {
     fakeHub(hubPlugin('hub-free-plugin'));
     actingAsRootAdmin();

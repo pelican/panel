@@ -68,7 +68,8 @@ class PluginController extends ApplicationApiController
     /**
      * Import plugin (file)
      *
-     * Imports a new plugin file.
+     * Imports a new plugin file. An optional `signature` (base64 Ed25519 over the archive's SHA-256 digest) must
+     * match a trusted key; with signatures required, an archive without one is refused.
      *
      * @throws Exception
      */
@@ -76,7 +77,10 @@ class PluginController extends ApplicationApiController
     {
         throw_unless($request->hasFile('plugin'), new PanelException("No 'plugin' file in request"));
 
-        $id = $this->pluginService->downloadPluginFromFile($request->file('plugin'));
+        $signature = $request->input('signature');
+        throw_if($signature !== null && !is_string($signature), new PanelException("'signature' must be a string"));
+
+        $id = $this->pluginService->downloadPluginFromFile($request->file('plugin'), signature: $signature);
 
         // Importing over an installed plugin is an update, so reinstall it.
         if ($this->pluginService->isInstalled($id)) {
@@ -89,13 +93,14 @@ class PluginController extends ApplicationApiController
     /**
      * Import plugin (url)
      *
-     * Imports a new plugin from an url.
+     * Imports a new plugin from an url. An optional `signature` (base64 Ed25519 over the archive's SHA-256 digest)
+     * must match a trusted key; with signatures required, an archive without one is refused.
      *
      * @throws Exception
      */
     public function importUrl(ImportFilePluginRequest $request): Response
     {
-        $id = $this->pluginService->downloadPluginFromUrl($request->input('url'));
+        $id = $this->pluginService->downloadPluginFromUrl($request->input('url'), signature: $request->input('signature'));
 
         // Importing over an installed plugin is an update, so reinstall it.
         if ($this->pluginService->isInstalled($id)) {

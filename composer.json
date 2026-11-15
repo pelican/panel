@@ -4,6 +4,7 @@
     "license": "AGPL-3.0-only",
     "require": {
         "php": "^8.4 || ^8.5",
+        "ext-curl": "*",
         "ext-intl": "*",
         "ext-json": "*",
         "ext-mbstring": "*",

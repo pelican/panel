@@ -253,7 +253,7 @@ class BrowsePlugins extends Page implements HasTable
 
             $wasInstalled = Plugin::whereKey($slug)->exists() && $pluginService->isInstalled($slug);
 
-            $id = $pluginService->downloadPluginFromUrl($release['download_url'], $slug, $release['sha256']);
+            $id = $pluginService->downloadPluginFromUrl($release['download_url'], $slug, $release['sha256'], $release['signature']);
 
             // Pick up the new plugin so the table shows it as installed.
             Plugin::refreshRows();
