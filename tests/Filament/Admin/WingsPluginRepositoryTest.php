@@ -43,6 +43,8 @@ it('refuses an empty or invalid plugin id before calling wings', function (strin
     'backslash' => 'a\\b',
     'nested parent' => 'a..b',
     'newline' => "a\nb",
+    // Contract v3.1: the path of GET /api/plugins/available, never a plugin
+    'reserved' => 'available',
 ])->with(['enable', 'disable', 'uninstall', 'settings', 'install', 'update', 'approve', 'source']);
 
 it('encodes plugin ids in the path', function () {

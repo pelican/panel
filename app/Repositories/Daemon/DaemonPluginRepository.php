@@ -39,6 +39,8 @@ class DaemonPluginRepository extends DaemonRepository
             && !str_contains($id, '/')
             && !str_contains($id, '\\')
             && !str_contains($id, '..')
+            // Reserved by Wings for GET /api/plugins/available (contract v3.1)
+            && $id !== 'available'
             && !preg_match('/[\x00-\x1F\x7F]/', $id);
     }
 
