@@ -9,6 +9,7 @@ use App\Filament\Components\Forms\Fields\StartupVariable;
 use App\Models\Allocation;
 use App\Models\Egg;
 use App\Models\Node;
+use App\Models\Server;
 use App\Models\User;
 use App\Services\Allocations\AssignmentService;
 use App\Services\Backups\BackupConfigResolver;
@@ -48,6 +49,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
 use LogicException;
 use Random\RandomException;
@@ -185,7 +187,10 @@ class CreateServer extends CreateRecord
 
         $allocations = $this->configImporter->matchAllocations($this->restoreConfig, $node);
         $set('allocation_id', $allocations['allocation_id']);
-        $set('allocation_additional', $allocations['allocation_additional']);
+        // Filament only wraps simple repeater items when the form is filled, not on $set.
+        $set('allocation_additional', collect($allocations['allocation_additional'])
+            ->mapWithKeys(fn (int $id) => [(string) Str::uuid() => ['extra_allocations' => $id]])
+            ->all());
         $this->restoreMissingAllocations = $allocations['missing'];
     }
 
@@ -1054,9 +1059,12 @@ class CreateServer extends CreateRecord
                 return $this->serverCreationService->handle($data);
             }
 
+            // The restore is recorded before the node is asked to create the server, so a
+            // fast (skipped) install that reports back right away still finds it.
             $source = RestoreSource::fromArray($this->restoreSource);
-            $server = $this->serverCreationService->handle($data);
-            $this->restoreService->create($server, $source, $startOnCompletion);
+            $server = $this->serverCreationService->handle($data, beforeDaemon: function (Server $server) use ($source, $startOnCompletion) {
+                $this->restoreService->create($server, $source, $startOnCompletion);
+            });
 
             if ($this->restoreKey) {
                 session()->forget("restore_source.$this->restoreKey");

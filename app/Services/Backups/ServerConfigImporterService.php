@@ -69,6 +69,13 @@ class ServerConfigImporterService
             throw new DisplayException(trans('admin/backup.restore.invalid_config') . ' ' . $validator->errors()->first());
         }
 
+        // Lists the validator accepts as null are used as arrays below.
+        foreach (['variables', 'allocations.additional', 'docker_labels', 'mounts', 'limits', 'feature_limits'] as $key) {
+            if (Arr::has($config, $key) && Arr::get($config, $key) === null) {
+                Arr::set($config, $key, []);
+            }
+        }
+
         return $config;
     }
 
@@ -119,7 +126,7 @@ class ServerConfigImporterService
                 default => 'limited',
             };
         }
-        if (!empty($limits['threads'])) {
+        if (isset($limits['threads']) && $limits['threads'] !== '') {
             $state['cpu_pinning'] = true;
             $state['threads'] = array_values(array_filter(explode(',', (string) $limits['threads']), fn ($thread) => $thread !== ''));
         }

@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $source_key
  * @property string|null $source_url
  * @property string $status
+ * @property string|null $callback_uuid
  * @property bool $start_on_completion
  * @property string|null $error
  * @property Carbon|null $created_at

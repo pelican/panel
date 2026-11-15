@@ -17,6 +17,8 @@ return new class extends Migration
             $table->text('source_key')->nullable();
             $table->text('source_url')->nullable();
             $table->string('status')->default('pending');
+            // The uuid the node reports the restore's result with.
+            $table->char('callback_uuid', 36)->nullable()->index();
             $table->boolean('start_on_completion')->default(false);
             $table->text('error')->nullable();
             $table->timestamps();

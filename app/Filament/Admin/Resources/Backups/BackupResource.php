@@ -3,6 +3,7 @@
 namespace App\Filament\Admin\Resources\Backups;
 
 use App\Enums\TablerIcon;
+use App\Facades\Activity;
 use App\Filament\Admin\Resources\Backups\Pages\ListBackups;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
 use App\Filament\Components\Actions\CreateServerFromBackupAction;
@@ -14,6 +15,7 @@ use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanModifyTable;
 use BackedEnum;
 use Exception;
+use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
@@ -128,6 +130,20 @@ class BackupResource extends Resource
             ->recordActions([
                 CreateServerFromBackupAction::make()
                     ->hiddenLabel(),
+                // The page of a deleted server is gone, so its locked backups are unlocked here.
+                Action::make('unlock')
+                    ->hiddenLabel()
+                    ->tooltip(trans('server/backup.actions.lock.unlock'))
+                    ->icon(TablerIcon::LockOpen)
+                    ->color('warning')
+                    ->visible(fn (Backup $backup) => $backup->isOrphaned() && $backup->is_locked)
+                    ->authorize(fn (Backup $backup) => user()?->can('delete', $backup))
+                    ->requiresConfirmation()
+                    ->action(function (Backup $backup) {
+                        $backup->update(['is_locked' => false]);
+
+                        Activity::event('server:backup.unlock')->subject($backup)->property('name', $backup->name)->log();
+                    }),
                 DeleteAction::make()
                     ->hiddenLabel()
                     ->visible(fn (Backup $backup) => $backup->isOrphaned())

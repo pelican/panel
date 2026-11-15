@@ -139,11 +139,12 @@ class Backup extends Model implements Validatable
     }
 
     /**
-     * The node this backup was made on.
+     * The node that holds this backup. Transfers update it for the backups they
+     * move, the ones left behind stay on the old node.
      */
     public function sourceNode(): ?Node
     {
-        return $this->server->node ?? $this->node;
+        return $this->node ?? $this->server?->node;
     }
 
     /**

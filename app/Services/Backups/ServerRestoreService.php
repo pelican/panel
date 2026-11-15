@@ -59,13 +59,26 @@ class ServerRestoreService
      */
     public function start(ServerRestore $restore): void
     {
+        // Claim the restore, the install can be reported more than once.
+        $claimed = ServerRestore::query()
+            ->whereKey($restore->id)
+            ->where('status', ServerRestore::STATUS_PENDING)
+            ->update(['status' => ServerRestore::STATUS_RUNNING, 'error' => null]);
+        if ($claimed === 0) {
+            return;
+        }
+
+        $restore->refresh();
         $server = $restore->server;
 
         try {
             [$identifier, $adapter, $sourceServer, $url] = $this->payload($restore);
 
-            $restore->update(['status' => ServerRestore::STATUS_RUNNING, 'error' => null]);
-            $server->update(['status' => ServerState::RestoringBackup]);
+            $restore->update(['callback_uuid' => $identifier]);
+            // A suspended server stays suspended while its files are restored.
+            if ($server->status !== ServerState::Suspended) {
+                $server->update(['status' => ServerState::RestoringBackup]);
+            }
 
             $this->daemonBackupRepository->setServer($server)->restoreInto($identifier, $adapter, $sourceServer, $url);
 
@@ -83,19 +96,15 @@ class ServerRestoreService
     }
 
     /**
-     * Finds the running restore the node is reporting on. Backups restored
-     * from the node itself are reported by the backup's uuid, others by the
-     * restore's uuid.
+     * Finds the running restore the node is reporting on, by the uuid it was
+     * started with. payload() keeps that uuid unique among running restores.
      */
     public function findRunning(string $uuid, Node $node): ?ServerRestore
     {
         return ServerRestore::query()
             ->where('status', ServerRestore::STATUS_RUNNING)
+            ->where('callback_uuid', $uuid)
             ->whereHas('server', fn ($query) => $query->where('node_id', $node->id))
-            ->where(fn ($query) => $query
-                ->where('uuid', $uuid)
-                ->orWhereIn('backup_id', Backup::query()->where('uuid', $uuid)->select('id')))
-            ->latest('id')
             ->first();
     }
 
@@ -112,14 +121,14 @@ class ServerRestoreService
 
         $server = $restore->server;
         $restore->update(['status' => ServerRestore::STATUS_COMPLETED, 'error' => null]);
-        $server->update(['status' => null]);
+        $this->clearRestoringStatus($server);
 
         Activity::event('server:backup.restore-complete')
             ->subject($server)
             ->property('name', $this->sourceDescription($restore))
             ->log();
 
-        if ($restore->start_on_completion) {
+        if ($restore->start_on_completion && $server->status !== ServerState::Suspended) {
             try {
                 $this->daemonServerRepository->setServer($server)->power('start');
             } catch (Exception $exception) {
@@ -132,7 +141,7 @@ class ServerRestoreService
     {
         $server = $restore->server;
         $restore->update(['status' => ServerRestore::STATUS_FAILED, 'error' => $error]);
-        $server->update(['status' => null]);
+        $this->clearRestoringStatus($server);
 
         Activity::event('server:backup.restore-failed')
             ->subject($server)
@@ -145,6 +154,18 @@ class ServerRestoreService
             ->title(trans('admin/backup.restore.failed_title', ['server' => $server->name]))
             ->body($error)
             ->sendToDatabase($server->user);
+    }
+
+    /**
+     * Only the restoring status is cleared, a server suspended in the meantime
+     * stays suspended.
+     */
+    private function clearRestoringStatus(Server $server): void
+    {
+        $server->refresh();
+        if ($server->status === ServerState::RestoringBackup) {
+            $server->update(['status' => null]);
+        }
     }
 
     /**
@@ -162,8 +183,14 @@ class ServerRestoreService
             $schema = $this->backupAdapterService->get($backup->backupHost->schema);
 
             if ($schema instanceof WingsBackupSchema) {
-                // The node restores it locally when it has it, otherwise it is
-                // downloaded from the node the backup was made on.
+                // The node restores it locally when it has it, otherwise it is downloaded
+                // from the node that holds it. Either way the node reports back with the
+                // backup's uuid, so while that uuid is in use on the node the archive is
+                // streamed like any other link and reported with the restore's uuid.
+                if ($this->backupInUse($backup, $restore)) {
+                    return [$restore->uuid, 's3', null, $schema->getRestoreLink($backup, self::LINK_LIFETIME)];
+                }
+
                 $url = $backup->sourceNode()?->is($restore->server->node) ? null : $schema->getRestoreLink($backup, self::LINK_LIFETIME);
 
                 return [$backup->uuid, 'wings', $backup->sourceServerUuid(), $url];
@@ -192,6 +219,24 @@ class ServerRestoreService
         }
 
         throw new Exception(trans('admin/backup.restore.missing_backup'));
+    }
+
+    /**
+     * Whether the node is already restoring this backup under its own uuid, into
+     * another new server or into the server it belongs to.
+     */
+    private function backupInUse(Backup $backup, ServerRestore $restore): bool
+    {
+        $node = $restore->server->node_id;
+
+        $otherRestore = ServerRestore::query()
+            ->whereKeyNot($restore->id)
+            ->where('status', ServerRestore::STATUS_RUNNING)
+            ->where('callback_uuid', $backup->uuid)
+            ->whereHas('server', fn ($query) => $query->where('node_id', $node))
+            ->exists();
+
+        return $otherRestore || ($backup->server?->node_id === $node && $backup->server->status === ServerState::RestoringBackup);
     }
 
     private function sourceDescription(ServerRestore $restore): string

@@ -128,3 +128,15 @@ it('shows kept backups to administrators who can create servers', function () {
 
     livewire(ListBackups::class)->assertForbidden();
 });
+
+it('lets administrators unlock a locked backup of a deleted server', function () {
+    $backup = keptBackup(Node::factory()->create(), Egg::factory()->create(), 25598);
+    $backup->update(['is_locked' => true]);
+    $unlocked = keptBackup(Node::factory()->create(), Egg::factory()->create(), 25599);
+
+    livewire(ListBackups::class)
+        ->assertTableActionHidden('unlock', $unlocked)
+        ->callTableAction('unlock', $backup);
+
+    expect($backup->refresh()->is_locked)->toBeFalse();
+});

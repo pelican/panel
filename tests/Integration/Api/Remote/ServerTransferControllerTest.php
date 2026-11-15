@@ -2,10 +2,15 @@
 
 namespace App\Tests\Integration\Api\Remote;
 
+use App\Enums\ServerState;
 use App\Models\Allocation;
+use App\Models\Backup;
+use App\Models\BackupHost;
 use App\Models\Node;
+use App\Models\ServerRestore;
 use App\Models\ServerTransfer;
 use App\Tests\Integration\IntegrationTestCase;
+use Ramsey\Uuid\Uuid;
 
 class ServerTransferControllerTest extends IntegrationTestCase
 {
@@ -55,6 +60,40 @@ class ServerTransferControllerTest extends IntegrationTestCase
             ->assertNoContent();
 
         $this->assertTrue($this->transfer->refresh()->successful);
+    }
+
+    public function test_successful_transfer_moves_only_the_transferred_backups_to_the_new_node(): void
+    {
+        $server = $this->transfer->server;
+        $host = BackupHost::factory()->create();
+        $moved = Backup::factory()->create(['server_id' => $server->id, 'node_id' => $server->node_id, 'backup_host_id' => $host->id]);
+        $left = Backup::factory()->create(['server_id' => $server->id, 'node_id' => $server->node_id, 'backup_host_id' => $host->id]);
+        $this->transfer->update(['backup_uuids' => [$moved->uuid]]);
+
+        $newNode = $this->transfer->newNode;
+        $this->withHeader('Authorization', "Bearer $newNode->daemon_token_id." . $newNode->daemon_token)
+            ->postJson("/api/remote/servers/{$server->uuid}/transfer/success")
+            ->assertNoContent();
+
+        $this->assertSame($newNode->id, $moved->refresh()->node_id);
+        $this->assertSame($this->transfer->old_node, $left->refresh()->node_id);
+        $this->assertSame($this->transfer->old_node, $left->sourceNode()?->id);
+    }
+
+    public function test_a_restarting_node_fails_restores_waiting_for_an_interrupted_install(): void
+    {
+        $node = $this->transfer->oldNode;
+        $installing = $this->createServerModel(['node_id' => $node->id, 'status' => ServerState::Installing]);
+        $installed = $this->createServerModel(['node_id' => $node->id, 'status' => null]);
+        $interrupted = ServerRestore::query()->create(['uuid' => Uuid::uuid4()->toString(), 'server_id' => $installing->id, 'source_url' => 'https://example.com/a.tar.gz']);
+        $waiting = ServerRestore::query()->create(['uuid' => Uuid::uuid4()->toString(), 'server_id' => $installed->id, 'source_url' => 'https://example.com/a.tar.gz']);
+
+        $this->withHeader('Authorization', "Bearer $node->daemon_token_id." . $node->daemon_token)
+            ->postJson('/api/remote/servers/reset')
+            ->assertNoContent();
+
+        $this->assertSame(ServerRestore::STATUS_FAILED, $interrupted->refresh()->status);
+        $this->assertSame(ServerRestore::STATUS_PENDING, $waiting->refresh()->status);
     }
 
     public function test_failure_status_update_can_be_sent_from_old_node(): void

@@ -278,6 +278,40 @@ class ServerCreationServiceTest extends IntegrationTestCase
         $this->assertDatabaseMissing('servers', ['owner_id' => $user->id]);
     }
 
+    public function test_before_daemon_callback_runs_before_the_daemon_is_asked_to_create_the_server(): void
+    {
+        $allocation = Allocation::factory()->create(['node_id' => Node::factory()->create()->id]);
+
+        $data = [
+            'name' => $this->faker->name(),
+            'owner_id' => User::factory()->create()->id,
+            'allocation_id' => $allocation->id,
+            'node_id' => $allocation->node_id,
+            'memory' => 256,
+            'swap' => 128,
+            'disk' => 100,
+            'io' => 500,
+            'cpu' => 0,
+            'startup' => 'java server2.jar',
+            'image' => 'java:8',
+            'egg_id' => $this->bungeecord->id,
+            'environment' => ['BUNGEE_VERSION' => '123', 'SERVER_JARFILE' => 'server2.jar'],
+        ];
+
+        $calls = [];
+        $this->daemonServerRepository->expects('setServer->create')->andReturnUsing(function () use (&$calls) {
+            $calls[] = 'daemon';
+        });
+
+        $server = $this->getService()->handle($data, beforeDaemon: function (Server $server) use (&$calls) {
+            $this->assertTrue($server->exists);
+            $calls[] = 'callback';
+        });
+
+        $this->assertSame(['callback', 'daemon'], $calls);
+        $this->assertDatabaseHas('servers', ['id' => $server->id]);
+    }
+
     private function getService(): ServerCreationService
     {
         return $this->app->make(ServerCreationService::class);

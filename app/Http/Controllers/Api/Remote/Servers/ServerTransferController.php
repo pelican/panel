@@ -6,6 +6,7 @@ use App\Exceptions\Http\HttpForbiddenException;
 use App\Http\Controllers\Controller;
 use App\Jobs\AdvanceServerTransferBatch;
 use App\Models\Allocation;
+use App\Models\Backup;
 use App\Models\Node;
 use App\Models\Server;
 use App\Models\ServerTransfer;
@@ -85,6 +86,12 @@ class ServerTransferController extends Controller
 
             $data['node_id'] = $transfer->new_node;
             $server->update($data);
+
+            // The backups sent with the transfer are now on the new node.
+            Backup::query()
+                ->where('server_id', $server->id)
+                ->whereIn('uuid', $transfer->backup_uuids ?? [])
+                ->update(['node_id' => $transfer->new_node]);
 
             $server = $server->fresh();
             $server->transfer->update(['successful' => true]);

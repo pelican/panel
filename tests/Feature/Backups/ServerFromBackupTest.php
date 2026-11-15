@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ServerState;
+use App\Exceptions\DisplayException;
 use App\Models\Allocation;
 use App\Models\Backup;
 use App\Models\BackupHost;
@@ -22,6 +23,7 @@ use App\Services\Backups\ServerRestoreService;
 use App\Services\Servers\ServerDeletionService;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Http;
 
 /**
  * A server whose egg has one variable users can see and one they cannot.
@@ -136,7 +138,7 @@ it('turns a configuration into the create server form state', function () {
 
 it('rejects configurations it does not understand', function () {
     app(ServerConfigImporterService::class)->parse(['meta' => ['version' => 'PLCN_SRV_v999']]);
-})->throws(App\Exceptions\DisplayException::class);
+})->throws(DisplayException::class);
 
 it('matches the original allocations when they are free', function () {
     [$server] = serverWithVariables();
@@ -280,6 +282,106 @@ it('restores from a link using the restore identifier', function () {
     $service->complete($restore->refresh(), false);
     expect($restore->refresh()->status)->toBe(ServerRestore::STATUS_FAILED)
         ->and($new->refresh()->status)->toBeNull();
+});
+
+it('keeps reports of two restores of the same backup on one node apart', function () {
+    $host = BackupHost::factory()->create();
+    [$old] = serverWithVariables();
+    $backup = Backup::factory()->create(['server_id' => null, 'server_uuid' => $old->uuid, 'node_id' => $old->node_id, 'backup_host_id' => $host->id]);
+    $first = createServerModel(['node_id' => $old->node_id]);
+    $second = createServerModel(['node_id' => $old->node_id]);
+
+    $daemon = $this->mock(DaemonBackupRepository::class);
+    $daemon->allows('setServer')->andReturnSelf();
+    $daemon->expects('restoreInto')->with($backup->uuid, 'wings', $old->uuid, null)->andReturn(new Response(new PsrResponse(202)));
+    $daemon->expects('restoreInto')->withArgs(fn ($uuid, $adapter, $source, $url) => $uuid !== $backup->uuid && $adapter === 's3' && $source === null
+        && str_starts_with($url, $old->node->getConnectionAddress() . '/download/backup?token='))
+        ->andReturn(new Response(new PsrResponse(202)));
+
+    $service = app(ServerRestoreService::class);
+    $firstRestore = $service->create($first, RestoreSource::backup($backup), false);
+    $secondRestore = $service->create($second, RestoreSource::backup($backup), false);
+    $service->start($firstRestore);
+    $service->start($secondRestore);
+
+    expect($service->findRunning($backup->uuid, $old->node)?->id)->toBe($firstRestore->id)
+        ->and($service->findRunning($secondRestore->uuid, $old->node)?->id)->toBe($secondRestore->id);
+});
+
+it('starts a restore only once', function () {
+    $new = createServerModel();
+
+    $daemon = $this->mock(DaemonBackupRepository::class);
+    $daemon->allows('setServer')->andReturnSelf();
+    $daemon->expects('restoreInto')->once()->andReturn(new Response(new PsrResponse(202)));
+
+    $service = app(ServerRestoreService::class);
+    $restore = $service->create($new, RestoreSource::url('https://example.com/backup.tar.gz'), false);
+    $service->start($restore);
+    $service->start(ServerRestore::query()->find($restore->id));
+
+    expect($restore->refresh()->status)->toBe(ServerRestore::STATUS_RUNNING);
+});
+
+it('keeps a server suspended during its restore suspended and stopped', function () {
+    $new = createServerModel(['status' => null]);
+
+    $daemon = $this->mock(DaemonBackupRepository::class);
+    $daemon->allows('setServer')->andReturnSelf();
+    $daemon->allows('restoreInto')->andReturn(new Response(new PsrResponse(202)));
+    $this->mock(DaemonServerRepository::class)->expects('power')->never();
+
+    $service = app(ServerRestoreService::class);
+    $restore = $service->create($new, RestoreSource::url('https://example.com/backup.tar.gz'), true);
+    $service->start($restore);
+
+    $new->refresh()->update(['status' => ServerState::Suspended]);
+    $service->complete($restore->refresh(), true);
+
+    expect($new->refresh()->status)->toBe(ServerState::Suspended)
+        ->and($restore->refresh()->status)->toBe(ServerRestore::STATUS_COMPLETED);
+});
+
+it('accepts configurations with empty lists and pinning to cpu 0', function () {
+    [$server] = serverWithVariables();
+    $config = json_decode(json_encode(app(ServerConfigExporterService::class)->handle($server)), true);
+    $config['variables'] = null;
+    $config['allocations']['additional'] = null;
+    $config['limits']['threads'] = '0';
+
+    $importer = app(ServerConfigImporterService::class);
+    $parsed = $importer->parse($config);
+    $state = $importer->toFormState($parsed);
+
+    expect($state['environment'])->toBe(['VISIBLE_VAR' => 'default', 'HIDDEN_VAR' => 'hidden-default'])
+        ->and($state['cpu_pinning'])->toBeTrue()
+        ->and($state['threads'])->toBe(['0'])
+        ->and($importer->matchAllocations($parsed, $server->node)['missing'])->toHaveCount(1);
+});
+
+it('only inflates as much of an archive as the configuration needs', function () {
+    $resolver = app(BackupConfigResolver::class);
+    $config = ['meta' => ['version' => ServerConfigExporterService::VERSION]];
+
+    // 64 MiB of zeros compresses to far less than what is downloaded.
+    $archive = substr(tarGz(['.pelicanconfig' => json_encode($config), 'world.dat' => str_repeat("\0", 64 * 1024 * 1024)]), 0, BackupConfigResolver::MAX_READ_BYTES);
+    gc_collect_cycles();
+    memory_reset_peak_usage();
+    $before = memory_get_usage();
+
+    expect($resolver->fromArchiveStart($archive))->toBe($config)
+        ->and(memory_get_peak_usage() - $before)->toBeLessThan(16 * 1024 * 1024);
+});
+
+it('does not fetch links to internal addresses', function () {
+    Http::fake();
+    $resolver = app(BackupConfigResolver::class);
+
+    foreach (['http://127.0.0.1/backup.tar.gz', 'http://10.0.0.5/backup.tar.gz', 'http://[::1]/backup.tar.gz', 'http://169.254.169.254/latest'] as $url) {
+        expect($resolver->resolve(RestoreSource::url($url)))->toBeNull();
+    }
+
+    Http::assertNothingSent();
 });
 
 it('only accepts http links as a restore source', function () {

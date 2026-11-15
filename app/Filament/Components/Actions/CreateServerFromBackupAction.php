@@ -58,7 +58,9 @@ class CreateServerFromBackupAction extends Action
                 ->required(fn (Get $get) => $get('type') === RestoreSource::TYPE_BACKUP)
                 ->searchable()
                 ->getSearchResultsUsing(fn (?string $search) => $this->backupOptions($search))
-                ->options(fn () => $this->backupOptions(null)),
+                ->options(fn () => $this->backupOptions(null))
+                // Search can find backups older than the ones listed by default.
+                ->getOptionLabelUsing(fn ($value) => ($backup = Backup::query()->restorable()->with('server')->find($value)) ? $this->backupLabel($backup) : null),
             Select::make('backup_host_id')
                 ->label(trans('admin/backup.restore.backup_host'))
                 ->visible(fn (Get $get) => $get('type') === RestoreSource::TYPE_S3)
@@ -109,7 +111,12 @@ class CreateServerFromBackupAction extends Action
             ->latest()
             ->limit(50)
             ->get()
-            ->mapWithKeys(fn (Backup $backup) => [$backup->id => "{$backup->serverDisplayName()} — $backup->name"])
+            ->mapWithKeys(fn (Backup $backup) => [$backup->id => $this->backupLabel($backup)])
             ->all();
+    }
+
+    private function backupLabel(Backup $backup): string
+    {
+        return "{$backup->serverDisplayName()} — $backup->name";
     }
 }

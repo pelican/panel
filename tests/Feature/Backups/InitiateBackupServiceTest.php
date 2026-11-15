@@ -105,3 +105,15 @@ it('marks and rotates backups created by a schedule task', function () {
         ->and($backup->is_scheduled)->toBeTrue()
         ->and($backup->ignored_files)->toBe(['logs', 'cache']);
 });
+
+it('splits a scheduled backup ignore list on line breaks only', function () {
+    $server = serverWithBackups(1, 0);
+
+    $schedule = Schedule::factory()->create(['server_id' => $server->id]);
+    // 入 is E5 85 A5 in UTF-8, the 0x85 byte must not be taken for a line break.
+    $task = Task::factory()->create(['schedule_id' => $schedule->id, 'action' => 'backup', 'payload' => "入/\r\ncache\n\n"]);
+
+    app(CreateBackupSchema::class)->runTask($task);
+
+    expect($server->backups()->sole()->ignored_files)->toBe(['入/', 'cache']);
+});
