@@ -1,5 +1,7 @@
 <?php
 
+use App\Services\Helpers\PluginRegistryConfig;
+
 return [
 
     'auth' => [
@@ -105,5 +107,16 @@ return [
         // so the Hub can serve beta builds this panel was explicitly enrolled in.
         'hub_url' => env('PANEL_PLUGIN_HUB_URL', 'https://hub.pelican.dev'),
         'hub_api_key' => env('PANEL_PLUGIN_HUB_API_KEY'),
+
+        // Plugin registries to install Panel plugins from, as a JSON object keyed by namespace (single quotes
+        // in .env keep it literal): '{"acme": {"url": "https://registry.acme.com/registry.json", "token": "${ACME_TOKEN}"}}'.
+        // `${NAME}` in "token" and "headers" values is read from the environment, so secrets can live in their own
+        // variables. The token and headers are only ever sent to the registry's own host. See PluginRegistryConfig.
+        'registries' => PluginRegistryConfig::parse(env('PANEL_PLUGIN_REGISTRIES'), fn (string $name) => env($name)),
+        // Base64 Ed25519 public keys (optionally `id:key`), separated by commas, that may sign plugin archives.
+        // A signature that is present must always verify; with require_signatures, unsigned archives from a
+        // registry or an update feed are refused too.
+        'trusted_keys' => env('PANEL_PLUGIN_TRUSTED_KEYS'),
+        'require_signatures' => env('PANEL_PLUGIN_REQUIRE_SIGNATURES', false),
     ],
 ];
