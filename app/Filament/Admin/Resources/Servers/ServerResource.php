@@ -466,7 +466,6 @@ class ServerResource extends Resource
                                             ToggleButtons::make('cpu_pinning')
                                                 ->label(trans('admin/server.cpu_pin'))->inlineLabel()->inline()
                                                 ->default(0)
-                                                ->required()
                                                 ->afterStateUpdated(fn (Set $set) => $set('threads', []))
                                                 ->formatStateUsing(fn (Get $get) => filled($get('threads')))
                                                 ->live()
