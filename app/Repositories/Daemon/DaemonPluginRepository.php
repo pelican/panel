@@ -3,6 +3,8 @@
 namespace App\Repositories\Daemon;
 
 use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Psr7\MultipartStream;
+use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
@@ -261,13 +263,25 @@ class DaemonPluginRepository extends DaemonRepository
      */
     public function importFromFile(UploadedFile $file, ?string $signature = null): array
     {
-        $request = $this->getHttpClient()
-            ->timeout(300)
-            ->attach('plugin', (string) $file->get(), $file->getClientOriginalName());
+        $elements = [[
+            'name' => 'plugin',
+            // Streamed from disk, archives can be up to 200 MiB
+            'contents' => Utils::tryFopen($file->getRealPath(), 'r'),
+            'filename' => $file->getClientOriginalName(),
+        ]];
 
-        $response = $signature !== null && $signature !== ''
-            ? $request->post('/api/plugins/import', ['signature' => $signature])
-            : $request->post('/api/plugins/import');
+        if ($signature !== null && $signature !== '') {
+            $elements[] = ['name' => 'signature', 'contents' => $signature];
+        }
+
+        // The daemon client sends "Content-Type: application/json", which attach() keeps, so Wings would
+        // read the upload as JSON. The body and its type are set here instead.
+        $boundary = bin2hex(random_bytes(16));
+
+        $response = $this->getHttpClient()
+            ->timeout(300)
+            ->withBody(new MultipartStream($elements, $boundary), "multipart/form-data; boundary=$boundary")
+            ->post('/api/plugins/import');
 
         return self::stagedResponse($response);
     }

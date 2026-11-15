@@ -9,18 +9,24 @@ use App\Filament\Admin\Resources\Plugins\Pages\ListPlugins;
 use App\Jobs\Plugin\InstallPlugin;
 use App\Jobs\Plugin\UninstallPlugin;
 use App\Jobs\Plugin\UpdatePlugin;
+use App\Models\Node;
 use App\Models\Plugin;
 use App\Models\WingsPlugin;
+use App\Repositories\Daemon\DaemonPluginRepository;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\ThemeService;
+use App\Services\Nodes\WingsPluginApprovals;
 use App\Services\Nodes\WingsPluginFailure;
 use BackedEnum;
+use Closure;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\ToggleButtons;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -32,6 +38,8 @@ use Filament\Tables\Table;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
+use RuntimeException;
 
 class PluginResource extends Resource
 {
@@ -91,6 +99,78 @@ class PluginResource extends Resource
             ->send();
 
         redirect(ListPlugins::getUrl(['tab' => 'wings']));
+    }
+
+    /**
+     * First step of a two-step install, update or import (contract v2, A4): Wings stages the plugin and
+     * nothing is installed. What it staged is kept on the server and the admin is asked to approve it.
+     *
+     * @param  Closure(DaemonPluginRepository): array<string, mixed>  $stage
+     */
+    private static function stageOnNode(ListPlugins $livewire, WingsPluginApprovals $approvals, Node $node, string $action, ?string $pluginId, Closure $stage): void
+    {
+        $errorKey = $action === 'import' ? 'import_failed' : "{$action}_error";
+
+        try {
+            $staged = $stage((new DaemonPluginRepository())->setNode($node));
+
+            if ($staged['status'] === 'up_to_date') {
+                Notification::make()
+                    ->info()
+                    ->title(trans('admin/plugin.wings.up_to_date', [
+                        'name' => $pluginId,
+                        'installed' => is_string($staged['installed'] ?? null) ? $staged['installed'] : '?',
+                        'latest' => is_string($staged['latest'] ?? null) ? $staged['latest'] : '?',
+                    ]))
+                    ->send();
+
+                return;
+            }
+
+            if ($staged['status'] !== 'approval_required') {
+                throw new InvalidArgumentException(trans('admin/plugin.wings.unexpected_answer'));
+            }
+
+            $handle = $approvals->put(user() ?? throw new RuntimeException('Not signed in.'), $node, $action, $pluginId, $staged);
+        } catch (Exception $exception) {
+            if (!$exception instanceof RequestException) {
+                report($exception);
+            }
+
+            Notification::make()
+                ->danger()
+                ->title(trans("admin/plugin.notifications.$errorKey"))
+                ->body(WingsPluginFailure::message($exception))
+                ->send();
+
+            return;
+        }
+
+        $livewire->replaceMountedAction('approveWingsPlugin', ['approval' => $handle]);
+    }
+
+    /**
+     * The node the admin picked, if it is one they can access and it allows $level (contract A7, L).
+     */
+    private static function nodeAllowing(mixed $nodeId, string $level): ?Node
+    {
+        $nodeId = filter_var($nodeId, FILTER_VALIDATE_INT);
+        if ($nodeId === false || !WingsPlugin::nodesAllowing($level)->has($nodeId)) {
+            return null;
+        }
+
+        $node = Node::find($nodeId);
+
+        return $node && user()?->canTarget($node) ? $node : null;
+    }
+
+    private static function notifyNodeNotAllowed(string $errorKey): void
+    {
+        Notification::make()
+            ->danger()
+            ->title(trans("admin/plugin.notifications.$errorKey"))
+            ->body(trans('admin/plugin.wings.node_not_allowed'))
+            ->send();
     }
 
     public static function table(Table $table): Table
@@ -238,8 +318,22 @@ class PluginResource extends Resource
                         ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                         ->icon(TablerIcon::Download)
                         ->color('success')
-                        ->visible(fn (Plugin $record) => $record->isUpdateAvailable())
-                        ->action(function (Plugin $record) {
+                        ->visible(fn (Plugin $record) => $record instanceof WingsPlugin ? $record->canUpdate() : $record->isUpdateAvailable())
+                        ->action(function (Plugin $record, ListPlugins $livewire, WingsPluginApprovals $approvals) {
+                            if ($record instanceof WingsPlugin) {
+                                try {
+                                    $repository = $record->repository();
+                                } catch (RuntimeException) {
+                                    self::notifyNodeNotAllowed('update_error');
+
+                                    return;
+                                }
+
+                                self::stageOnNode($livewire, $approvals, $record->node() ?? throw new RuntimeException('The node no longer exists.'), 'update', $record->plugin_id, fn () => $repository->update($record->plugin_id));
+
+                                return;
+                            }
+
                             try {
                                 UpdatePlugin::dispatch(user(), $record->id);
 
@@ -390,6 +484,130 @@ class PluginResource extends Resource
                 ]),
             ])
             ->headerActions([
+                // From the node's own registries, signed by a key the node trusts (contract L "signed")
+                Action::make('wings_install')
+                    ->label(trans('admin/plugin.wings.install'))
+                    ->modalHeading(trans('admin/plugin.wings.install'))
+                    ->modalDescription(trans('admin/plugin.wings.install_description'))
+                    ->hiddenLabel()
+                    ->tooltip(trans('admin/plugin.wings.install'))
+                    ->icon(TablerIcon::Download)
+                    ->authorize(fn () => user()?->can('create', WingsPlugin::class))
+                    ->visible(fn ($livewire) => $livewire->activeTab === 'wings' && WingsPlugin::nodesAllowing('signed')->isNotEmpty())
+                    ->schema([
+                        Select::make('node')
+                            ->label(trans('admin/plugin.node'))
+                            ->options(fn () => WingsPlugin::nodesAllowing('signed')->all())
+                            ->required(),
+                        TextInput::make('plugin')
+                            ->label(trans('admin/plugin.wings.plugin_name'))
+                            ->helperText(trans('admin/plugin.wings.plugin_name_help'))
+                            ->required()
+                            ->maxLength(255)
+                            ->rule(fn () => function (string $attribute, mixed $value, Closure $fail) {
+                                if (!DaemonPluginRepository::isValidId($value)) {
+                                    $fail(trans('admin/plugin.wings.invalid_id'));
+                                }
+                            }),
+                        TextInput::make('registry')
+                            ->label(trans('admin/plugin.wings.registry'))
+                            ->helperText(trans('admin/plugin.wings.registry_help'))
+                            ->maxLength(255)
+                            ->regex('/^[A-Za-z0-9][A-Za-z0-9._-]*$/'),
+                    ])
+                    ->modalSubmitActionLabel(trans('admin/plugin.wings.stage'))
+                    ->action(function (array $data, ListPlugins $livewire, WingsPluginApprovals $approvals) {
+                        $node = self::nodeAllowing($data['node'] ?? null, 'signed');
+                        if (!$node) {
+                            self::notifyNodeNotAllowed('install_error');
+
+                            return;
+                        }
+
+                        $plugin = (string) $data['plugin'];
+                        $registry = filled($data['registry'] ?? null) ? (string) $data['registry'] : null;
+
+                        self::stageOnNode($livewire, $approvals, $node, 'install', $plugin, fn (DaemonPluginRepository $repository) => $repository->install($plugin, $registry));
+                    }),
+                // From any https URL or an uploaded archive (contract L "full")
+                Action::make('wings_import')
+                    ->label(trans('admin/plugin.wings.import'))
+                    ->modalHeading(trans('admin/plugin.wings.import'))
+                    ->modalDescription(trans('admin/plugin.wings.import_description'))
+                    ->hiddenLabel()
+                    ->tooltip(trans('admin/plugin.wings.import'))
+                    ->icon(TablerIcon::FileUpload)
+                    ->authorize(fn () => user()?->can('create', WingsPlugin::class))
+                    ->visible(fn ($livewire) => $livewire->activeTab === 'wings' && WingsPlugin::nodesAllowing('full')->isNotEmpty())
+                    ->schema([
+                        Select::make('node')
+                            ->label(trans('admin/plugin.node'))
+                            ->options(fn () => WingsPlugin::nodesAllowing('full')->all())
+                            ->required(),
+                        ToggleButtons::make('source')
+                            ->label(trans('admin/plugin.wings.source'))
+                            ->options(['url' => trans('admin/plugin.wings.source_url'), 'file' => trans('admin/plugin.wings.source_file')])
+                            ->default('url')
+                            ->inline()
+                            ->live()
+                            ->required(),
+                        TextInput::make('url')
+                            ->label(trans('admin/plugin.wings.url'))
+                            ->url()
+                            ->startsWith(['https://'])
+                            ->maxLength(2048)
+                            ->visible(fn (Get $get) => $get('source') !== 'file')
+                            ->required(fn (Get $get) => $get('source') !== 'file'),
+                        TextInput::make('sha256')
+                            ->label(trans('admin/plugin.wings.sha256'))
+                            ->helperText(trans('admin/plugin.wings.sha256_help'))
+                            ->regex('/^[0-9a-fA-F]{64}$/')
+                            ->visible(fn (Get $get) => $get('source') !== 'file'),
+                        FileUpload::make('file')
+                            ->label(trans('admin/plugin.file'))
+                            ->helperText(trans('admin/plugin.wings.file_help'))
+                            ->storeFiles(false)
+                            ->previewable(false)
+                            ->preserveFilenames()
+                            // Wings takes archives up to 200 MiB (A2)
+                            ->maxSize(200 * 1024)
+                            ->visible(fn (Get $get) => $get('source') === 'file')
+                            ->required(fn (Get $get) => $get('source') === 'file'),
+                        TextInput::make('signature')
+                            ->label(trans('admin/plugin.wings.signature'))
+                            ->helperText(trans('admin/plugin.wings.signature_help'))
+                            ->maxLength(1024)
+                            ->regex('/^[A-Za-z0-9+\/=]+$/'),
+                    ])
+                    ->modalSubmitActionLabel(trans('admin/plugin.wings.stage'))
+                    ->action(function (array $data, ListPlugins $livewire, WingsPluginApprovals $approvals) {
+                        $node = self::nodeAllowing($data['node'] ?? null, 'full');
+                        if (!$node) {
+                            self::notifyNodeNotAllowed('import_failed');
+
+                            return;
+                        }
+
+                        $signature = filled($data['signature'] ?? null) ? (string) $data['signature'] : null;
+
+                        if (($data['source'] ?? 'url') === 'file') {
+                            $file = $data['file'] ?? null;
+                            if (!$file instanceof UploadedFile) {
+                                Notification::make()->danger()->title(trans('admin/plugin.notifications.import_failed'))->body(trans('admin/plugin.wings.file_missing'))->send();
+
+                                return;
+                            }
+
+                            self::stageOnNode($livewire, $approvals, $node, 'import', null, fn (DaemonPluginRepository $repository) => $repository->importFromFile($file, $signature));
+
+                            return;
+                        }
+
+                        $url = (string) $data['url'];
+                        $sha256 = filled($data['sha256'] ?? null) ? strtolower((string) $data['sha256']) : null;
+
+                        self::stageOnNode($livewire, $approvals, $node, 'import', null, fn (DaemonPluginRepository $repository) => $repository->importFromUrl($url, $sha256, $signature));
+                    }),
                 Action::make('browse_hub')
                     ->label(trans('admin/plugin.hub.browse'))
                     ->hiddenLabel()
