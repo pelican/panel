@@ -27,6 +27,10 @@ final class WingsPluginFailure
             409 => trans('admin/plugin.wings.conflict', ['message' => $error]),
             413 => trans('admin/plugin.wings.too_large'),
             429 => trans('admin/plugin.wings.too_many_pending'),
+            422 => collect(self::fieldErrors($exception))
+                ->map(fn (string $message, string $key) => "$key: $message")
+                ->prepend($error)
+                ->implode("\n"),
             default => $error,
         };
     }

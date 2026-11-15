@@ -162,7 +162,70 @@ it('builds the settings form from the four contract types', function () {
         ->and($fields['retries']->isNumeric())->toBeTrue()
         ->and($fields['verbose'])->toBeInstanceOf(Toggle::class)
         ->and($fields['level'])->toBeInstanceOf(Select::class)
-        ->and($fields['notes']->isDisabled())->toBeTrue();
+        ->and($fields['-readonly-6']->isDisabled())->toBeTrue()
+        ->and($fields['-readonly-6']->isDehydrated())->toBeFalse();
+});
+
+it('shows a setting with a key wings does not accept as read-only and sends its stored value back', function () {
+    $schema = [
+        ['key' => 'logging.level', 'type' => 'string', 'required' => false, 'secret' => false],
+        ['key' => 'has space', 'type' => 'number', 'required' => false, 'secret' => false],
+        ['key' => 'retries', 'type' => 'number', 'default' => 3, 'required' => false, 'secret' => false],
+    ];
+
+    $this->fakeWingsNode($this->node, [$this->wingsPlugin('notify', ['settings' => $schema], [
+        'can_configure' => true, 'values' => ['logging.level' => 'debug', 'has space' => 7],
+    ])], more: [
+        '*/api/plugins/notify/settings' => Http::response(['status' => 'saved', 'values' => []]),
+    ]);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->callTableAction('exclude_settings', "{$this->node->id}:notify", ['retries' => '4'])
+        ->assertHasNoTableActionErrors();
+
+    // The stored values of the read-only settings go back as they were; Wings would unset them otherwise
+    Http::assertSent(fn (Request $request) => $request->method() === 'PUT'
+        && json_decode($request->body(), true) === [
+            'logging.level' => 'debug',
+            'has space' => 7,
+            'retries' => 4,
+        ]);
+
+    $plugin = WingsPlugin::scoped()->where('plugin_id', 'notify')->first();
+    $fields = collect($plugin->getSettingsForm())->keyBy(fn ($field) => $field->getName());
+
+    // No field is named after the dotted key, so the form can't read it as nesting
+    expect($fields->keys()->all())->toBe(['-readonly-0', '-readonly-1', 'retries'])
+        ->and($fields['-readonly-0']->isDisabled())->toBeTrue()
+        ->and($fields['-readonly-1']->isDisabled())->toBeTrue()
+        ->and($plugin->getSettingsFormData())->toBe(['retries' => 3]);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->mountTableAction('exclude_settings', "{$this->node->id}:notify")
+        ->assertTableActionDataSet(['-readonly-0' => 'debug', '-readonly-1' => '7']);
+});
+
+it('reports 422 messages for keys that are not fields in the notification', function () {
+    $schema = [
+        ['key' => 'logging.level', 'type' => 'string', 'required' => false, 'secret' => false],
+        ['key' => 'retries', 'type' => 'number', 'required' => false, 'secret' => false],
+    ];
+
+    $this->fakeWingsNode($this->node, [$this->wingsPlugin('notify', ['settings' => $schema], [
+        'can_configure' => true, 'values' => ['logging.level' => 'loud'],
+    ])], more: [
+        '*/api/plugins/notify/settings' => $this->wingsError($this->node, 422, 'plugin: invalid settings', [
+            'fields' => ['logging.level' => 'unknown setting'],
+        ]),
+    ]);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->callTableAction('exclude_settings', "{$this->node->id}:notify", ['retries' => '2'])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified(trans('admin/plugin.notifications.settings_error'));
 });
 
 it('sends numbers as numbers, keeps an unchanged secret and leaves untouched defaults unset', function () {

@@ -61,8 +61,14 @@ class WingsPlugin extends Plugin
 
     private const TRUST = ['native', 'trusted', 'untrusted', 'changed'];
 
-    /** Setting types of contract v2 (A3.1). */
+    /** Setting types of contract v3 (A3.1). */
     public const SETTING_TYPES = ['string', 'number', 'boolean', 'select'];
+
+    /**
+     * Setting keys Wings accepts (A3.1). Anything else, such as a dotted key that the form would read as
+     * nesting, is shown read-only and its stored value is sent back as it was.
+     */
+    public const SETTING_KEY_PATTERN = '/^[A-Za-z0-9_][A-Za-z0-9_-]*$/';
 
     /** What Wings shows instead of a stored secret, and keeps it when sent back. */
     public const MASKED_SECRET = '********';
@@ -542,7 +548,8 @@ class WingsPlugin extends Plugin
         $data = [];
         foreach ($this->declaredSettings() as $setting) {
             $key = self::settingKey($setting);
-            if ($key === null) {
+            // Read-only settings show their stored value themselves, under a path of their own
+            if ($key === null || !self::isEditableSetting($setting)) {
                 continue;
             }
 
@@ -564,8 +571,9 @@ class WingsPlugin extends Plugin
     public function getSettingsForm(): array
     {
         $fields = [];
+        $values = $this->settingValues();
 
-        foreach ($this->declaredSettings() as $setting) {
+        foreach ($this->declaredSettings() as $index => $setting) {
             $key = self::settingKey($setting);
             if ($key === null) {
                 continue;
@@ -573,6 +581,24 @@ class WingsPlugin extends Plugin
 
             $type = $setting['type'] ?? null;
             $secret = ($setting['secret'] ?? false) === true;
+            $label = is_string($setting['label'] ?? null) && $setting['label'] !== '' ? $setting['label'] : $key;
+
+            if (!self::isEditableSetting($setting)) {
+                $shown = array_key_exists($key, $values) ? $values[$key] : ($setting['default'] ?? null);
+
+                // A path no valid key can have (it starts with "-"), so a dotted key isn't read as nesting.
+                // Never sent: settingsPayload() sends the stored value back.
+                $fields[] = TextInput::make("-readonly-$index")
+                    ->label($label)
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->formatStateUsing(fn () => $shown === null || is_scalar($shown) ? (string) $shown : json_encode($shown))
+                    ->helperText(preg_match(self::SETTING_KEY_PATTERN, $key)
+                        ? trans('admin/plugin.wings.setting_type_unsupported', ['type' => is_string($type) ? $type : '?'])
+                        : trans('admin/plugin.wings.setting_key_unsupported', ['key' => $key]));
+
+                continue;
+            }
 
             $field = match ($type) {
                 'boolean' => Toggle::make($key)->inline(false),
@@ -582,22 +608,13 @@ class WingsPlugin extends Plugin
                         ->filter(fn ($option) => is_array($option) && is_scalar($option['value'] ?? null))
                         ->mapWithKeys(fn (array $option): array => [(string) $option['value'] => (string) ($option['label'] ?? $option['value'])])
                         ->all()),
-                'string' => $secret ? TextInput::make($key)->password()->revealable() : TextInput::make($key),
-                // Not in contract v2: shown, but never changed (its stored value is sent back as it was)
-                default => TextInput::make($key)
-                    ->disabled()
-                    ->dehydrated(false)
-                    ->formatStateUsing(fn ($state) => is_scalar($state) ? (string) $state : json_encode($state)),
+                default => TextInput::make($key)->password($secret)->revealable($secret),
             };
 
             $description = is_string($setting['description'] ?? null) ? $setting['description'] : null;
-            if (!in_array($type, self::SETTING_TYPES, true)) {
-                $description = trans('admin/plugin.wings.setting_type_unsupported', ['type' => is_string($type) ? $type : '?']);
-            } elseif ($secret) {
+            if ($secret) {
                 $description = trim(($description ?? '') . ' ' . trans('admin/plugin.wings.setting_secret_hint'));
             }
-
-            $label = is_string($setting['label'] ?? null) && $setting['label'] !== '' ? $setting['label'] : $key;
 
             $fields[] = $field
                 ->label($label)
@@ -629,8 +646,8 @@ class WingsPlugin extends Plugin
 
             $type = $setting['type'] ?? null;
 
-            // A type the Panel doesn't know can't be edited, so its stored value is kept as it was
-            if (!in_array($type, self::SETTING_TYPES, true)) {
+            // A type or key the Panel can't edit keeps its stored value: Wings unsets any key left out
+            if (!self::isEditableSetting($setting)) {
                 if (array_key_exists($key, $stored)) {
                     $payload[$key] = $stored[$key];
                 }
@@ -668,6 +685,26 @@ class WingsPlugin extends Plugin
         $key = $setting['key'] ?? null;
 
         return is_string($key) && $key !== '' ? $key : null;
+    }
+
+    /**
+     * Whether the Panel can edit this setting: a type it knows (A3.1) and a key Wings accepts, which the
+     * form can use as a field name as it is.
+     *
+     * @param  array<mixed>  $setting
+     */
+    public static function isEditableSetting(array $setting): bool
+    {
+        $key = self::settingKey($setting);
+
+        return $key !== null
+            && self::isValidSettingKey($key)
+            && in_array($setting['type'] ?? null, self::SETTING_TYPES, true);
+    }
+
+    public static function isValidSettingKey(mixed $key): bool
+    {
+        return is_string($key) && preg_match(self::SETTING_KEY_PATTERN, $key) === 1;
     }
 
     private static function toNumber(mixed $value): int|float|string|null

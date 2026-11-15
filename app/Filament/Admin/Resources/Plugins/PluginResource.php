@@ -260,9 +260,10 @@ class PluginResource extends Resource
                         try {
                             $record->saveSettings($data);
                         } catch (Exception $exception) {
-                            // Settings Wings refused are shown on their fields (A3.1)
+                            // Settings Wings refused are shown on their fields (A3.1). A key that is no field
+                            // (a read-only one) would be read as a nested path, so then they all go to the notification
                             $fields = WingsPluginFailure::fieldErrors($exception);
-                            if ($fields !== []) {
+                            if ($fields !== [] && collect($fields)->keys()->every(fn (string $key) => WingsPlugin::isValidSettingKey($key))) {
                                 throw ValidationException::withMessages(collect($fields)
                                     ->mapWithKeys(fn (string $message, string $key) => [$schema->getStatePath() . '.' . $key => $message])
                                     ->all());
