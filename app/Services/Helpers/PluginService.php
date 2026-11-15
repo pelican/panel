@@ -31,6 +31,9 @@ use ZipArchive;
 
 class PluginService
 {
+    /** Most entries a registry archive may hold, like Wings, so a small archive can't exhaust the plugins volume's inodes. */
+    public const MAX_REGISTRY_ARCHIVE_ENTRIES = 20000;
+
     public function __construct(private Application $app) {}
 
     public function loadPlugins(): void
@@ -382,7 +385,7 @@ class PluginService
     }
 
     /** @throws Exception */
-    public function downloadPluginFromFile(UploadedFile $file, ?string $expectedId = null): string
+    public function downloadPluginFromFile(UploadedFile $file, ?string $expectedId = null, ?string $expectedVersion = null): string
     {
         // Validate file size to prevent zip bombs
         $maxSize = config('panel.plugin.max_import_size');
@@ -455,6 +458,10 @@ class PluginService
         // When updating a known plugin, the archive must be for that same plugin — reject a
         // mismatched id before moving anything, so an update can't overwrite a different plugin.
         throw_if($expectedId !== null && $pluginName !== $expectedId, new Exception(trans('admin/plugin.notifications.import_id_mismatch', ['expected' => $expectedId, 'actual' => $pluginName])));
+
+        // A registry install must get the version the admin approved (plugin.json defaults to 1.0.0, see Plugin::getRows()).
+        $version = $data['version'] ?? '1.0.0';
+        throw_if($expectedVersion !== null && $version !== $expectedVersion, new Exception(trans('admin/plugin.registry.version_mismatch', ['expected' => $expectedVersion, 'actual' => is_scalar($version) ? (string) $version : '?'])));
 
         $target = plugin_path($pluginName);
         $source = dirname($manifest);
@@ -543,6 +550,65 @@ class PluginService
         throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
 
         return $this->downloadPluginFromFile(new UploadedFile($tmpPath, $basename, 'application/zip'), $expectedId);
+    }
+
+    /**
+     * Downloads a plugin a registry lists (pelican/wings plugin contract v1, R2) and puts it in place like an
+     * import, without installing it. The archive must match the entry's sha256 before anything is extracted, pass
+     * the signature policy, be a zip without links, and hold the plugin.json of exactly the entry's name and
+     * version. Callers show the admin the entry and get their approval first.
+     *
+     * @throws Exception
+     */
+    public function downloadPluginFromRegistry(RegistryPlugin $plugin): string
+    {
+        $compatibility = (new Plugin())->forceFill(['panel_version' => $plugin->panelVersion]);
+        throw_unless($compatibility->isCompatible(), new InvalidFileUploadException(trans('admin/plugin.registry.incompatible', ['version' => $plugin->panelVersion])));
+
+        $content = $this->app->make(PluginRegistryService::class)
+            ->fetch($plugin->download, $plugin->namespace, (int) config('panel.plugin.max_import_size'), 60);
+
+        throw_unless(hash_equals($plugin->sha256, hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.registry.checksum_mismatch')));
+
+        $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $plugin->signature);
+
+        // Registries may serve .tar.gz (R1), which only Wings can unpack today.
+        throw_if(str_starts_with($content, "\x1f\x8b"), new InvalidFileUploadException(trans('admin/plugin.registry.tar_unsupported')));
+        throw_unless(str_starts_with($content, "PK\x03\x04") || str_starts_with($content, "PK\x05\x06"), new InvalidFileUploadException(trans('admin/plugin.registry.not_a_zip')));
+
+        $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
+        $tmpPath = $tmpDir->path($plugin->name . '.zip');
+        throw_unless(file_put_contents($tmpPath, $content), new InvalidFileUploadException('Could not write temporary file.'));
+
+        $this->assertNoLinksAndFewEntries($tmpPath);
+
+        return $this->downloadPluginFromFile(new UploadedFile($tmpPath, $plugin->name . '.zip', 'application/zip'), $plugin->name, $plugin->version);
+    }
+
+    /**
+     * Zip entries are only files and directories once extracted, except for unix symlinks, which a registry
+     * archive may not contain at all (R2.4); hard links don't exist in zips.
+     *
+     * @throws Exception
+     */
+    private function assertNoLinksAndFewEntries(string $path): void
+    {
+        $zip = new ZipArchive();
+        throw_unless($zip->open($path) === true, new InvalidFileUploadException('Could not open zip file.'));
+
+        try {
+            throw_if($zip->numFiles > self::MAX_REGISTRY_ARCHIVE_ENTRIES, new InvalidFileUploadException(trans('admin/plugin.registry.too_many_entries', ['max' => self::MAX_REGISTRY_ARCHIVE_ENTRIES])));
+
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $opsys = $attributes = 0;
+                $zip->getExternalAttributesIndex($i, $opsys, $attributes);
+
+                // The unix mode sits in the high 16 bits; 0120000 is S_IFLNK.
+                throw_if($opsys === ZipArchive::OPSYS_UNIX && (($attributes >> 16) & 0170000) === 0120000, new InvalidFileUploadException(trans('admin/plugin.registry.links_unsupported')));
+            }
+        } finally {
+            $zip->close();
+        }
     }
 
     public function deletePlugin(Plugin $plugin): void
