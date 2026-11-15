@@ -672,8 +672,13 @@ class WingsPlugin extends Plugin
 
     private static function toNumber(mixed $value): int|float|string|null
     {
-        if (is_int($value) || is_float($value)) {
+        if (is_int($value)) {
             return $value;
+        }
+
+        // Filament's numeric input gives 3.0 for "3"; both are the JSON number 3
+        if (is_float($value)) {
+            return is_finite($value) && floor($value) === $value && abs($value) <= PHP_INT_MAX ? (int) $value : $value;
         }
 
         if (!is_string($value) || trim($value) === '') {

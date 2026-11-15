@@ -13,6 +13,7 @@ use App\Models\Plugin;
 use App\Models\WingsPlugin;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\ThemeService;
+use App\Services\Nodes\WingsPluginFailure;
 use BackedEnum;
 use Exception;
 use Filament\Actions\Action;
@@ -25,9 +26,12 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 
 class PluginResource extends Resource
 {
@@ -65,12 +69,15 @@ class PluginResource extends Resource
         try {
             $callback();
         } catch (Exception $exception) {
-            report($exception);
+            // An answer from the node (403, 409, ...) is not a Panel error
+            if (!$exception instanceof RequestException) {
+                report($exception);
+            }
 
             Notification::make()
                 ->danger()
                 ->title(trans("admin/plugin.notifications.$errorKey"))
-                ->body($exception->getMessage())
+                ->body(WingsPluginFailure::message($exception))
                 ->send();
 
             return;
@@ -165,19 +172,39 @@ class PluginResource extends Resource
                     ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                     ->icon(TablerIcon::Settings)
                     ->color('primary')
-                    ->visible(fn (Plugin $record) => $record->status === PluginStatus::Enabled && $record->hasSettings())
+                    // Wings says which plugins can be configured; a disabled one can be too (contract A3)
+                    ->visible(fn (Plugin $record) => $record instanceof WingsPlugin ? $record->canConfigure() : $record->status === PluginStatus::Enabled && $record->hasSettings())
                     ->schema(fn (Plugin $record) => $record->getSettingsForm())
                     ->fillForm(fn (Plugin $record) => $record->getSettingsFormData())
-                    ->action(function (array $data, Plugin $record) {
+                    ->action(function (array $data, Plugin $record, Schema $schema) {
                         try {
                             $record->saveSettings($data);
                         } catch (Exception $exception) {
-                            report($exception);
+                            // Settings Wings refused are shown on their fields (A3.1)
+                            $fields = WingsPluginFailure::fieldErrors($exception);
+                            if ($fields !== []) {
+                                throw ValidationException::withMessages(collect($fields)
+                                    ->mapWithKeys(fn (string $message, string $key) => [$schema->getStatePath() . '.' . $key => $message])
+                                    ->all());
+                            }
+
+                            if (!$exception instanceof RequestException) {
+                                report($exception);
+                            }
 
                             Notification::make()
                                 ->danger()
                                 ->title(trans('admin/plugin.notifications.settings_error'))
-                                ->body($exception->getMessage())
+                                ->body(WingsPluginFailure::message($exception))
+                                ->send();
+
+                            return;
+                        }
+
+                        if ($record instanceof WingsPlugin) {
+                            Notification::make()
+                                ->success()
+                                ->title(trans('admin/plugin.notifications.settings_saved'))
                                 ->send();
                         }
                     })
@@ -188,14 +215,8 @@ class PluginResource extends Resource
                         ->authorize(fn (Plugin $record) => user()?->can('update', $record))
                         ->icon(TablerIcon::Terminal)
                         ->color('success')
-                        ->hidden(fn (Plugin $record) => $record->status !== PluginStatus::NotInstalled)
+                        ->hidden(fn (Plugin $record) => $record instanceof WingsPlugin || $record->status !== PluginStatus::NotInstalled)
                         ->action(function (Plugin $record) {
-                            if ($record instanceof WingsPlugin) {
-                                self::runOnNode(fn () => $record->repository()->install($record->plugin_id), 'install_error', 'installed');
-
-                                return;
-                            }
-
                             try {
                                 InstallPlugin::dispatch(user(), $record->id);
 
@@ -317,7 +338,8 @@ class PluginResource extends Resource
                         ->icon(TablerIcon::Trash)
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->visible(fn (Plugin $record) => ($record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored) && !($record instanceof WingsPlugin && $record->plugin_id === ''))
+                        ->modalDescription(fn (Plugin $record) => $record instanceof WingsPlugin ? trans('admin/plugin.wings.delete_description') : null)
+                        ->visible(fn (Plugin $record) => $record instanceof WingsPlugin ? $record->canUninstall() : $record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored)
                         ->action(function (Plugin $record, $livewire, PluginService $pluginService) {
                             if ($record instanceof WingsPlugin) {
                                 self::runOnNode(fn () => $record->repository()->uninstall($record->plugin_id, true), 'uninstall_error', 'deleted');
@@ -340,7 +362,8 @@ class PluginResource extends Resource
                         ->icon(TablerIcon::Terminal)
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->hidden(fn (Plugin $record) => $record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored)
+                        ->modalDescription(fn (Plugin $record) => $record instanceof WingsPlugin ? trans('admin/plugin.wings.uninstall_description') : null)
+                        ->visible(fn (Plugin $record) => $record instanceof WingsPlugin ? $record->canUninstall() : !($record->status === PluginStatus::NotInstalled || $record->status === PluginStatus::Errored))
                         ->action(function (Plugin $record) {
                             if ($record instanceof WingsPlugin) {
                                 self::runOnNode(fn () => $record->repository()->uninstall($record->plugin_id), 'uninstall_error', 'uninstalled');

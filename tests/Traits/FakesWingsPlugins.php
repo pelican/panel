@@ -138,6 +138,22 @@ trait FakesWingsPlugins
         ], $overrides);
     }
 
+    /**
+     * Fakes $node listing $plugins, every other node listing none (such as the node generateTestAccount()
+     * makes for its server), and the answers in $more, which are matched first.
+     *
+     * @param  array<int, array<string, mixed>>  $plugins
+     * @param  array<string, mixed>  $more
+     */
+    protected function fakeWingsNode(Node $node, array $plugins, string $level = 'signed', array $more = []): void
+    {
+        Http::fake([
+            ...$more,
+            "*{$node->fqdn}*/api/plugins" => $this->wingsList($plugins, $level),
+            '*/api/plugins' => $this->wingsList([]),
+        ]);
+    }
+
     /** @return array<string, string> */
     protected function wingsHeaders(Node $node): array
     {

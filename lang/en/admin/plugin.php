@@ -71,6 +71,13 @@ return [
         'subsystem_disabled' => 'Not available on this node: plugins are turned off in its Wings.',
         'setting_type_unsupported' => 'This setting has the type ":type", which this Panel can\'t edit. Its stored value is kept.',
         'setting_secret_hint' => 'Leave ******** to keep the stored value.',
+        'forbidden' => 'This node\'s plugin access level is ":level", and this needs ":required". The node operator can raise it with `wings plugins panel-access :required`.',
+        'not_found' => 'Wings doesn\'t know this plugin on this node, or the node\'s Wings has no plugin API.',
+        'conflict' => 'The node refused this in the plugin\'s current state: :message',
+        'too_large' => 'The node refused the request as too large.',
+        'too_many_pending' => '16 installs are already waiting for approval on this node. Approve them, or wait up to 10 minutes for them to expire.',
+        'uninstall_description' => 'Disables the plugin on the node and revokes its approval. Its files, settings and data stay on the node.',
+        'delete_description' => 'Disables the plugin on the node, revokes its approval and deletes its files. Its settings and data are kept.',
     ],
 
     'hub' => [
@@ -139,6 +146,7 @@ return [
         'disable_error' => 'Could not disable plugin',
         'deleted' => 'Plugin deleted',
         'settings_error' => 'Could not save plugin settings',
+        'settings_saved' => 'Plugin settings saved',
 
         'imported' => 'Plugin imported',
         'import_exists' => 'A plugin with that id already exists',
