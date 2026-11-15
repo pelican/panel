@@ -32,6 +32,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -181,6 +182,75 @@ class PluginResource extends Resource
         $node = Node::find($nodeId);
 
         return $node && user()?->canTarget($node) ? $node : null;
+    }
+
+    /**
+     * The plugins the node's registries offer, keyed "@namespace/name"; nothing for a node the admin can't
+     * use at "signed".
+     *
+     * @return array<string, string>
+     */
+    private static function availableOptions(mixed $nodeId): array
+    {
+        $node = self::nodeAllowing($nodeId, 'signed');
+        if (!$node) {
+            return [];
+        }
+
+        $options = [];
+        foreach (WingsPlugin::availableOn($node)['data'] as $entry) {
+            $notes = array_filter([
+                $entry['has_signature'] ? trans('admin/plugin.wings.available_signed') : null,
+                $entry['installed'] !== null ? trans('admin/plugin.wings.available_installed', ['version' => $entry['installed']]) : null,
+            ]);
+
+            $label = trim("{$entry['name']} {$entry['version']}") . " (@{$entry['registry']})";
+            $options["@{$entry['registry']}/{$entry['name']}"] = $notes === [] ? $label : $label . ' · ' . implode(' · ', $notes);
+        }
+
+        return $options;
+    }
+
+    /** Whether the option is a plugin the node already has: installing it again is a conflict (A1 409). */
+    private static function availableInstalled(mixed $nodeId, string $key): bool
+    {
+        $node = self::nodeAllowing($nodeId, 'signed');
+        $picked = self::parseAvailableKey($key);
+
+        return $node && $picked && collect(WingsPlugin::availableOn($node)['data'])
+            ->contains(fn (array $entry) => $entry['registry'] === $picked[0] && $entry['name'] === $picked[1] && $entry['installed'] !== null);
+    }
+
+    /** Registries the node couldn't read, or why it couldn't list them at all; the form still works. */
+    private static function availableProblems(mixed $nodeId): ?string
+    {
+        $node = self::nodeAllowing($nodeId, 'signed');
+        if (!$node) {
+            return null;
+        }
+
+        $available = WingsPlugin::availableOn($node);
+        if ($available['failure'] !== null) {
+            return $available['failure'];
+        }
+
+        return $available['errors'] === [] ? null : collect($available['errors'])
+            ->map(fn (string $message, string $namespace) => "@$namespace: $message")
+            ->implode("\n");
+    }
+
+    /** @return array{0: string, 1: string}|null [namespace, name] of an "@namespace/name" option */
+    private static function parseAvailableKey(mixed $key): ?array
+    {
+        if (!is_string($key) || !preg_match('#^@([^/]+)/(.+)$#', $key, $matches)) {
+            return null;
+        }
+
+        if (!preg_match(DaemonPluginRepository::REGISTRY_PATTERN, $matches[1]) || !DaemonPluginRepository::isValidId($matches[2])) {
+            return null;
+        }
+
+        return [$matches[1], $matches[2]];
     }
 
     private static function notifyNodeNotAllowed(string $errorKey): void
@@ -518,22 +588,23 @@ class PluginResource extends Resource
                         Select::make('node')
                             ->label(trans('admin/plugin.node'))
                             ->options(fn () => WingsPlugin::nodesAllowing('signed')->all())
+                            ->live()
+                            ->afterStateUpdated(fn (Set $set) => $set('plugin', null))
                             ->required(),
-                        TextInput::make('plugin')
+                        // Picked from the node's own registries (A2 "available"), as "@namespace/name" (R3)
+                        Select::make('plugin')
                             ->label(trans('admin/plugin.wings.plugin_name'))
-                            ->helperText(trans('admin/plugin.wings.plugin_name_help'))
-                            ->required()
-                            ->maxLength(255)
-                            ->rule(fn () => function (string $attribute, mixed $value, Closure $fail) {
-                                if (!DaemonPluginRepository::isValidId($value)) {
-                                    $fail(trans('admin/plugin.wings.invalid_id'));
-                                }
-                            }),
-                        TextInput::make('registry')
-                            ->label(trans('admin/plugin.wings.registry'))
-                            ->helperText(trans('admin/plugin.wings.registry_help'))
-                            ->maxLength(255)
-                            ->regex('/^[A-Za-z0-9][A-Za-z0-9._-]*$/'),
+                            ->helperText(trans('admin/plugin.wings.plugin_pick_help'))
+                            ->options(fn (Get $get) => self::availableOptions($get('node')))
+                            ->disableOptionWhen(fn (string $value, Get $get) => self::availableInstalled($get('node'), $value))
+                            ->searchable()
+                            ->visible(fn (Get $get) => filled($get('node')))
+                            ->required(),
+                        TextEntry::make('registry_errors')
+                            ->label(trans('admin/plugin.wings.registry_errors'))
+                            ->state(fn (Get $get) => self::availableProblems($get('node')))
+                            ->color('warning')
+                            ->visible(fn (Get $get) => self::availableProblems($get('node')) !== null),
                     ])
                     ->modalSubmitActionLabel(trans('admin/plugin.wings.stage'))
                     ->action(function (array $data, ListPlugins $livewire, WingsPluginApprovals $approvals) {
@@ -544,8 +615,14 @@ class PluginResource extends Resource
                             return;
                         }
 
-                        $plugin = (string) $data['plugin'];
-                        $registry = filled($data['registry'] ?? null) ? (string) $data['registry'] : null;
+                        $picked = self::parseAvailableKey($data['plugin'] ?? null);
+                        if ($picked === null) {
+                            Notification::make()->danger()->title(trans('admin/plugin.notifications.install_error'))->body(trans('admin/plugin.wings.invalid_id'))->send();
+
+                            return;
+                        }
+
+                        [$registry, $plugin] = $picked;
 
                         self::stageOnNode($livewire, $approvals, $node, 'install', $plugin, ['registry' => $registry]);
                     }),

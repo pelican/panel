@@ -73,6 +73,37 @@ trait FakesWingsPlugins
     }
 
     /**
+     * One entry of GET /api/plugins/available (A3.2).
+     *
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    protected function wingsAvailableEntry(string $name, string $registry = 'pelican', array $overrides = []): array
+    {
+        return array_replace([
+            'name' => $name,
+            'version' => '1.2.0',
+            'registry' => $registry,
+            'author' => 'Pelican',
+            'description' => 'A plugin',
+            'capability' => 'events',
+            'has_signature' => true,
+            'installed' => null,
+        ], $overrides);
+    }
+
+    /**
+     * GET /api/plugins/available (A2).
+     *
+     * @param  array<int, array<string, mixed>>  $entries
+     * @param  array<string, string>  $errors
+     */
+    protected function wingsAvailable(array $entries, array $errors = []): PromiseInterface
+    {
+        return Http::response(['data' => $entries, 'errors' => (object) $errors]);
+    }
+
+    /**
      * An error from Wings itself; it carries the node's User-Agent, which the daemon client checks.
      *
      * @param  array<string, mixed>  $extra
@@ -148,6 +179,8 @@ trait FakesWingsPlugins
     protected function fakeWingsNode(Node $node, array $plugins, string $level = 'signed', array $more = []): void
     {
         Http::fake([
+            // Before $more, so an answer of its own for the same pattern replaces this one
+            '*/api/plugins/available' => $this->wingsAvailable([$this->wingsAvailableEntry('state-log')]),
             ...$more,
             "*{$node->fqdn}*/api/plugins" => $this->wingsList($plugins, $level),
             '*/api/plugins' => $this->wingsList([]),

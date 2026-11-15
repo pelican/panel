@@ -12,6 +12,7 @@ use Filament\Notifications\NotificationMailbox;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Livewire\Features\SupportTesting\Testable;
 
 use function Pest\Livewire\livewire;
 
@@ -56,6 +57,14 @@ function wingsInstallLastNotification(): Notification
     return $notifications->notifications->last();
 }
 
+/** A component of the mounted action's form. */
+function wingsInstallFormComponent(Testable $component, string $key): mixed
+{
+    $page = $component->instance();
+
+    return $page->getSchema($page->getMountedActionSchemaName())->getComponent(fn ($field) => method_exists($field, 'getName') && $field->getName() === $key, withActions: false, withHidden: true);
+}
+
 /** The handle a notification's "Stage again" button sends, or null when it has none. */
 function wingsInstallRestageHandle(Notification $notification): ?string
 {
@@ -77,7 +86,7 @@ it('stages an install, shows it, and installs only after approval', function () 
 
     $component = livewire(ListPlugins::class)
         ->set('activeTab', 'wings')
-        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log', 'registry' => 'pelican'])
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log'])
         ->assertHasNoTableActionErrors()
         ->assertActionMounted('approveWingsPlugin')
         ->assertMountedActionModalSee('server.logs')
@@ -98,6 +107,74 @@ it('stages an install, shows it, and installs only after approval', function () 
         ->and(json_decode($installCalls()->last()[0]->body(), true))->toBe(['approve' => 'tok-install']);
 });
 
+it('offers the plugins of the node\'s registries and installs the picked one from its registry', function () {
+    $this->fakeWingsNode($this->node, [], 'signed', [
+        '*/api/plugins/available' => $this->wingsAvailable([
+            $this->wingsAvailableEntry('state-log', 'acme', ['has_signature' => false]),
+            $this->wingsAvailableEntry('notify', 'pelican', ['version' => '2.0.0']),
+            $this->wingsAvailableEntry('installed-one', 'pelican', ['installed' => '1.0.0']),
+            // Not well formed: left out
+            $this->wingsAvailableEntry('../escape', 'pelican'),
+            ['name' => 'no-registry', 'version' => '1.0.0', 'has_signature' => true, 'installed' => null],
+        ], ['private' => 'GET https://registry.example.test/registry.json: 401 Unauthorized']),
+        '*/api/plugins/notify/install' => $this->wingsStaged('install', 'notify', 'tok-notify'),
+    ]);
+
+    $component = livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->mountTableAction('wings_install')
+        ->setTableActionData(['node' => $this->node->id]);
+
+    $field = wingsInstallFormComponent($component, 'plugin');
+
+    expect($field->getOptions())->toBe([
+        '@acme/state-log' => 'state-log 1.2.0 (@acme)',
+        '@pelican/notify' => 'notify 2.0.0 (@pelican) · signature',
+        '@pelican/installed-one' => 'installed-one 1.2.0 (@pelican) · signature · installed 1.0.0',
+    ])
+        ->and($field->isOptionDisabled('@pelican/installed-one', 'installed-one'))->toBeTrue()
+        ->and($field->isOptionDisabled('@pelican/notify', 'notify'))->toBeFalse();
+
+    // A registry the node couldn't read is shown, and the others still work
+    $errors = wingsInstallFormComponent($component, 'registry_errors');
+
+    expect($errors->isVisible())->toBeTrue()
+        ->and($errors->getState())->toBe('@private: GET https://registry.example.test/registry.json: 401 Unauthorized');
+
+    $component->setTableActionData(['plugin' => '@pelican/notify'])
+        ->callMountedTableAction()
+        ->assertHasNoTableActionErrors()
+        ->assertActionMounted('approveWingsPlugin');
+
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/api/plugins/notify/install')
+        && json_decode($request->body(), true) === ['registry' => 'pelican']);
+});
+
+it('refuses a plugin the node\'s registries do not offer', function () {
+    $this->fakeWingsNode($this->node, [], 'signed');
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/not-offered'])
+        ->assertHasTableActionErrors(['plugin']);
+
+    Http::assertNotSent(fn (Request $request) => $request->method() === 'POST');
+});
+
+it('explains a node whose wings cannot list its registries', function () {
+    $this->fakeWingsNode($this->node, [], 'signed', [
+        '*/api/plugins/available' => $this->wingsError($this->node, 404, 'plugin "available" not found'),
+    ]);
+
+    $component = livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->mountTableAction('wings_install')
+        ->setTableActionData(['node' => $this->node->id]);
+
+    expect(wingsInstallFormComponent($component, 'registry_errors')->getState())->toBe(trans('admin/plugin.wings.available_unsupported'))
+        ->and(wingsInstallFormComponent($component, 'plugin')->getOptions())->toBe([]);
+});
+
 it('never approves when the admin closes the confirmation', function () {
     $this->fakeWingsNode($this->node, [], 'signed', [
         '*/api/plugins/state-log/install' => $this->wingsStaged('install', 'state-log', 'tok-install'),
@@ -105,7 +182,7 @@ it('never approves when the admin closes the confirmation', function () {
 
     livewire(ListPlugins::class)
         ->set('activeTab', 'wings')
-        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log'])
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log'])
         ->assertActionMounted('approveWingsPlugin')
         ->unmountAction();
 
@@ -119,7 +196,7 @@ it('keeps the approval token on the server', function () {
 
     $component = livewire(ListPlugins::class)
         ->set('activeTab', 'wings')
-        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log']);
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log']);
 
     expect(json_encode($component->instance()->mountedActions))->not->toContain('tok-secret');
 });
@@ -134,7 +211,7 @@ it('explains why the node refused an approval and stages it again on request', f
 
     $component = livewire(ListPlugins::class)
         ->set('activeTab', 'wings')
-        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log', 'registry' => 'pelican'])
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log'])
         ->callMountedAction();
 
     $notification = wingsInstallLastNotification();
@@ -218,7 +295,7 @@ it('stages again only once, and only for the admin who was refused', function ()
 
     livewire(ListPlugins::class)
         ->set('activeTab', 'wings')
-        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log'])
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log'])
         ->callMountedAction();
 
     $handle = wingsInstallRestageHandle(wingsInstallLastNotification());
@@ -248,7 +325,7 @@ it('explains too many installs waiting on the node (429) and asks nothing to app
 
     livewire(ListPlugins::class)
         ->set('activeTab', 'wings')
-        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log'])
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log'])
         ->assertActionNotMounted('approveWingsPlugin')
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 });
@@ -291,12 +368,13 @@ it('does not stage on a node below the level, even when its id is sent', functio
     try {
         livewire(ListPlugins::class)
             ->set('activeTab', 'wings')
-            ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log']);
+            ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log']);
     } catch (Throwable) {
         // Refusing outright is fine too
     }
 
     Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/install'));
+    Http::assertNotSent(fn (Request $request) => $this->sentTo($this->node, $request) && str_contains($request->url(), '/available'));
 });
 
 it('does not stage on a node the admin cannot access', function () {
@@ -311,7 +389,7 @@ it('does not stage on a node the admin cannot access', function () {
     try {
         livewire(ListPlugins::class)
             ->set('activeTab', 'wings')
-            ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => 'state-log']);
+            ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log']);
     } catch (Throwable) {
         // Refusing outright is fine too
     }

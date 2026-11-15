@@ -24,6 +24,9 @@ class DaemonPluginRepository extends DaemonRepository
     /** Actions that install code in two steps (contract A4). */
     public const STAGED_ACTIONS = ['install', 'update', 'import'];
 
+    /** A registry namespace, as the admin configures it on the node (contract R3). */
+    public const REGISTRY_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9._-]*$/';
+
     /**
      * Whether $id can be a plugin name: not empty, not starting with ".", and without "/", "\" or "..".
      * Wings refuses anything else, and the Panel must not build a URL with it (contract A1).
@@ -152,6 +155,55 @@ class DaemonPluginRepository extends DaemonRepository
     private static function isFromWings(Response $response): bool
     {
         return str_starts_with((string) $response->header('User-Agent'), 'Pelican Wings/');
+    }
+
+    /**
+     * What the node's registries offer for Wings (A2, A3.2). A registry the node couldn't read is in
+     * "errors", keyed by its namespace; it doesn't fail the call. Entries that aren't well formed are left out.
+     *
+     * @return array{data: list<array{name: string, version: string, registry: string, author: ?string, description: ?string, capability: ?string, has_signature: bool, installed: ?string}>, errors: array<string, string>}
+     *
+     * @throws ConnectionException
+     */
+    public function available(): array
+    {
+        $body = $this->getHttpClient()
+            ->timeout(60)
+            ->get('/api/plugins/available')
+            ->json();
+
+        if (!is_array($body)) {
+            throw new InvalidArgumentException('The node answered /api/plugins/available with something other than a JSON object.');
+        }
+
+        $text = fn (array $from, string $key): ?string => is_string($from[$key] ?? null) && $from[$key] !== '' ? $from[$key] : null;
+
+        $data = [];
+        foreach (is_array($body['data'] ?? null) ? $body['data'] : [] as $entry) {
+            if (!is_array($entry) || !self::isValidId($entry['name'] ?? null) || !is_string($entry['registry'] ?? null) || !preg_match(self::REGISTRY_PATTERN, $entry['registry'])) {
+                continue;
+            }
+
+            $data[] = [
+                'name' => $entry['name'],
+                'version' => $text($entry, 'version') ?? '',
+                'registry' => $entry['registry'],
+                'author' => $text($entry, 'author'),
+                'description' => $text($entry, 'description'),
+                'capability' => $text($entry, 'capability'),
+                'has_signature' => ($entry['has_signature'] ?? false) === true,
+                'installed' => $text($entry, 'installed'),
+            ];
+        }
+
+        $errors = [];
+        foreach (is_array($body['errors'] ?? null) ? $body['errors'] : [] as $namespace => $message) {
+            if (is_string($namespace) && is_string($message)) {
+                $errors[$namespace] = $message;
+            }
+        }
+
+        return ['data' => $data, 'errors' => $errors];
     }
 
     /**

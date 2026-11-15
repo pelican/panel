@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PluginStatus;
 use App\Repositories\Daemon\DaemonPluginRepository;
+use App\Services\Nodes\WingsPluginFailure;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -12,6 +13,7 @@ use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Promise\Utils;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use RuntimeException;
@@ -751,6 +753,42 @@ class WingsPlugin extends Plugin
         } finally {
             self::flush();
         }
+    }
+
+    /**
+     * What $node's registries offer (A2, A3.2), cached for a minute. The caller checks the node first: the
+     * admin's access to it and its level ("signed").
+     *
+     * @return array{data: list<array{name: string, version: string, registry: string, author: ?string, description: ?string, capability: ?string, has_signature: bool, installed: ?string}>, errors: array<string, string>, failure: ?string}
+     */
+    public static function availableOn(Node $node): array
+    {
+        $key = self::CACHE_PREFIX . (int) cache()->get(self::CACHE_GENERATION, 0) . '.available.' . $node->id;
+
+        $cached = cache()->get($key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        try {
+            $available = (new DaemonPluginRepository())->setNode($node)->available();
+        } catch (Throwable $exception) {
+            if (!$exception instanceof RequestException) {
+                report($exception);
+            }
+
+            // A Wings without this endpoint reads the path as a plugin named "available"
+            $failure = $exception instanceof RequestException && $exception->response->notFound()
+                ? trans('admin/plugin.wings.available_unsupported')
+                : WingsPluginFailure::message($exception);
+
+            return ['data' => [], 'errors' => [], 'failure' => $failure];
+        }
+
+        $available = [...$available, 'failure' => null];
+        cache()->put($key, $available, now()->addMinute());
+
+        return $available;
     }
 
     /**
