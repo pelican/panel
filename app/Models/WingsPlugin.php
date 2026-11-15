@@ -520,7 +520,8 @@ class WingsPlugin extends Plugin
         return $this->isPlugin() && (bool) $this->can_uninstall;
     }
 
-    public function isCompatible(): bool
+    /** Wings plugins don't depend on the Panel's version, so $panelVersion (a Panel plugin check) is unused. */
+    public function isCompatible(?string $panelVersion = null): bool
     {
         return $this->status !== PluginStatus::Incompatible;
     }
