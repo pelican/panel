@@ -12,6 +12,7 @@ use Exception;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Component;
 use Illuminate\Http\Response;
+use Webmozart\Assert\Assert;
 
 final class WingsBackupSchema extends BackupAdapterSchema
 {
@@ -31,7 +32,25 @@ final class WingsBackupSchema extends BackupAdapterSchema
     public function deleteBackup(Backup $backup): void
     {
         try {
-            $this->repository->setServer($backup->server)->delete($backup);
+            if ($backup->server) {
+                try {
+                    $this->repository->setServer($backup->server)->delete($backup);
+
+                    return;
+                } catch (Exception $exception) {
+                    // The server may already be gone from the Daemon.
+                    if ($exception->getCode() !== Response::HTTP_NOT_FOUND || !$backup->server_uuid) {
+                        throw $exception;
+                    }
+                }
+            }
+
+            $node = $backup->sourceNode();
+            if ($node && $backup->server_uuid) {
+                // The server was deleted and this backup kept, so it is no longer
+                // known to the Daemon by its server.
+                $this->repository->setNode($node)->deleteKept($backup);
+            }
         } catch (Exception $exception) {
             // Don't fail the request if the Daemon responds with a 404, just assume the backup
             // doesn't actually exist and remove its reference from the Panel as well.
@@ -43,17 +62,41 @@ final class WingsBackupSchema extends BackupAdapterSchema
 
     public function getDownloadLink(Backup $backup, User $user): string
     {
-        $token = $this->jwtService
-            ->setExpiresAt(CarbonImmutable::now()->addMinutes(15))
+        return $this->createLink($backup, $user, CarbonImmutable::now()->addMinutes(15));
+    }
+
+    /**
+     * A link another node can use to download this backup when restoring it
+     * into a new server.
+     */
+    public function getRestoreLink(Backup $backup, int $minutes = 60): string
+    {
+        return $this->createLink($backup, null, CarbonImmutable::now()->addMinutes($minutes));
+    }
+
+    private function createLink(Backup $backup, ?User $user, CarbonImmutable $expiresAt): string
+    {
+        $node = $backup->sourceNode();
+        $serverUuid = $backup->sourceServerUuid();
+
+        Assert::notNull($node, 'This backup is not stored on any node.');
+        Assert::notNull($serverUuid, 'This backup has no server.');
+
+        $service = $this->jwtService
+            ->setExpiresAt($expiresAt)
             ->setScopes(NodeJwtScope::BackupDownload)
-            ->setUser($user)
             ->setClaims([
                 'backup_uuid' => $backup->uuid,
-                'server_uuid' => $backup->server->uuid,
-            ])
-            ->handle($backup->server->node, $user->id . $backup->server->uuid);
+                'server_uuid' => $serverUuid,
+            ]);
 
-        return $backup->server->node->getConnectionAddress() . '/download/backup?token=' . $token->toString();
+        if ($user) {
+            $service->setUser($user);
+        }
+
+        $token = $service->handle($node, ($user->id ?? 'restore') . $serverUuid);
+
+        return $node->getConnectionAddress() . '/download/backup?token=' . $token->toString();
     }
 
     /** @return Component[] */

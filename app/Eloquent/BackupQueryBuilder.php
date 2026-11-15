@@ -21,4 +21,28 @@ class BackupQueryBuilder extends Builder
 
         return $this;
     }
+
+    /**
+     * Backups kept after their server was deleted.
+     *
+     * @return $this
+     */
+    public function orphaned(): static
+    {
+        $this->whereNull('server_id');
+
+        return $this;
+    }
+
+    /**
+     * Backups that finished successfully and can be restored.
+     *
+     * @return $this
+     */
+    public function restorable(): static
+    {
+        $this->whereNotNull('completed_at')->where('is_successful', true);
+
+        return $this;
+    }
 }

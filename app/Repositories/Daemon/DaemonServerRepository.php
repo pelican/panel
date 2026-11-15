@@ -110,9 +110,9 @@ class DaemonServerRepository extends DaemonRepository
      *
      * @throws ConnectionException
      */
-    public function delete(): void
+    public function delete(bool $keepBackups = false): void
     {
-        $this->getHttpClient()->delete("/api/servers/{$this->server->uuid}");
+        $this->getHttpClient()->delete("/api/servers/{$this->server->uuid}" . ($keepBackups ? '?keep_backups=1' : ''));
     }
 
     /**

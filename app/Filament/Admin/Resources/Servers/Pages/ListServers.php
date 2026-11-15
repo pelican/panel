@@ -7,6 +7,7 @@ use App\Filament\Admin\Resources\Eggs\Pages\EditEgg;
 use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
 use App\Filament\Admin\Resources\Servers\ServerResource;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
+use App\Filament\Components\Actions\CreateServerFromBackupAction;
 use App\Filament\Components\Actions\ViewConsoleAction;
 use App\Models\Server;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -116,6 +117,8 @@ class ListServers extends ListRecords
             ])
             ->toolbarActions([
                 CreateAction::make(),
+                CreateServerFromBackupAction::make()
+                    ->hiddenLabel(),
             ])
             ->searchable()
             ->emptyStateIcon(TablerIcon::BrandDocker)

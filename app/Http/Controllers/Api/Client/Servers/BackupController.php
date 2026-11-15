@@ -73,7 +73,8 @@ class BackupController extends ClientApiController
     public function store(StoreBackupRequest $request, Server $server): array
     {
         $action = $this->initiateBackupService
-            ->setIgnoredFiles(explode(PHP_EOL, $request->input('ignored') ?? ''));
+            ->setIgnoredFiles(explode(PHP_EOL, $request->input('ignored') ?? ''))
+            ->setIncludeConfig($request->boolean('include_config', true));
 
         // Only set the lock status if the user even has permission to delete backups,
         // otherwise ignore this status. This gets a little funky since it isn't clear

@@ -93,6 +93,11 @@ class BackupResource extends Resource
                     ->label(trans('server/backup.actions.create.locked'))
                     ->helperText(trans('server/backup.actions.create.lock_helper'))
                     ->columnSpanFull(),
+                Toggle::make('include_config')
+                    ->label(trans('server/backup.actions.create.include_config'))
+                    ->helperText(trans('server/backup.actions.create.include_config_helper'))
+                    ->default(true)
+                    ->columnSpanFull(),
             ]);
     }
 
@@ -269,7 +274,9 @@ class BackupResource extends Resource
                     ->hiddenLabel()
                     ->successNotificationTitle(null)
                     ->action(function (InitiateBackupService $initiateBackupService, $data) use ($server) {
-                        $action = $initiateBackupService->setIgnoredFiles(explode(PHP_EOL, $data['ignored'] ?? ''));
+                        $action = $initiateBackupService
+                            ->setIgnoredFiles(explode(PHP_EOL, $data['ignored'] ?? ''))
+                            ->setIncludeConfig((bool) ($data['include_config'] ?? true));
 
                         if (user()?->can(SubuserPermission::BackupDelete, $server)) {
                             $action->setIsLocked((bool) $data['is_locked']);

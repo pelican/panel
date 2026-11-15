@@ -3,6 +3,7 @@
 namespace App\Filament\Admin\Resources\Servers\Pages;
 
 use App\Enums\TablerIcon;
+use App\Exceptions\DisplayException;
 use App\Filament\Admin\Resources\Servers\ServerResource;
 use App\Filament\Components\Forms\Fields\StartupVariable;
 use App\Models\Allocation;
@@ -10,6 +11,10 @@ use App\Models\Egg;
 use App\Models\Node;
 use App\Models\User;
 use App\Services\Allocations\AssignmentService;
+use App\Services\Backups\BackupConfigResolver;
+use App\Services\Backups\RestoreSource;
+use App\Services\Backups\ServerConfigImporterService;
+use App\Services\Backups\ServerRestoreService;
 use App\Services\Servers\RandomWordService;
 use App\Services\Servers\ServerCreationService;
 use App\Services\Users\UserCreationService;
@@ -43,6 +48,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
+use Livewire\Attributes\Locked;
 use LogicException;
 use Random\RandomException;
 
@@ -60,9 +66,169 @@ class CreateServer extends CreateRecord
 
     private ServerCreationService $serverCreationService;
 
-    public function boot(ServerCreationService $serverCreationService): void
-    {
+    private ServerConfigImporterService $configImporter;
+
+    private BackupConfigResolver $configResolver;
+
+    private ServerRestoreService $restoreService;
+
+    /**
+     * Where the files come from when creating a server from a backup.
+     *
+     * @var array<string, mixed>|null
+     */
+    #[Locked]
+    public ?array $restoreSource = null;
+
+    #[Locked]
+    public ?string $restoreKey = null;
+
+    /**
+     * The .pelicanconfig of the backup being restored, if it has one.
+     *
+     * @var array<string, mixed>|null
+     */
+    #[Locked]
+    public ?array $restoreConfig = null;
+
+    /**
+     * The backup's addresses that could not be selected on the chosen node.
+     *
+     * @var string[]
+     */
+    public array $restoreMissingAllocations = [];
+
+    public function boot(
+        ServerCreationService $serverCreationService,
+        ServerConfigImporterService $configImporter,
+        BackupConfigResolver $configResolver,
+        ServerRestoreService $restoreService,
+    ): void {
         $this->serverCreationService = $serverCreationService;
+        $this->configImporter = $configImporter;
+        $this->configResolver = $configResolver;
+        $this->restoreService = $restoreService;
+    }
+
+    public function mount(): void
+    {
+        $key = request()->query('restore');
+        if (is_string($key) && is_array($source = session()->get("restore_source.$key"))) {
+            $this->restoreSource = $source;
+            $this->restoreKey = $key;
+        }
+
+        parent::mount();
+    }
+
+    protected function fillForm(): void
+    {
+        parent::fillForm();
+
+        if (!$this->restoreSource) {
+            return;
+        }
+
+        $importer = $this->configImporter;
+
+        try {
+            $config = $this->configResolver->resolve(RestoreSource::fromArray($this->restoreSource));
+            $this->restoreConfig = $config ? $importer->parse($config) : null;
+        } catch (DisplayException $exception) {
+            Notification::make()
+                ->warning()
+                ->title(trans('admin/backup.restore.config_unusable'))
+                ->body($exception->getMessage())
+                ->send();
+        }
+
+        if (!$this->restoreConfig) {
+            Notification::make()
+                ->warning()
+                ->title(trans('admin/backup.restore.no_config'))
+                ->body(trans('admin/backup.restore.no_config_body'))
+                ->persistent()
+                ->send();
+
+            $this->form->fill(array_merge($this->form->getRawState(), ['skip_scripts' => true]));
+
+            return;
+        }
+
+        $state = array_merge($this->form->getRawState(), $importer->toFormState($this->restoreConfig));
+
+        if (!$importer->findEgg($this->restoreConfig)) {
+            Notification::make()
+                ->warning()
+                ->title(trans('admin/backup.restore.egg_missing', ['egg' => data_get($this->restoreConfig, 'egg.name', '?')]))
+                ->body(trans('admin/backup.restore.egg_missing_body'))
+                ->persistent()
+                ->send();
+        }
+
+        $allocations = $importer->matchAllocations($this->restoreConfig, Node::find($state['node_id'] ?? null));
+        $state['allocation_id'] = $allocations['allocation_id'];
+        $state['allocation_additional'] = $allocations['allocation_additional'];
+        $this->restoreMissingAllocations = $allocations['missing'];
+
+        $this->form->fill($state);
+    }
+
+    /**
+     * Selects the backup's allocations on the given node.
+     */
+    public function applyRestoreAllocations(Set $set, ?Node $node): void
+    {
+        if (!$this->restoreConfig) {
+            return;
+        }
+
+        $allocations = $this->configImporter->matchAllocations($this->restoreConfig, $node);
+        $set('allocation_id', $allocations['allocation_id']);
+        $set('allocation_additional', $allocations['allocation_additional']);
+        $this->restoreMissingAllocations = $allocations['missing'];
+    }
+
+    /**
+     * Shows what is being restored, and which of the backup's addresses are
+     * not available on the chosen node.
+     */
+    protected function getRestoreSection(): Section
+    {
+        return Section::make(trans('admin/backup.restore.banner_title'))
+            ->icon(TablerIcon::Restore)
+            ->iconColor('primary')
+            ->visible(fn () => $this->restoreSource !== null)
+            ->description(fn () => $this->restoreSource ? trans('admin/backup.restore.banner_body', ['source' => RestoreSource::fromArray($this->restoreSource)->label()]) : null)
+            ->columnSpanFull()
+            ->schema([
+                TextEntry::make('restore_missing_allocations')
+                    ->label(trans('admin/backup.restore.missing_allocations'))
+                    ->state(fn () => implode(', ', $this->restoreMissingAllocations))
+                    ->visible(fn () => !empty($this->restoreMissingAllocations))
+                    ->helperText(trans('admin/backup.restore.missing_allocations_help')),
+            ])
+            ->headerActions([
+                Action::make('create_missing_allocations')
+                    ->label(trans('admin/backup.restore.create_allocations'))
+                    ->icon(TablerIcon::Plus)
+                    ->authorize(fn () => user()?->can('create', Allocation::class))
+                    ->visible(fn (Get $get) => !empty($this->restoreMissingAllocations) && ($node = Node::find($get('node_id'))) &&
+                        !empty($this->configImporter->creatableAllocations($this->restoreMissingAllocations, $node)))
+                    ->action(function (Get $get, Set $set, AssignmentService $assignmentService) {
+                        $node = Node::findOrFail($get('node_id'));
+                        $creatable = $this->configImporter->creatableAllocations($this->restoreMissingAllocations, $node);
+
+                        foreach ($creatable as $ip => $ports) {
+                            $assignmentService->handle($node, [
+                                'allocation_ip' => $ip,
+                                'allocation_ports' => array_map('strval', $ports),
+                            ]);
+                        }
+
+                        $this->applyRestoreAllocations($set, $node);
+                    }),
+            ]);
     }
 
     public function form(Schema $schema): Schema
@@ -104,6 +270,8 @@ class CreateServer extends CreateRecord
                     'md' => 4,
                 ])
                 ->schema([
+                    $this->getRestoreSection(),
+
                     TextInput::make('name')
                         ->prefixIcon(TablerIcon::Server)
                         ->label(trans('admin/server.name'))
@@ -168,6 +336,7 @@ class CreateServer extends CreateRecord
                         ->afterStateUpdated(function (Set $set, $state) {
                             $set('allocation_id', null);
                             $this->node = Node::find($state);
+                            $this->applyRestoreAllocations($set, $this->node);
                         }),
 
                     Select::make('owner_id')
@@ -405,6 +574,8 @@ class CreateServer extends CreateRecord
                     ToggleButtons::make('skip_scripts')
                         ->label(trans('admin/server.install_script'))
                         ->default(false)
+                        ->disabled(fn () => $this->restoreSource !== null)
+                        ->dehydrated()
                         ->columnSpan([
                             'default' => 1,
                             'sm' => 1,
@@ -870,8 +1041,28 @@ class CreateServer extends CreateRecord
 
         session()->put('last_utilized_node', $data['node_id']);
 
+        // The backup is restored once the server is installed, and the server is
+        // only started after that.
+        $startOnCompletion = (bool) ($data['start_on_completion'] ?? false);
+        if ($this->restoreSource) {
+            $data['skip_scripts'] = true;
+            $data['start_on_completion'] = false;
+        }
+
         try {
-            return $this->serverCreationService->handle($data);
+            if (!$this->restoreSource) {
+                return $this->serverCreationService->handle($data);
+            }
+
+            $source = RestoreSource::fromArray($this->restoreSource);
+            $server = $this->serverCreationService->handle($data);
+            $this->restoreService->create($server, $source, $startOnCompletion);
+
+            if ($this->restoreKey) {
+                session()->forget("restore_source.$this->restoreKey");
+            }
+
+            return $server;
         } catch (Exception $exception) {
             Notification::make()
                 ->title(trans('admin/server.notifications.create_failed'))

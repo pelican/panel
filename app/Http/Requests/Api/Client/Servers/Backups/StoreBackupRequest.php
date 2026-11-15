@@ -21,6 +21,8 @@ class StoreBackupRequest extends ClientApiRequest
             'is_locked' => 'nullable|boolean',
             /** Newline separated list of paths to leave out of the backup, in the same format as `.gitignore`. */
             'ignored' => 'nullable|string',
+            /** Store the server's configuration (.pelicanconfig) in the backup so a new server can be created from it. Defaults to true. */
+            'include_config' => 'nullable|boolean',
         ];
     }
 }
