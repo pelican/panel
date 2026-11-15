@@ -6,9 +6,6 @@ use App\Models\Role;
 use App\Models\WingsPlugin;
 use App\Tests\Traits\FakesWingsPlugins;
 use Filament\Facades\Filament;
-use Filament\Notifications\Livewire\Notifications;
-use Filament\Notifications\Notification;
-use Filament\Notifications\NotificationMailbox;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -45,36 +42,12 @@ function wingsInstallApproves(Request $request): bool
     return array_key_exists('approve', json_decode($request->body(), true) ?: []);
 }
 
-/** The last notification sent, read the way Filament's assertNotified() reads them. */
-function wingsInstallLastNotification(): Notification
-{
-    app(NotificationMailbox::class)->flush();
-
-    $notifications = new Notifications();
-    $notifications->mount();
-    $notifications->pullNotifications();
-
-    return $notifications->notifications->last();
-}
-
 /** A component of the mounted action's form. */
 function wingsInstallFormComponent(Testable $component, string $key): mixed
 {
     $page = $component->instance();
 
     return $page->getSchema($page->getMountedActionSchemaName())->getComponent(fn ($field) => method_exists($field, 'getName') && $field->getName() === $key, withActions: false, withHidden: true);
-}
-
-/** The handle a notification's "Stage again" button sends, or null when it has none. */
-function wingsInstallRestageHandle(Notification $notification): ?string
-{
-    foreach ($notification->getActions() as $action) {
-        if ($action->getName() === 'restage') {
-            return $action->getEventData()['handle'] ?? null;
-        }
-    }
-
-    return null;
 }
 
 it('stages an install, shows it, and installs only after approval', function () {
@@ -214,8 +187,8 @@ it('explains why the node refused an approval and stages it again on request', f
         ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log'])
         ->callMountedAction();
 
-    $notification = wingsInstallLastNotification();
-    $handle = wingsInstallRestageHandle($notification);
+    $notification = $this->lastNotification();
+    $handle = $this->notificationEventData('restage', $notification);
 
     expect($notification->getTitle())->toBe(trans('admin/plugin.notifications.install_error'))
         ->and($notification->getBody())->toContain($says)
@@ -254,11 +227,11 @@ it('asks for the upload again when the node refuses an uploaded archive', functi
         ])
         ->callMountedAction();
 
-    $notification = wingsInstallLastNotification();
+    $notification = $this->lastNotification();
 
     expect($notification->getTitle())->toBe(trans('admin/plugin.notifications.import_failed'))
         ->and($notification->getBody())->toContain(trans('admin/plugin.wings.approval_upload_again'))
-        ->and(wingsInstallRestageHandle($notification))->toBeNull();
+        ->and($this->notificationEventData('restage', $notification))->toBeNull();
 });
 
 it('stages again an import from a url with what it was staged from', function () {
@@ -274,7 +247,7 @@ it('stages again an import from a url with what it was staged from', function ()
         ->callTableAction('wings_import', data: ['node' => $this->node->id, 'source' => 'url', 'url' => 'https://example.test/s.zip', 'signature' => 'c2ln'])
         ->callMountedAction();
 
-    $component->dispatch('restage-wings-plugin', handle: wingsInstallRestageHandle(wingsInstallLastNotification()))
+    $component->dispatch('restage-wings-plugin', handle: $this->notificationEventData('restage', $this->lastNotification()))
         ->assertActionMounted('approveWingsPlugin');
 
     $bodies = Http::recorded(fn (Request $request) => str_ends_with($request->url(), '/api/plugins/import'))
@@ -298,7 +271,7 @@ it('stages again only once, and only for the admin who was refused', function ()
         ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log'])
         ->callMountedAction();
 
-    $handle = wingsInstallRestageHandle(wingsInstallLastNotification());
+    $handle = $this->notificationEventData('restage', $this->lastNotification());
 
     [$other] = generateTestAccount();
     $other->syncRoles(Role::getRootAdmin());

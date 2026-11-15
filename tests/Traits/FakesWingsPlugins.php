@@ -5,9 +5,14 @@ namespace App\Tests\Traits;
 use App\Models\Node;
 use App\Models\Role;
 use App\Models\User;
+use Filament\Actions\Action;
+use Filament\Notifications\Livewire\Notifications;
+use Filament\Notifications\Notification;
+use Filament\Notifications\NotificationMailbox;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Spatie\Permission\Models\Permission;
 
 /**
@@ -212,6 +217,32 @@ trait FakesWingsPlugins
         $user->syncRoles($role);
 
         return $user->fresh();
+    }
+
+    /** The last notification sent, read the way Filament's assertNotified() reads them (which consumes them). */
+    protected function lastNotification(): Notification
+    {
+        app(NotificationMailbox::class)->flush();
+
+        $notifications = new Notifications();
+        $notifications->mount();
+        $notifications->pullNotifications();
+
+        return $notifications->notifications->last() ?? throw new RuntimeException('No notification was sent.');
+    }
+
+    /** The "handle" a notification's $name button sends with its event, or null when it has no such button. */
+    protected function notificationEventData(string $name, Notification $notification): ?string
+    {
+        foreach ($notification->getActions() as $action) {
+            if ($action instanceof Action && $action->getName() === $name) {
+                $handle = $action->getEventData()['handle'] ?? null;
+
+                return is_string($handle) ? $handle : null;
+            }
+        }
+
+        return null;
     }
 
     /** Whether a recorded request went to $node. */

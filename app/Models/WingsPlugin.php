@@ -81,6 +81,9 @@ class WingsPlugin extends Plugin
 
     private const CACHE_SECONDS = 10;
 
+    /** How long the answer of an update check is kept; it is keyed on the installed version too. */
+    private const UPDATE_CHECK_SECONDS = 3600;
+
     /**
      * Needs its own connection, Plugin's static one is shared with subclasses.
      *
@@ -522,9 +525,72 @@ class WingsPlugin extends Plugin
         return $this->status !== PluginStatus::Incompatible;
     }
 
+    /**
+     * Whether the last update check found a newer version (A2 "update-check"). can_update only says the
+     * plugin has an update URL and the node's level allows updating.
+     */
     public function isUpdateAvailable(): bool
     {
-        return false;
+        return $this->isPlugin() && ($this->lastUpdateCheck()['available'] ?? false) === true;
+    }
+
+    /** A plugin without an update URL has nothing to check (Wings omits update_url when empty). */
+    public function canCheckForUpdate(): bool
+    {
+        return $this->isPlugin() && filled($this->update_url);
+    }
+
+    /** @return array{installed: ?string, latest: ?string, available: bool, error: ?string}|null */
+    public function lastUpdateCheck(): ?array
+    {
+        $check = cache()->get($this->updateCheckKey());
+
+        return is_array($check) ? $check : null;
+    }
+
+    private function updateCheckKey(): string
+    {
+        return self::CACHE_PREFIX . 'update_check.' . $this->node_id . '.' . sha1($this->plugin_id . "\0" . $this->version);
+    }
+
+    /**
+     * Checks $plugins for updates at once and keeps the answers. Plugins without an update URL are skipped;
+     * a node that refused or didn't answer gives a Throwable for that plugin.
+     *
+     * @param  iterable<WingsPlugin>  $plugins
+     * @return array<string, array{installed: ?string, latest: ?string, available: bool, error: ?string}|Throwable> keyed by row id
+     */
+    public static function checkForUpdates(iterable $plugins): array
+    {
+        $results = [];
+        $promises = [];
+        $rows = [];
+
+        foreach ($plugins as $plugin) {
+            if (!$plugin->canCheckForUpdate()) {
+                continue;
+            }
+
+            try {
+                $promises[$plugin->id] = $plugin->repository()->updateCheckAsync($plugin->plugin_id);
+                $rows[$plugin->id] = $plugin;
+            } catch (Throwable $exception) {
+                $results[$plugin->id] = $exception;
+            }
+        }
+
+        foreach (Utils::settle($promises)->wait() as $id => $settled) {
+            if ($settled['state'] !== PromiseInterface::FULFILLED) {
+                $results[$id] = $settled['reason'] instanceof Throwable ? $settled['reason'] : new RuntimeException((string) $settled['reason']);
+
+                continue;
+            }
+
+            cache()->put($rows[$id]->updateCheckKey(), $settled['value'], now()->addSeconds(self::UPDATE_CHECK_SECONDS));
+            $results[$id] = $settled['value'];
+        }
+
+        return $results;
     }
 
     public function hasSettings(): bool

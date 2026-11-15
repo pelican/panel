@@ -41,6 +41,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 class PluginResource extends Resource
 {
@@ -253,6 +254,51 @@ class PluginResource extends Resource
         return [$matches[1], $matches[2]];
     }
 
+    /**
+     * @param  array{installed: ?string, latest: ?string, available: bool, error: ?string}|Throwable|null  $result
+     */
+    private static function notifyUpdateCheck(WingsPlugin $plugin, array|Throwable|null $result): void
+    {
+        if (!is_array($result)) {
+            if ($result instanceof Throwable && !$result instanceof RequestException) {
+                report($result);
+            }
+
+            Notification::make()
+                ->danger()
+                ->title(trans('admin/plugin.wings.update_check_failed', ['name' => $plugin->name]))
+                ->body($result instanceof Throwable ? WingsPluginFailure::message($result) : null)
+                ->send();
+
+            return;
+        }
+
+        $values = [
+            'name' => $plugin->name,
+            'installed' => $result['installed'] ?? $plugin->version,
+            'latest' => $result['latest'] ?? '?',
+        ];
+
+        if ($result['error'] !== null) {
+            Notification::make()
+                ->warning()
+                ->title(trans('admin/plugin.wings.update_check_failed', ['name' => $plugin->name]))
+                ->body($result['error'])
+                ->send();
+        } elseif ($result['available']) {
+            Notification::make()
+                ->success()
+                ->title(trans('admin/plugin.wings.update_found', $values))
+                ->body($plugin->canUpdate() ? trans('admin/plugin.wings.update_found_can') : trans('admin/plugin.wings.update_found_cannot'))
+                ->send();
+        } else {
+            Notification::make()
+                ->info()
+                ->title(trans('admin/plugin.wings.update_none', $values))
+                ->send();
+        }
+    }
+
     private static function notifyNodeNotAllowed(string $errorKey): void
     {
         Notification::make()
@@ -439,6 +485,18 @@ class PluginResource extends Resource
                                     ->body($exception->getMessage())
                                     ->send();
                             }
+                        }),
+                    // Whether a newer version exists; needs only "view" (A2 "update-check")
+                    Action::make('exclude_check_update')
+                        ->label(trans('admin/plugin.wings.check_update'))
+                        ->authorize(fn (Plugin $record) => user()?->can('view', $record))
+                        ->icon(TablerIcon::Refresh)
+                        ->color('gray')
+                        ->visible(fn (Plugin $record) => $record instanceof WingsPlugin && $record->canCheckForUpdate())
+                        ->action(function (WingsPlugin $record) {
+                            $result = WingsPlugin::checkForUpdates([$record])[$record->id] ?? null;
+
+                            self::notifyUpdateCheck($record, $result);
                         }),
                     Action::make('exclude_enable')
                         ->label(trans('admin/plugin.enable'))
@@ -705,6 +763,26 @@ class PluginResource extends Resource
                         $sha256 = filled($data['sha256'] ?? null) ? strtolower((string) $data['sha256']) : null;
 
                         self::stageOnNode($livewire, $approvals, $node, 'import', null, ['url' => $url, 'sha256' => $sha256, 'signature' => $signature]);
+                    }),
+                // Every plugin with an update URL on the admin's nodes, at once (A2 "update-check", level view)
+                Action::make('wings_check_updates')
+                    ->label(trans('admin/plugin.wings.check_updates'))
+                    ->hiddenLabel()
+                    ->tooltip(trans('admin/plugin.wings.check_updates'))
+                    ->icon(TablerIcon::Refresh)
+                    ->authorize(fn () => user()?->can('viewList plugin'))
+                    ->visible(fn ($livewire) => $livewire->activeTab === 'wings')
+                    ->action(function () {
+                        $results = WingsPlugin::checkForUpdates(WingsPlugin::scoped()->get()->filter(fn (WingsPlugin $plugin) => $plugin->canCheckForUpdate()));
+
+                        $found = collect($results)->filter(fn ($result) => is_array($result) && $result['available'])->count();
+                        $failed = collect($results)->filter(fn ($result) => !is_array($result) || $result['error'] !== null)->count();
+
+                        Notification::make()
+                            ->status($failed > 0 ? 'warning' : 'success')
+                            ->title(trans_choice('admin/plugin.wings.updates_found', $found, ['count' => $found]))
+                            ->body($failed > 0 ? trans_choice('admin/plugin.wings.updates_failed', $failed, ['count' => $failed]) : null)
+                            ->send();
                     }),
                 Action::make('browse_hub')
                     ->label(trans('admin/plugin.hub.browse'))

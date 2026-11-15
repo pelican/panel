@@ -207,6 +207,49 @@ class DaemonPluginRepository extends DaemonRepository
     }
 
     /**
+     * Whether the plugin's update URL offers a newer version, without staging anything (A2, level view).
+     * A plugin without an update URL has latest=null; a fetch that failed has error set. A 404 means
+     * there is no such plugin.
+     *
+     * @return array{installed: ?string, latest: ?string, available: bool, error: ?string}
+     *
+     * @throws ConnectionException
+     */
+    public function updateCheck(string $plugin): array
+    {
+        return $this->updateCheckAsync($plugin)->wait();
+    }
+
+    /** Same as updateCheck() but doesn't wait, so several plugins can be checked at once. */
+    public function updateCheckAsync(string $plugin): PromiseInterface
+    {
+        return self::built($this->getHttpClient()
+            ->connectTimeout(3)
+            ->timeout(30)
+            ->async()
+            ->get($this->path($plugin, 'update-check')))
+            ->then(function (Response|Throwable $response) {
+                if ($response instanceof Throwable) {
+                    throw $response;
+                }
+
+                $body = $response->json();
+                if (!is_array($body)) {
+                    throw new InvalidArgumentException('The node answered the update check with something other than a JSON object.');
+                }
+
+                $text = fn (string $key): ?string => is_string($body[$key] ?? null) && $body[$key] !== '' ? $body[$key] : null;
+
+                return [
+                    'installed' => $text('installed'),
+                    'latest' => $text('latest'),
+                    'available' => ($body['available'] ?? false) === true,
+                    'error' => $text('error'),
+                ];
+            });
+    }
+
+    /**
      * @return array<string, mixed>
      *
      * @throws ConnectionException
