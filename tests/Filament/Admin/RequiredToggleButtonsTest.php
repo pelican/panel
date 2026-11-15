@@ -30,10 +30,19 @@ afterEach(fn () => Filament::setCurrentPanel(null));
 it('makes every editable single-select toggle required', function (string $page, ?Closure $record) {
     $params = $record ? ['record' => $record()->getKey()] : [];
 
+    // Settings disables every field when the environment file is not writable, as in CI.
+    $path = sys_get_temp_dir().'/pelican-toggles-test-'.getmypid();
+    @mkdir($path);
+    file_put_contents("$path/.env", '');
+    app()->useEnvironmentPath($path);
+
     $toggles = collect(livewire($page, $params)->instance()->getSchema('form')->getFlatComponents(withHidden: true))
         ->filter(fn ($component) => $component instanceof ToggleButtons && !$component->isMultiple() && !$component->isDisabled())
         // Option-less toggles only carry a hint, and an unset MAIL_SCHEME lets Laravel infer it from the port.
         ->filter(fn (ToggleButtons $toggle) => filled($toggle->getOptions()) && $toggle->getName() !== 'MAIL_SCHEME');
+
+    @unlink("$path/.env");
+    @rmdir($path);
 
     expect($toggles)->not->toBeEmpty()
         ->and($toggles->reject->isRequired()->map->getName()->values()->all())->toBe([]);
