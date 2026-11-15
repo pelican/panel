@@ -10,6 +10,7 @@ use App\Facades\Activity;
 use App\Helpers\ProcessEnv;
 use App\Notifications\MailTested;
 use App\Observers\AuditObserver;
+use App\Repositories\Daemon\DaemonPluginRepository;
 use App\Services\Helpers\ThemeService;
 use App\Traits\EnvironmentWriterTrait;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -977,6 +978,20 @@ class Settings extends Page implements HasSchemas
                         ->maxFiles(1)
                         ->acceptedFileTypes(['font/*'])
                         ->preserveFilenames(),
+                ]),
+            Section::make(trans('admin/setting.misc.wings_plugins.title'))
+                ->description(trans('admin/setting.misc.wings_plugins.helper'))
+                ->collapsible()
+                ->collapsed()
+                ->schema([
+                    Select::make('PANEL_WINGS_PLUGIN_ACCESS')
+                        ->label(trans('admin/setting.misc.wings_plugins.access'))
+                        ->helperText(trans('admin/setting.misc.wings_plugins.access_help'))
+                        ->options(collect(DaemonPluginRepository::ACCESS_LEVELS)
+                            ->mapWithKeys(fn (string $level) => [$level => trans("admin/setting.misc.wings_plugins.levels.$level")])
+                            ->all())
+                        ->placeholder(trans('admin/setting.misc.wings_plugins.not_set'))
+                        ->default(fn () => DaemonPluginRepository::isValidLevel(config('panel.plugin.wings_access')) ? config('panel.plugin.wings_access') : null),
                 ]),
             Section::make(trans('admin/setting.misc.webhook.title'))
                 ->description(trans('admin/setting.misc.webhook.helper'))

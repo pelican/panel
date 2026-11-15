@@ -177,6 +177,19 @@ return [
             'console_font_upload' => 'Console Font Upload',
             'console_font_hint' => 'Only *.ttf fonts are supported. Mono fonts strongly recommended!',
         ],
+        'wings_plugins' => [
+            'title' => 'Wings Plugins',
+            'helper' => 'How much the Panel may do with Wings plugins on new nodes. Each node\'s operator decides this for their node; the Panel never changes it on an existing node.',
+            'access' => 'Plugin access for new nodes',
+            'access_help' => 'Adds --plugin-access to the auto-deploy command. Not set keeps Wings\' default ("view"). An operator can change it later with `wings plugins panel-access`.',
+            'not_set' => 'Not set',
+            'levels' => [
+                'off' => 'Off: the Panel can\'t see plugins',
+                'view' => 'View: list, enable, disable and configure trusted plugins',
+                'signed' => 'Signed: also install, update and uninstall plugins signed by a key the node trusts',
+                'full' => 'Full: also install from any URL or upload (Panel admins can run code on the node)',
+            ],
+        ],
         'webhook' => [
             'title' => 'Webhooks',
             'helper' => 'Configure how often old webhook logs should be pruned.',
