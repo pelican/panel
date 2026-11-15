@@ -506,7 +506,6 @@ class EditProfile extends BaseEditProfile
                                 ->label(trans('profile.button_style'))
                                 ->inline()
                                 ->required()
-                                ->default('icon')
                                 ->options([
                                     true => trans('profile.icon'),
                                     false => trans('profile.icon_button'),
