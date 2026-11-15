@@ -339,7 +339,7 @@ class PluginService
         $download = $plugin->getUpdateDownload();
         throw_unless($download, new Exception('No download url found.'));
 
-        $this->downloadPluginFromUrl($download['url'], $plugin->id, $download['sha256']);
+        $this->downloadPluginFromUrl($download['url'], $plugin->id, $download['sha256'], $download['signature']);
 
         Plugin::refreshRows();
         $plugin = Plugin::findOrFail($plugin->id);
@@ -528,8 +528,13 @@ class PluginService
         return null;
     }
 
-    /** @throws Exception */
-    public function downloadPluginFromUrl(string $url, ?string $expectedId = null, ?string $expectedSha256 = null): string
+    /**
+     * A signature only means something next to an advertised checksum, so it (and the require-signatures
+     * policy) is only checked for downloads that come with one: update feeds and Hub releases.
+     *
+     * @throws Exception
+     */
+    public function downloadPluginFromUrl(string $url, ?string $expectedId = null, ?string $expectedSha256 = null, ?string $signature = null): string
     {
         $basename = pathinfo($url, PATHINFO_BASENAME);
         $tmpDir = TemporaryDirectory::make()->deleteWhenDestroyed();
@@ -540,6 +545,8 @@ class PluginService
         // Any advertised checksum must match, including an empty or malformed one.
         if ($expectedSha256 !== null) {
             throw_unless(hash_equals(strtolower($expectedSha256), hash('sha256', $content)), new InvalidFileUploadException(trans('admin/plugin.notifications.import_checksum_mismatch')));
+
+            $this->app->make(PluginSignatures::class)->enforce(hash('sha256', $content, true), $signature);
         }
 
         // Validate file size to prevent zip bombs

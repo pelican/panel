@@ -621,7 +621,7 @@ class PluginServiceTest extends IntegrationTestCase
         Http::fake([$updateUrl => Http::response(['*' => ['version' => '2.0.0', 'download_url' => 'https://example.test/a.zip']])]);
         Plugin::refreshRows();
 
-        $this->assertSame(['url' => 'https://example.test/a.zip', 'sha256' => null], Plugin::findOrFail('test-update-plugin')->getUpdateDownload());
+        $this->assertSame(['url' => 'https://example.test/a.zip', 'sha256' => null, 'signature' => null], Plugin::findOrFail('test-update-plugin')->getUpdateDownload());
         Http::assertSentCount(1);
     }
 
