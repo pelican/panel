@@ -90,7 +90,8 @@ class PluginResource extends Resource
     {
         return $table
             ->openRecordUrlInNewTab()
-            ->reorderable('load_order')
+            // Wings plugins have no load order: each is its own process (contract A6)
+            ->reorderable('load_order', fn ($livewire) => $livewire->activeTab !== 'wings')
             ->authorizeReorder(fn () => user()?->can('update plugin'))
             ->reorderRecordsTriggerAction(fn (Action $action, bool $isReordering) => $action->hiddenLabel()->tooltip($isReordering ? trans('admin/plugin.apply_load_order') : trans('admin/plugin.change_load_order')))
             ->defaultSort('load_order')

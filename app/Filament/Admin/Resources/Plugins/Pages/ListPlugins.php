@@ -9,7 +9,6 @@ use App\Livewire\AlertBanner;
 use App\Models\Plugin;
 use App\Models\WingsPlugin;
 use App\Services\Helpers\PluginService;
-use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Schemas\Components\Tabs\Tab;
 use Illuminate\Database\Eloquent\Builder;
@@ -46,61 +45,18 @@ class ListPlugins extends ListRecords
     }
 
     /**
-     * Wings keeps a load order per node, so it is sent to each plugin's node.
+     * Only the Panel's own plugins have a load order; Wings answers 501 to one (contract A6).
      *
      * @param  array<int, string>  $order
      */
     public function reorderTable(array $order, int|string|null $draggedRecordKey = null): void
     {
-        abort_unless($this->getTable()->isReorderable(), 403);
+        abort_unless($this->getTable()->isReorderable() && !$this->isWingsTab(), 403);
 
-        if (!$this->isWingsTab()) {
-            /** @var PluginService $pluginService */
-            $pluginService = app(PluginService::class); // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
+        /** @var PluginService $pluginService */
+        $pluginService = app(PluginService::class); // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
 
-            $pluginService->updateLoadOrder($order);
-
-            return;
-        }
-
-        // Rows are keyed "<node id>:<plugin id>", group them back by node
-        $byNode = [];
-        foreach ($order as $key) {
-            [$nodeId, $pluginId] = array_pad(explode(':', $key, 2), 2, null);
-            if ($pluginId === null || $pluginId === '') {
-                continue;
-            }
-            $byNode[$nodeId][] = $pluginId;
-        }
-
-        $failed = [];
-
-        foreach ($byNode as $nodeId => $plugins) {
-            $plugin = $this->wingsPlugins()->where('node_id', $nodeId)->first();
-            if (!$plugin instanceof WingsPlugin) {
-                $failed[] = (string) $nodeId;
-
-                continue;
-            }
-
-            try {
-                $plugin->repository()->setLoadOrder($plugins);
-            } catch (Throwable $exception) {
-                report($exception);
-
-                $failed[] = $plugin->node_name;
-            }
-        }
-
-        WingsPlugin::flush();
-
-        if ($failed !== []) {
-            Notification::make()
-                ->danger()
-                ->title(trans('admin/plugin.notifications.reorder_error'))
-                ->body(trans('admin/plugin.notifications.reorder_error_nodes', ['nodes' => implode(', ', $failed)]))
-                ->send();
-        }
+        $pluginService->updateLoadOrder($order);
     }
 
     public function mount(): void

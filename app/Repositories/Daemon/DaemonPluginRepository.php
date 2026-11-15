@@ -7,14 +7,54 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
+use InvalidArgumentException;
 use Throwable;
 
+/**
+ * The Wings plugin API (pelican/wings contract v2, section A).
+ */
 class DaemonPluginRepository extends DaemonRepository
 {
+    /** Panel access levels a node can have, lowest first (contract L). */
+    public const ACCESS_LEVELS = ['off', 'view', 'signed', 'full'];
+
+    /** Actions that install code in two steps (contract A4). */
+    public const STAGED_ACTIONS = ['install', 'update', 'import'];
+
     /**
-     * List every plugin on the node.
+     * Whether $id can be a plugin name: not empty, not starting with ".", and without "/", "\" or "..".
+     * Wings refuses anything else, and the Panel must not build a URL with it (contract A1).
+     */
+    public static function isValidId(mixed $id): bool
+    {
+        return is_string($id)
+            && $id !== ''
+            && !str_starts_with($id, '.')
+            && !str_contains($id, '/')
+            && !str_contains($id, '\\')
+            && !str_contains($id, '..')
+            && !preg_match('/[\x00-\x1F\x7F]/', $id);
+    }
+
+    public static function isValidLevel(mixed $level): bool
+    {
+        return is_string($level) && in_array($level, self::ACCESS_LEVELS, true);
+    }
+
+    /** Whether a node at $level allows what needs $required. */
+    public static function levelAllows(?string $level, string $required): bool
+    {
+        if (!self::isValidLevel($level)) {
+            return false;
+        }
+
+        return array_search($level, self::ACCESS_LEVELS, true) >= array_search($required, self::ACCESS_LEVELS, true);
+    }
+
+    /**
+     * List every plugin on the node, or why the node can't list them.
      *
-     * @return array{enabled: bool, directory: ?string, data: array<int, array<string, mixed>>, supported: bool}
+     * @return array{available: bool, reason: ?string, panel_access: ?string, required: ?string, enabled: bool, directory: ?string, data: array<int, mixed>, error: ?string}
      *
      * @throws ConnectionException
      */
@@ -25,6 +65,9 @@ class DaemonPluginRepository extends DaemonRepository
 
     /**
      * Same as getPlugins() but doesn't wait, so several nodes can be asked at once.
+     *
+     * A 403 (the node's access level) and a 404 (a Wings without the plugin API) are answers, not
+     * failures: the promise resolves with available=false and the reason (contract A1, A7).
      */
     public function getPluginsAsync(): PromiseInterface
     {
@@ -34,9 +77,21 @@ class DaemonPluginRepository extends DaemonRepository
             ->async()
             ->get('/api/plugins')
             ->then(function (Response|Throwable $response) {
-                // Older Wings versions have no plugin route, but only a 404 from Wings itself counts
-                if ($response instanceof RequestException && $response->response->notFound() && str_starts_with((string) $response->response->header('User-Agent'), 'Pelican Wings/')) {
-                    return ['enabled' => false, 'directory' => null, 'data' => [], 'supported' => false];
+                if ($response instanceof RequestException && self::isFromWings($response->response)) {
+                    if ($response->response->notFound()) {
+                        return self::unavailable('unsupported');
+                    }
+
+                    if ($response->response->forbidden()) {
+                        $level = $response->response->json('panel_access');
+                        $required = $response->response->json('required');
+
+                        return self::unavailable(
+                            'access',
+                            self::isValidLevel($level) ? $level : 'off',
+                            self::isValidLevel($required) ? $required : 'view',
+                        );
+                    }
                 }
 
                 if ($response instanceof Throwable) {
@@ -44,14 +99,45 @@ class DaemonPluginRepository extends DaemonRepository
                 }
 
                 $body = $response->json();
+                if (!is_array($body)) {
+                    throw new InvalidArgumentException('The node answered /api/plugins with something other than a JSON object.');
+                }
+
+                $level = $body['panel_access'] ?? null;
 
                 return [
+                    'available' => true,
+                    'reason' => null,
+                    // Wings from before contract v2 doesn't send a level; treat it as the lowest that lists
+                    'panel_access' => self::isValidLevel($level) ? $level : 'view',
+                    'required' => null,
                     'enabled' => (bool) ($body['enabled'] ?? false),
-                    'directory' => $body['directory'] ?? null,
-                    'data' => $body['data'] ?? [],
-                    'supported' => true,
+                    'directory' => is_string($body['directory'] ?? null) ? $body['directory'] : null,
+                    'data' => is_array($body['data'] ?? null) ? array_values($body['data']) : [],
+                    'error' => is_string($body['error'] ?? null) && $body['error'] !== '' ? $body['error'] : null,
                 ];
             });
+    }
+
+    /** @return array{available: false, reason: string, panel_access: ?string, required: ?string, enabled: false, directory: null, data: array{}, error: null} */
+    private static function unavailable(string $reason, ?string $level = null, ?string $required = null): array
+    {
+        return [
+            'available' => false,
+            'reason' => $reason,
+            'panel_access' => $level,
+            'required' => $required,
+            'enabled' => false,
+            'directory' => null,
+            'data' => [],
+            'error' => null,
+        ];
+    }
+
+    /** Only an answer from Wings itself says something about its plugin API; a proxy's 403/404 doesn't. */
+    private static function isFromWings(Response $response): bool
+    {
+        return str_starts_with((string) $response->header('User-Agent'), 'Pelican Wings/');
     }
 
     /**
@@ -64,19 +150,6 @@ class DaemonPluginRepository extends DaemonRepository
         return $this->getHttpClient()
             ->timeout(15)
             ->get($this->path($plugin))
-            ->json();
-    }
-
-    /**
-     * @return array<string, mixed>
-     *
-     * @throws ConnectionException
-     */
-    public function install(string $plugin): array
-    {
-        return $this->getHttpClient()
-            ->timeout(60)
-            ->post($this->path($plugin, 'install'), [])
             ->json() ?? [];
     }
 
@@ -89,7 +162,7 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(60)
-            ->post($this->path($plugin, 'enable'))
+            ->post($this->path($plugin, 'enable'), [])
             ->json() ?? [];
     }
 
@@ -102,11 +175,13 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(60)
-            ->post($this->path($plugin, 'disable'))
+            ->post($this->path($plugin, 'disable'), [])
             ->json() ?? [];
     }
 
     /**
+     * Disables the plugin and revokes its approval; $deleteFiles also removes its directory.
+     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -115,24 +190,13 @@ class DaemonPluginRepository extends DaemonRepository
     {
         return $this->getHttpClient()
             ->timeout(60)
-            ->post($this->path($plugin, 'uninstall') . '?delete=' . ($deleteFiles ? 'true' : 'false'))
+            ->post($this->path($plugin, 'uninstall') . '?delete=' . ($deleteFiles ? 'true' : 'false'), [])
             ->json() ?? [];
     }
 
     /**
-     * @return array<string, mixed>
+     * Replaces all of the plugin's setting values (contract A3.1).
      *
-     * @throws ConnectionException
-     */
-    public function update(string $plugin): array
-    {
-        return $this->getHttpClient()
-            ->timeout(300)
-            ->post($this->path($plugin, 'update'))
-            ->json() ?? [];
-    }
-
-    /**
      * @param  array<string, mixed>  $values
      * @return array<string, mixed>
      *
@@ -147,46 +211,126 @@ class DaemonPluginRepository extends DaemonRepository
     }
 
     /**
-     * @param  string[]  $order
+     * First step of an install from the node's registries: Wings stages it and answers 202 with an approval token.
      *
-     * @throws ConnectionException
-     */
-    public function setLoadOrder(array $order): void
-    {
-        $this->getHttpClient()
-            ->timeout(30)
-            ->post('/api/plugins/order', ['order' => array_values($order)]);
-    }
-
-    /**
      * @return array<string, mixed>
      *
      * @throws ConnectionException
      */
-    public function importFromUrl(string $url): array
+    public function install(string $plugin, ?string $registry = null): array
     {
-        return $this->getHttpClient()
-            ->timeout(300)
-            ->post('/api/plugins/import', ['url' => $url])
-            ->json() ?? [];
+        $body = $registry !== null && $registry !== '' ? ['registry' => $registry] : [];
+
+        return $this->staged($this->path($plugin, 'install'), $body);
     }
 
     /**
+     * First step of an update from the plugin's update URL: 202 with an approval token, or "up_to_date".
+     *
      * @return array<string, mixed>
      *
      * @throws ConnectionException
      */
-    public function importFromFile(UploadedFile $file): array
+    public function update(string $plugin): array
     {
+        return $this->staged($this->path($plugin, 'update'), []);
+    }
+
+    /**
+     * First step of an import from a URL (needs "full").
+     *
+     * @return array<string, mixed>
+     *
+     * @throws ConnectionException
+     */
+    public function importFromUrl(string $url, ?string $sha256 = null, ?string $signature = null): array
+    {
+        return $this->staged('/api/plugins/import', array_filter([
+            'url' => $url,
+            'sha256' => $sha256,
+            'signature' => $signature,
+        ], fn ($value) => $value !== null && $value !== ''));
+    }
+
+    /**
+     * First step of an import from an uploaded archive (needs "full").
+     *
+     * @return array<string, mixed>
+     *
+     * @throws ConnectionException
+     */
+    public function importFromFile(UploadedFile $file, ?string $signature = null): array
+    {
+        $request = $this->getHttpClient()
+            ->timeout(300)
+            ->attach('plugin', (string) $file->get(), $file->getClientOriginalName());
+
+        $response = $signature !== null && $signature !== ''
+            ? $request->post('/api/plugins/import', ['signature' => $signature])
+            : $request->post('/api/plugins/import');
+
+        return self::stagedResponse($response);
+    }
+
+    /**
+     * Second step: send the approval token back to the endpoint that staged the plugin.
+     * $plugin is null for an import, which has no id in its path.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws ConnectionException
+     */
+    public function approve(string $action, ?string $plugin, string $token): array
+    {
+        if (!in_array($action, self::STAGED_ACTIONS, true)) {
+            throw new InvalidArgumentException("Unknown plugin action \"$action\".");
+        }
+
+        if ($token === '') {
+            throw new InvalidArgumentException('The approval token is empty.');
+        }
+
+        $path = $action === 'import' ? '/api/plugins/import' : $this->path((string) $plugin, $action);
+
         return $this->getHttpClient()
             ->timeout(300)
-            ->attach('plugin', $file->get(), $file->getClientOriginalName())
-            ->post('/api/plugins/import')
+            ->post($path, ['approve' => $token])
             ->json() ?? [];
     }
 
     /**
-     * @return array{files?: string[], file?: string, content?: string}
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     *
+     * @throws ConnectionException
+     */
+    private function staged(string $path, array $body): array
+    {
+        return self::stagedResponse(
+            $this->getHttpClient()
+                ->timeout(300)
+                ->post($path, $body)
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private static function stagedResponse(Response $response): array
+    {
+        $body = $response->json();
+
+        if (!is_array($body) || !is_string($body['status'] ?? null)) {
+            throw new InvalidArgumentException('The node did not say what it staged.');
+        }
+
+        if ($body['status'] === 'approval_required' && (!is_string($body['approval_token'] ?? null) || $body['approval_token'] === '')) {
+            throw new InvalidArgumentException('The node staged the plugin but sent no approval token.');
+        }
+
+        return $body;
+    }
+
+    /**
+     * @return array{files?: string[], truncated?: bool, file?: string, size?: int, binary?: bool, content?: string}
      *
      * @throws ConnectionException
      */
@@ -199,10 +343,14 @@ class DaemonPluginRepository extends DaemonRepository
     }
 
     /**
-     * Plugin ids come from the node, so they are encoded before going into a path.
+     * Ids are checked and encoded before going into a path, so /api/plugins//uninstall can't be built.
      */
     private function path(string $plugin, ?string $action = null): string
     {
+        if (!self::isValidId($plugin)) {
+            throw new InvalidArgumentException('Refusing to call Wings with an empty or invalid plugin id.');
+        }
+
         return '/api/plugins/' . rawurlencode($plugin) . ($action ? "/$action" : '');
     }
 }

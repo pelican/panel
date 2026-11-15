@@ -116,10 +116,9 @@ it('reports a node without plugin support as unsupported', function () {
 
     $response = (new DaemonPluginRepository())->setNode($node)->getPlugins();
 
-    // Not an error: the node is healthy, it simply has nothing to manage, so
-    // it contributes no rows rather than an alarming one.
-    expect($response['supported'])->toBeFalse()
-        ->and($response['enabled'])->toBeFalse()
+    // Not an error: the node is healthy, its Wings just has no plugin API (contract A1)
+    expect($response['available'])->toBeFalse()
+        ->and($response['reason'])->toBe('unsupported')
         ->and($response['data'])->toBe([]);
 });
 
