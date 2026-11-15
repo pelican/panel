@@ -141,3 +141,14 @@ it('checks every plugin with an update url on the admin\'s nodes at once', funct
         ->and(WingsPlugin::scoped()->where('plugin_id', 'state-log')->first()->isUpdateAvailable())->toBeTrue()
         ->and(WingsPlugin::scoped()->where('plugin_id', 'notify')->first()->isUpdateAvailable())->toBeFalse();
 });
+
+it('offers no update check for a plugin the node does not trust', function () {
+    // Contract v3.1: Wings refuses update-check for an untrusted plugin and never fetches its update URL
+    $this->fakeWingsNode($this->node, [$this->wingsPlugin('state-log', ['update_url' => 'https://hub.example.test/state-log/update.json'], ['trust' => 'untrusted', 'is_trusted' => false])], 'full');
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->assertTableActionHidden('exclude_check_update', "{$this->node->id}:state-log");
+
+    expect(wingsUpdateChecks())->toBe([]);
+});

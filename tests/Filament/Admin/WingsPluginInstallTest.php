@@ -497,3 +497,24 @@ it('imports an uploaded archive in two steps on a full node', function () {
         ->and($imports[0][0]->body())->toContain('name="signature"')
         ->and(json_decode($imports[1][0]->body(), true))->toBe(['approve' => 'tok-upload']);
 });
+
+it('says which conflict the node reported at approval', function (array $error, string $key) {
+    $this->fakeWingsNode($this->node, [], 'signed', [
+        '*/api/plugins/state-log/install' => Http::sequence()
+            ->push($this->wingsStagedBody('install', 'state-log', 'tok-old'), 202)
+            ->push($error, 409, $this->wingsHeaders($this->node)),
+    ]);
+
+    livewire(ListPlugins::class)
+        ->set('activeTab', 'wings')
+        ->callTableAction('wings_install', data: ['node' => $this->node->id, 'plugin' => '@pelican/state-log'])
+        ->callMountedAction();
+
+    expect($this->lastNotification()->getBody())->toContain(trans("admin/plugin.wings.$key", ['message' => $error['error']]));
+})->with([
+    // Contract v3.1: 409s at approval carry a reason
+    'used or expired token' => [['error' => 'unknown, used or expired approval token', 'reason' => 'token'], 'approval_token'],
+    'installed plugin changed' => [['error' => 'the plugin changed since staging', 'reason' => 'destination_changed'], 'approval_destination'],
+    // An older Wings sends no reason
+    'no reason' => [['error' => 'conflict'], 'approval_conflict'],
+]);

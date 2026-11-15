@@ -535,10 +535,13 @@ class WingsPlugin extends Plugin
         return $this->isPlugin() && ($this->lastUpdateCheck()['available'] ?? false) === true;
     }
 
-    /** A plugin without an update URL has nothing to check (Wings omits update_url when empty). */
+    /**
+     * A plugin without an update URL has nothing to check (Wings omits update_url when empty), and Wings only
+     * checks plugins the node trusts (contract v3.1).
+     */
     public function canCheckForUpdate(): bool
     {
-        return $this->isPlugin() && filled($this->update_url);
+        return $this->isPlugin() && filled($this->update_url) && $this->trust === 'trusted';
     }
 
     /** @return array{installed: ?string, latest: ?string, available: bool, error: ?string}|null */

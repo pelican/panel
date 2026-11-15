@@ -122,6 +122,8 @@ return [
         'approval_missing' => 'This approval is no longer available. Start again.',
         'approval_forbidden' => 'Nothing was installed: the node\'s plugin access level changed since this was staged. :message',
         'approval_signature' => 'Nothing was installed: the staged archive\'s signature no longer passes the node\'s signature policy (its trusted keys or "require signatures" changed). :message',
+        'approval_token' => 'Nothing was installed: the node no longer has this approval (it was used, it expired after 10 minutes, or the plugin was staged again). :message',
+        'approval_destination' => 'Nothing was installed: the installed plugin changed on the node since it was staged (it was installed, removed or updated meanwhile). :message',
         'approval_conflict' => 'Nothing was installed: the node no longer has this approval (it was used, it expired after 10 minutes, or the plugin was staged again), or the installed plugin changed since it was staged. :message',
         'approval_stage_again' => 'Stage it again to see what the node would install now.',
         'approval_upload_again' => 'Upload the archive again to stage it again.',

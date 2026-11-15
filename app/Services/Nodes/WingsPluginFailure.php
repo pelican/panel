@@ -64,10 +64,26 @@ final class WingsPluginFailure
             403 => trans('admin/plugin.wings.approval_forbidden', ['message' => self::message($exception)]),
             // The staged signature no longer passes the node's trusted keys or require-signatures
             422 => trans('admin/plugin.wings.approval_signature', ['message' => self::error($exception)]),
-            // The token is unknown, used or expired, or the installed plugin changed since staging
-            409 => trans('admin/plugin.wings.approval_conflict', ['message' => self::error($exception)]),
+            // Contract v3.1: reason says which 409 it is; an older Wings sends none
+            409 => match (self::reason($exception)) {
+                'token' => trans('admin/plugin.wings.approval_token', ['message' => self::error($exception)]),
+                'destination_changed' => trans('admin/plugin.wings.approval_destination', ['message' => self::error($exception)]),
+                default => trans('admin/plugin.wings.approval_conflict', ['message' => self::error($exception)]),
+            },
             default => null,
         };
+    }
+
+    /** The `reason` of a Wings 409 (contract v3.1: token, destination_changed, untrusted), if any. */
+    public static function reason(Throwable $exception): ?string
+    {
+        if (!$exception instanceof RequestException) {
+            return null;
+        }
+
+        $reason = $exception->response->json('reason');
+
+        return is_string($reason) ? $reason : null;
     }
 
     public static function status(Throwable $exception): ?int
