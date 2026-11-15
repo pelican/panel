@@ -32,7 +32,7 @@ class ServerRestoreService
     /** How long download links for a restore stay valid, in minutes. */
     public const LINK_LIFETIME = 60;
 
-    /** How long the lock for restoring a backup is held at most, in seconds. */
+    /** How long the lock for restoring a backup is held at most, besides the daemon request, in seconds. */
     private const LOCK_SECONDS = 60;
 
     /** How long a restore waits for that lock, in seconds. */
@@ -259,7 +259,16 @@ class ServerRestoreService
             return $callback();
         }
 
-        return Cache::lock("backup-restore:$backup->uuid", self::LOCK_SECONDS)->block(self::LOCK_WAIT_SECONDS, $callback);
+        return Cache::lock("backup-restore:$backup->uuid", $this->lockSeconds())->block(self::LOCK_WAIT_SECONDS, $callback);
+    }
+
+    /**
+     * An in-place restore holds the lock while it waits for the daemon, so the lock
+     * has to outlast the longest daemon request the timeouts allow.
+     */
+    public function lockSeconds(): int
+    {
+        return self::LOCK_SECONDS + (int) config('panel.guzzle.timeout') + (int) config('panel.guzzle.connect_timeout');
     }
 
     /**

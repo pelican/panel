@@ -494,3 +494,9 @@ it('holds the backup restore lock while a new-server restore records how the nod
     expect($lockedWhileRecorded)->toBeTrue()
         ->and($restore->refresh()->callback_uuid)->toBe($backup->uuid);
 });
+
+it('holds the backup restore lock for longer than the longest daemon request', function () {
+    config(['panel.guzzle.timeout' => 60, 'panel.guzzle.connect_timeout' => 60]);
+
+    expect(app(ServerRestoreService::class)->lockSeconds())->toBe(180);
+});
