@@ -106,4 +106,9 @@ return [
         'hub_url' => env('PANEL_PLUGIN_HUB_URL', 'https://hub.pelican.dev'),
         'hub_api_key' => env('PANEL_PLUGIN_HUB_API_KEY'),
     ],
+
+    'update' => [
+        // Offer the one-click update on the admin dashboard. Updating with `php artisan p:update` is unaffected.
+        'dashboard_enabled' => env('PANEL_DASHBOARD_UPDATE_ENABLED', true),
+    ],
 ];

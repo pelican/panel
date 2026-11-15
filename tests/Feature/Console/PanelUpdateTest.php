@@ -396,6 +396,35 @@ it('hides the update from admins who are not root admins', function () {
         ->toThrow(HttpException::class);
 });
 
+it('hides the update button when dashboard updates are disabled', function () {
+    config()->set('panel.update.dashboard_enabled', false);
+    Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.1.0', 'body' => 'Release notes'])]);
+
+    $admin = User::factory()->create();
+    $admin->syncRoles(Role::getRootAdmin());
+    $this->actingAs($admin);
+
+    Livewire::test(UpdateWidget::class)
+        ->assertOk()
+        ->assertSee(trans('admin/dashboard.sections.intro-update-available.button_guide'))
+        ->assertDontSee(trans('admin/update.button'));
+});
+
+it('refuses to start an update when dashboard updates are disabled', function () use ($passingPreflight) {
+    config()->set('panel.update.dashboard_enabled', false);
+    updateServiceWithPreflight($passingPreflight);
+    Process::fake();
+
+    $admin = User::factory()->create();
+    $admin->syncRoles(Role::getRootAdmin());
+
+    expect(fn () => app(PanelUpdateService::class)->launch($admin, '1.1.0'))
+        ->toThrow(Exception::class, trans('admin/update.notifications.disabled'));
+
+    Process::assertNothingRan();
+    expect(file_exists(storage_path('app/private/update/request.json')))->toBeFalse();
+});
+
 it('opens the update modal and starts the update', function () use ($passingPreflight) {
     Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.1.0', 'body' => 'Release notes'])]);
 

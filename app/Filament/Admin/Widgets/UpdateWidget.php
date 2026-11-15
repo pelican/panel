@@ -117,7 +117,7 @@ class UpdateWidget extends FormWidget implements HasActions
 
     private function updateAction(?string $latestVersion, bool $isContainer): Action
     {
-        $visible = !$isContainer && $latestVersion !== null && user()?->isRootAdmin();
+        $visible = !$isContainer && $latestVersion !== null && user()?->isRootAdmin() && $this->panelUpdateService->dashboardEnabled();
         $preflight = $visible ? $this->panelUpdateService->preflight($latestVersion) : null;
 
         return Action::make('update_now')

@@ -75,6 +75,14 @@ class PanelUpdateService
     }
 
     /**
+     * Whether admins may start updates from the dashboard, turned off with PANEL_DASHBOARD_UPDATE_ENABLED=false.
+     */
+    public function dashboardEnabled(): bool
+    {
+        return (bool) config('panel.update.dashboard_enabled');
+    }
+
+    /**
      * Checks that can run before anything is downloaded. Errors block the update, plugins that would become
      * incompatible and a missing database dump tool need the admin's confirmation.
      *
@@ -174,6 +182,7 @@ class PanelUpdateService
     public function launch(User $user, string $target, bool $forcePlugins = false, bool $skipDatabaseBackup = false): string
     {
         throw_unless($user->isRootAdmin(), new AuthorizationException(trans('admin/update.notifications.unauthorized')));
+        throw_unless($this->dashboardEnabled(), new Exception(trans('admin/update.notifications.disabled')));
 
         // Two admins confirming at once must not both pass preflight, the second one has to see the first as queued.
         return $this->whileLaunching(function () use ($target, $forcePlugins, $skipDatabaseBackup, $user) {
