@@ -19,7 +19,7 @@ final class CreateBackupSchema extends TaskSchema
 
     public function runTask(Task $task): void
     {
-        $this->initiateService->setIsScheduled(true)->setIgnoredFiles(explode(PHP_EOL, $task->payload))->handle($task->server, null, true);
+        $this->initiateService->setIsScheduled(true)->setIgnoredFiles(preg_split('/\R/', (string) $task->payload, flags: PREG_SPLIT_NO_EMPTY) ?: [])->handle($task->server, null, true);
     }
 
     public function canCreate(Schedule $schedule, ?User $user = null, ?string $payload = null): bool
