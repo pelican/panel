@@ -106,9 +106,9 @@ class PluginHubService
 
     /**
      * The latest stable release from the plugin's update feed. Not cached, so
-     * an install always gets the current download and checksum.
+     * an install always gets the current download, checksum and signature.
      *
-     * @return array{version: string, download_url: string, sha256: ?string}|null
+     * @return array{version: string, download_url: string, sha256: ?string, signature: ?string}|null
      */
     public function latestRelease(string $slug): ?array
     {
@@ -137,6 +137,9 @@ class PluginHubService
             'download_url' => (string) $release['download_url'],
             // Null only when the feed has no checksum; an empty or invalid one is kept so it gets rejected.
             'sha256' => array_key_exists('sha256', $release) ? (string) $release['sha256'] : null,
+            // Null only when the feed has no signature. A present one that isn't a string is malformed, never
+            // "unsigned" (contract R1), so it's kept as '' for the signature check to reject.
+            'signature' => array_key_exists('signature', $release) ? (is_string($release['signature']) ? $release['signature'] : '') : null,
         ];
     }
 

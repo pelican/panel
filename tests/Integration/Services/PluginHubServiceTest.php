@@ -182,7 +182,22 @@ class PluginHubServiceTest extends IntegrationTestCase
             'version' => '1.2.0',
             'download_url' => 'https://hub.example.test/plugins/good/download/7/good.zip',
             'sha256' => 'abc',
+            'signature' => null,
         ], $this->service->latestRelease('good'));
+    }
+
+    public function test_latest_release_carries_the_signature_and_keeps_a_malformed_one_for_rejection(): void
+    {
+        Http::fake(['hub.example.test/plugins/good/update.json' => Http::sequence()
+            ->push(['*' => ['version' => '1.2.0', 'download_url' => 'https://hub.example.test/good.zip', 'sha256' => 'abc', 'signature' => 'c2ln']])
+            ->push(['*' => ['version' => '1.2.0', 'download_url' => 'https://hub.example.test/good.zip', 'sha256' => 'abc', 'signature' => null]])
+            ->push(['*' => ['version' => '1.2.0', 'download_url' => 'https://hub.example.test/good.zip', 'sha256' => 'abc', 'signature' => 5]]),
+        ]);
+
+        $this->assertSame('c2ln', $this->service->latestRelease('good')['signature'] ?? 'missing');
+        // Present but not a non-empty string: kept as '' so the signature check rejects it (contract R1).
+        $this->assertSame('', $this->service->latestRelease('good')['signature'] ?? 'missing');
+        $this->assertSame('', $this->service->latestRelease('good')['signature'] ?? 'missing');
     }
 
     public function test_latest_release_is_null_without_a_download(): void
