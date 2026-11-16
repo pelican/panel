@@ -4,6 +4,7 @@ namespace App\Filament\Admin\Resources\Webhooks\Pages;
 
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Webhooks\WebhookResource;
+use App\Models\Server;
 use App\Models\WebhookConfiguration;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
@@ -23,7 +24,10 @@ class EditWebhookConfiguration extends EditRecord
 
     public function getSubheading(): ?string
     {
-        $server = $this->getRecord()->server;
+        /** @var WebhookConfiguration $webhook */
+        $webhook = $this->getRecord();
+        /** @var Server|null $server */
+        $server = $webhook->server;
 
         return $server ? trans('admin/webhook.server') . ': ' . $server->name : null;
     }
