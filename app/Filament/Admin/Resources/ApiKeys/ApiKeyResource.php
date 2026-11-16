@@ -126,6 +126,7 @@ class ApiKeyResource extends Resource
                         ToggleButtons::make('permissions_all')
                             ->hiddenLabel()
                             ->inline()
+                            ->required()
                             ->options([
                                 0 => trans('admin/apikey.permissions.none'),
                                 1 => trans('admin/apikey.permissions.read'),

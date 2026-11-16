@@ -496,6 +496,7 @@ class EditProfile extends BaseEditProfile
                             ToggleButtons::make('top_navigation')
                                 ->label(trans('profile.navigation'))
                                 ->inline()
+                                ->required()
                                 ->options([
                                     'sidebar' => trans('profile.sidebar'),
                                     'topbar' => trans('profile.topbar'),
@@ -504,7 +505,7 @@ class EditProfile extends BaseEditProfile
                             ToggleButtons::make('button_style')
                                 ->label(trans('profile.button_style'))
                                 ->inline()
-                                ->default('icon')
+                                ->required()
                                 ->options([
                                     true => trans('profile.icon'),
                                     false => trans('profile.icon_button'),
@@ -524,6 +525,7 @@ class EditProfile extends BaseEditProfile
                                 ->label(trans('profile.redirect_to_admin'))
                                 ->helperText(trans('profile.redirect_to_admin_help'))
                                 ->inline()
+                                ->required()
                                 ->boolean(),
                         ]),
                     Section::make(trans('profile.console'))

@@ -22,6 +22,7 @@ class WebhookForm
             ->label(trans('admin/webhook.type'))
             ->live()
             ->inline()
+            ->required()
             ->options(fn (?string $state) => self::withUnavailableType($state, WebhookTypes::getOptions(), fn (string $type) => trans('admin/webhook.unavailable_type_option', ['type' => $type])))
             ->icons(fn (?string $state) => self::withUnavailableType($state, WebhookTypes::getIcons(), fn () => TablerIcon::PuzzleOff))
             ->colors(fn (?string $state) => self::withUnavailableType($state, WebhookTypes::getColors(), fn () => 'gray'))

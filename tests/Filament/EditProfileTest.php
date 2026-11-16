@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\UserSSHKey;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\ToggleButtons;
 
 use function Pest\Livewire\livewire;
 
@@ -147,4 +148,18 @@ it('blocks account deletion for the last root admin', function () {
         ->assertActionDisabled('delete_account');
 
     expect(User::query()->find($user->id))->not->toBeNull();
+});
+
+it('fills the button style toggle with one of its options and requires every toggle', function () {
+    /** @var User $user */
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $page = livewire(EditProfile::class)->assertSchemaStateSet(['button_style' => true]);
+
+    $toggles = collect($page->instance()->getSchema('form')->getFlatComponents(withHidden: true))
+        ->filter(fn ($component) => $component instanceof ToggleButtons && !$component->isDisabled());
+
+    expect($toggles)->not->toBeEmpty()
+        ->and($toggles->reject->isRequired()->map->getName()->values()->all())->toBe([]);
 });
