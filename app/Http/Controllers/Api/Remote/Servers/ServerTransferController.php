@@ -92,9 +92,14 @@ class ServerTransferController extends Controller
             // node deletes the rest with the server, like a batch transfer that leaves them.
             // Backups held by another node are not touched by either.
             foreach ($this->batchService->localBackups($server) as $backup) {
+                // A listed backup held by another node was not sent by the old node.
+                if ($backup->node_id !== null && $backup->node_id !== $transfer->old_node) {
+                    continue;
+                }
+
                 if (in_array($backup->uuid, $transfer->backup_uuids ?? [], true)) {
                     $backup->update(['node_id' => $transfer->new_node]);
-                } elseif ($backup->node_id === null || $backup->node_id === $transfer->old_node) {
+                } else {
                     $backup->delete();
                 }
             }
