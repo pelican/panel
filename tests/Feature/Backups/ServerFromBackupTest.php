@@ -412,6 +412,14 @@ it('does not follow a redirect of a link to an internal address', function () {
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '10.0.0.5'));
 });
 
+it('gives up on a link that redirects to a location that is not a link', function () {
+    Http::fake(['*' => Http::response('', 302, ['Location' => 'http:///x'])]);
+
+    expect(app(BackupConfigResolver::class)->resolve(RestoreSource::url('https://93.184.215.14/backup.tar.gz')))->toBeNull();
+
+    Http::assertSentCount(1);
+});
+
 it('gives up on a link after a few redirects', function () {
     Http::fake(['*' => Http::response('', 302, ['Location' => 'https://93.184.215.14/again'])]);
 

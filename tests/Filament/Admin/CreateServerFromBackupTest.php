@@ -117,6 +117,48 @@ it('lists the addresses that are not on the chosen node', function () {
         ->assertSet('restoreMissingAllocations', ['127.0.0.1:25598']);
 });
 
+it('only creates missing allocations on nodes the administrator can access', function () {
+    Http::fake();
+    $visibleNode = Node::factory()->create();
+    $hiddenNode = Node::factory()->create();
+    // 0.0.0.0 is an address of every node, so the backup's address can be created on either.
+    $backup = keptBackup($visibleNode, Egg::factory()->create(), 25640);
+    $config = $backup->pelican_config;
+    $config['allocations']['default']['ip'] = '0.0.0.0';
+    $backup->update(['pelican_config' => $config]);
+
+    $role = Role::query()->create(['name' => 'Node admin', 'guard_name' => 'web']);
+    $role->givePermissionTo([
+        Permission::findOrCreate(RolePermissionModels::Server->viewAny(), 'web'),
+        Permission::findOrCreate(RolePermissionModels::Server->create(), 'web'),
+        Permission::findOrCreate(RolePermissionModels::Allocation->create(), 'web'),
+    ]);
+    $role->nodes()->sync([$visibleNode->id]);
+    [$nodeAdmin] = generateTestAccount();
+    $nodeAdmin->syncRoles($role);
+    $this->actingAs($nodeAdmin);
+
+    session()->put('restore_source.scoped', RestoreSource::backup($backup)->toArray());
+    $page = Livewire::withQueryParams(['restore' => 'scoped'])->test(CreateServer::class)
+        ->assertSet('restoreMissingAllocations', ['0.0.0.0:25640']);
+
+    // The testing helpers do not resolve actions nested in the wizard's steps, so the
+    // action is taken from the form.
+    $action = fn () => $page->instance()->form
+        ->getComponent(fn ($component) => $component->getKey(isAbsolute: false) === 'restore_allocation_actions', withHidden: true)
+        ->getChildSchema()->getComponents(withHidden: true)[0];
+
+    expect($action()->getName())->toBe('create_missing_allocations')
+        ->and($action()->isVisible())->toBeTrue();
+
+    // The node select only offers accessible nodes, but the form state can be set to any.
+    $page->set('data.node_id', (string) $hiddenNode->id);
+
+    expect($action()->isVisible())->toBeFalse();
+
+    expect(Allocation::query()->where('node_id', $hiddenNode->id)->exists())->toBeFalse();
+});
+
 it('shows kept backups to administrators who can create servers', function () {
     $node = Node::factory()->create();
     $backup = keptBackup($node, Egg::factory()->create(), 25597);
@@ -293,7 +335,7 @@ it('shows restored boolean variables as the toggles their values are', function 
         ->assertHasNoFormErrors();
 
     $server = Server::query()->where('name', 'restored-server')->sole();
-    expect($server->variables()->pluck('server_value', 'env_variable')->all())->toBe(['AUTO_UPDATE' => '0', 'ALLOW_OP' => '1']);
+    expect($server->variables()->orderBy('egg_variables.sort')->pluck('server_value', 'env_variable')->all())->toBe(['AUTO_UPDATE' => '0', 'ALLOW_OP' => '1']);
 });
 
 it('lists the variables that are not in the backup and the required ones without a value', function () {

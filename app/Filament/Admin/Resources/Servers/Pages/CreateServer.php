@@ -102,6 +102,7 @@ class CreateServer extends CreateRecord
      *
      * @var string[]
      */
+    #[Locked]
     public array $restoreMissingAllocations = [];
 
     /**
@@ -257,10 +258,12 @@ class CreateServer extends CreateRecord
                         ->size(Size::Small)
                         ->icon(TablerIcon::Plus)
                         ->authorize(fn () => user()?->can('create', Allocation::class))
-                        ->visible(fn (Get $get) => !empty($this->restoreMissingAllocations) && ($node = Node::find($get('node_id'))) &&
+                        // The node comes from the form state, so it is looked up among the nodes the
+                        // admin can access, like the node select offers.
+                        ->visible(fn (Get $get) => !empty($this->restoreMissingAllocations) && ($node = user()?->accessibleNodes()->find($get('node_id'))) &&
                             !empty($this->configImporter->creatableAllocations($this->restoreMissingAllocations, $node)))
                         ->action(function (Get $get, Set $set, AssignmentService $assignmentService) {
-                            $node = Node::findOrFail($get('node_id'));
+                            $node = user()?->accessibleNodes()->findOrFail($get('node_id'));
                             $creatable = $this->configImporter->creatableAllocations($this->restoreMissingAllocations, $node);
 
                             foreach ($creatable as $ip => $ports) {
@@ -272,7 +275,7 @@ class CreateServer extends CreateRecord
 
                             $this->applyRestoreAllocations($set, $node);
                         }),
-                ]),
+                ])->key('restore_allocation_actions'),
                 // Only shown while the backup's egg is selected, another egg has other variables.
                 TextEntry::make('restore_defaulted_variables')
                     ->label(trans('admin/backup.restore.defaulted_variables'))

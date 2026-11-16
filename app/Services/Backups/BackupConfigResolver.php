@@ -10,6 +10,7 @@ use GuzzleHttp\Handler\CurlHandler;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -176,7 +177,12 @@ class BackupConfigResolver
                 return $result;
             }
 
-            $url = (string) UriResolver::resolve(new Uri($url), new Uri($result['location']));
+            try {
+                $url = (string) UriResolver::resolve(new Uri($url), new Uri($result['location']));
+            } catch (InvalidArgumentException) {
+                // A redirect to a location that is not a link gives nothing to read.
+                return null;
+            }
         }
 
         return null;
