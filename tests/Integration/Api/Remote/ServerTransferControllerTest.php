@@ -84,6 +84,20 @@ class ServerTransferControllerTest extends IntegrationTestCase
         $this->assertNotNull(Backup::query()->find($remote->id));
     }
 
+    public function test_successful_transfer_leaves_backups_held_by_another_node(): void
+    {
+        $server = $this->transfer->server;
+        $elsewhere = Node::factory()->create();
+        $backup = Backup::factory()->create(['server_id' => $server->id, 'node_id' => $elsewhere->id, 'backup_host_id' => BackupHost::factory()->create()->id]);
+
+        $newNode = $this->transfer->newNode;
+        $this->withHeader('Authorization', "Bearer $newNode->daemon_token_id." . $newNode->daemon_token)
+            ->postJson("/api/remote/servers/{$server->uuid}/transfer/success")
+            ->assertNoContent();
+
+        $this->assertSame($elsewhere->id, $backup->refresh()->node_id);
+    }
+
     public function test_a_restarting_node_fails_restores_waiting_for_an_interrupted_install(): void
     {
         $node = $this->transfer->oldNode;
