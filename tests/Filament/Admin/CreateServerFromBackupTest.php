@@ -185,3 +185,34 @@ it('refuses links to internal addresses as a restore source', function () {
 
     expect(session()->get('restore_source'))->toBeEmpty();
 });
+
+it('does not create a server restored from a link to an internal address', function () {
+    $daemon = Mockery::mock(DaemonServerRepository::class);
+    $daemon->shouldNotReceive('create');
+    $this->swap(DaemonServerRepository::class, $daemon);
+
+    $node = Node::factory()->create();
+    $allocation = Allocation::factory()->create(['node_id' => $node->id, 'server_id' => null]);
+    $egg = Egg::factory()->create();
+
+    session()->put('last_utilized_node', $node->id);
+    // Stored by the action while the link was public, it no longer is when the server is created.
+    session()->put('restore_source.link', RestoreSource::url('http://127.0.0.1/backup.tar.gz')->toArray());
+
+    Livewire::withQueryParams(['restore' => 'link'])
+        ->test(CreateServer::class)
+        ->fillForm([
+            'name' => 'from-a-link',
+            'owner_id' => $this->admin->id,
+            'node_id' => $node->id,
+            'allocation_id' => $allocation->id,
+            'egg_id' => $egg->id,
+            'image' => 'ghcr.io/pelican-eggs/yolks:java_21',
+            'startup' => 'java -jar server.jar',
+        ])
+        ->call('create')
+        ->assertNotified(trans('admin/server.notifications.create_failed'));
+
+    expect(Server::query()->where('name', 'from-a-link')->exists())->toBeFalse()
+        ->and(ServerRestore::query()->exists())->toBeFalse();
+});

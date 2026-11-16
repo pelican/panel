@@ -33,7 +33,7 @@ final readonly class RestoreSource
 
     public static function s3(BackupHost $backupHost, string $key): self
     {
-        return new self(self::TYPE_S3, backupHostId: $backupHost->id, key: ltrim(trim($key), '/'));
+        return new self(self::TYPE_S3, backupHostId: $backupHost->id, key: trim($key));
     }
 
     public static function url(string $url): self

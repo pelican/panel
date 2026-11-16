@@ -1071,6 +1071,12 @@ class CreateServer extends CreateRecord
             // The restore is recorded before the node is asked to create the server, so a
             // fast (skipped) install that reports back right away still finds it.
             $source = RestoreSource::fromArray($this->restoreSource);
+            // The node downloads the link, so it is checked again in case its host now
+            // resolves to another address than when it was entered.
+            if ($source->type === RestoreSource::TYPE_URL && !$this->configResolver->isPublicUrl((string) $source->url)) {
+                throw new DisplayException(trans('admin/backup.restore.url_not_public'));
+            }
+
             $server = $this->serverCreationService->handle($data, beforeDaemon: function (Server $server) use ($source, $startOnCompletion) {
                 $this->restoreService->create($server, $source, $startOnCompletion);
             });

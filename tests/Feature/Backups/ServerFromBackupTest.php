@@ -387,6 +387,13 @@ it('does not fetch links to internal addresses', function () {
     Http::assertNothingSent();
 });
 
+it('keeps the exact S3 object key, including a leading slash', function () {
+    $host = BackupHost::factory()->create(['schema' => 's3']);
+
+    expect(RestoreSource::s3($host, ' /snapshots/server.tar.gz ')->key)->toBe('/snapshots/server.tar.gz')
+        ->and(RestoreSource::fromArray(RestoreSource::s3($host, '/snapshots/server.tar.gz')->toArray())->key)->toBe('/snapshots/server.tar.gz');
+});
+
 it('only accepts http links as a restore source', function () {
     RestoreSource::url('file:///etc/passwd');
 })->throws(InvalidArgumentException::class);
