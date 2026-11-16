@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\Servers\Pages;
 
+use App\Enums\StartupVariableType;
 use App\Enums\TablerIcon;
 use App\Exceptions\DisplayException;
 use App\Filament\Admin\Resources\Servers\ServerResource;
@@ -196,7 +197,14 @@ class CreateServer extends CreateRecord
         // does not wrap simple repeater items, so both repeaters are set afterwards in
         // the shape their items have.
         $this->data['allocation_additional'] = $this->repeaterItems(array_map(fn (int $id) => ['extra_allocations' => $id], $allocations['allocation_additional']));
-        $this->data['server_variables'] = $this->repeaterItems($state['server_variables'] ?? []);
+        $this->data['server_variables'] = $this->repeaterItems(array_map(
+            // Set this way the field's state casts do not run, and a toggle would show "0"
+            // as on. Toggles hold 0 or 1, like StartupVariable's boolean cast makes them.
+            fn (array $variable) => StartupVariable::typeForRules($variable['rules'] ?? []) === StartupVariableType::Toggle
+                ? [...$variable, 'variable_value' => (int) boolval($variable['variable_value'])]
+                : $variable,
+            $state['server_variables'] ?? [],
+        ));
     }
 
     /**

@@ -262,6 +262,40 @@ it('shows the restored variables and keeps the additional allocations in the wiz
         ->and($server->variables()->where('env_variable', 'GREETING')->first()?->server_value)->toBe('from-the-backup');
 });
 
+it('shows restored boolean variables as the toggles their values are', function () {
+    $daemon = Mockery::mock(DaemonServerRepository::class);
+    $daemon->expects('setServer')->andReturnSelf();
+    $daemon->expects('create')->andReturnUndefined();
+    $this->swap(DaemonServerRepository::class, $daemon);
+
+    $node = Node::factory()->create();
+    Allocation::factory()->create(['node_id' => $node->id, 'server_id' => null, 'ip' => '127.0.0.1', 'port' => 25630]);
+    $egg = Egg::factory()->create();
+    EggVariable::factory()->create(['egg_id' => $egg->id, 'env_variable' => 'AUTO_UPDATE', 'default_value' => '1', 'rules' => ['boolean'], 'user_viewable' => true, 'user_editable' => true, 'sort' => 1]);
+    EggVariable::factory()->create(['egg_id' => $egg->id, 'env_variable' => 'ALLOW_OP', 'default_value' => '0', 'rules' => ['boolean'], 'user_viewable' => true, 'user_editable' => true, 'sort' => 2]);
+
+    $backup = keptBackup($node, $egg, 25630);
+    $config = $backup->pelican_config;
+    $config['variables'] = ['AUTO_UPDATE' => '0', 'ALLOW_OP' => '1'];
+    $backup->update(['pelican_config' => $config]);
+
+    session()->put('last_utilized_node', $node->id);
+    session()->put('restore_source.toggles', RestoreSource::backup($backup)->toArray());
+
+    $page = Livewire::withQueryParams(['restore' => 'toggles'])->test(CreateServer::class);
+
+    // A toggle reads "0" as on, so the values are the 0 and 1 the field's boolean cast gives.
+    $values = collect($page->get('data.server_variables'))->pluck('variable_value', 'env_variable');
+    expect($values->all())->toBe(['AUTO_UPDATE' => 0, 'ALLOW_OP' => 1]);
+
+    $page->fillForm(['owner_id' => $this->admin->id])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $server = Server::query()->where('name', 'restored-server')->sole();
+    expect($server->variables()->pluck('server_value', 'env_variable')->all())->toBe(['AUTO_UPDATE' => '0', 'ALLOW_OP' => '1']);
+});
+
 it('lists the variables that are not in the backup and the required ones without a value', function () {
     $node = Node::factory()->create();
     $egg = Egg::factory()->create();
