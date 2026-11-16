@@ -19,6 +19,8 @@ use App\Services\Backups\RestoreSource;
 use App\Services\Backups\ServerConfigExporterService;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\Select;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 
@@ -157,6 +159,41 @@ it('only creates missing allocations on nodes the administrator can access', fun
     expect($action()->isVisible())->toBeFalse();
 
     expect(Allocation::query()->where('node_id', $hiddenNode->id)->exists())->toBeFalse();
+});
+
+it('only creates allocations from the wizard on nodes the administrator can access', function () {
+    Http::fake();
+    $visibleNode = Node::factory()->create();
+    $hiddenNode = Node::factory()->create();
+
+    $role = Role::query()->create(['name' => 'Node admin', 'guard_name' => 'web']);
+    $role->givePermissionTo([
+        Permission::findOrCreate(RolePermissionModels::Server->viewAny(), 'web'),
+        Permission::findOrCreate(RolePermissionModels::Server->create(), 'web'),
+        Permission::findOrCreate(RolePermissionModels::Allocation->create(), 'web'),
+    ]);
+    $role->nodes()->sync([$visibleNode->id]);
+    [$nodeAdmin] = generateTestAccount();
+    $nodeAdmin->syncRoles($role);
+    $this->actingAs($nodeAdmin);
+
+    $page = Livewire::test(CreateServer::class);
+
+    // The testing helpers do not resolve actions nested in the wizard's steps, so the
+    // allocation select's create callback is called as its action would.
+    $createAllocation = function (int $port) use ($page) {
+        $select = $page->instance()->form->getComponent(fn ($component) => $component instanceof Select && $component->getName() === 'allocation_id', withHidden: true);
+
+        return $select->evaluate($select->getCreateOptionUsing(), ['data' => ['allocation_ip' => '0.0.0.0', 'allocation_ports' => [(string) $port]]]);
+    };
+
+    $page->set('data.node_id', (string) $visibleNode->id);
+    expect(Allocation::query()->find($createAllocation(25650))?->node_id)->toBe($visibleNode->id);
+
+    // The node select only offers accessible nodes, but the form state can be set to any.
+    $page->set('data.node_id', (string) $hiddenNode->id);
+    expect(fn () => $createAllocation(25651))->toThrow(ModelNotFoundException::class)
+        ->and(Allocation::query()->where('node_id', $hiddenNode->id)->exists())->toBeFalse();
 });
 
 it('shows kept backups to administrators who can create servers', function () {

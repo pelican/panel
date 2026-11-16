@@ -541,8 +541,10 @@ class CreateServer extends CreateRecord
                             ];
                         })
                         ->createOptionUsing(function (array $data, Get $get, AssignmentService $assignmentService): int {
+                            // The node comes from the form state, so it is looked up among the nodes
+                            // the admin can access, like the node select offers.
                             return collect(
-                                $assignmentService->handle(Node::find($get('node_id')), $data)
+                                $assignmentService->handle(user()?->accessibleNodes()->findOrFail($get('node_id')), $data)
                             )->firstOrFail();
                         }),
                     Repeater::make('allocation_additional')
