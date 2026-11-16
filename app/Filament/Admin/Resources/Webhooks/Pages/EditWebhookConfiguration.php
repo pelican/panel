@@ -21,6 +21,13 @@ class EditWebhookConfiguration extends EditRecord
 
     protected static string $resource = WebhookResource::class;
 
+    public function getSubheading(): ?string
+    {
+        $server = $this->getRecord()->server;
+
+        return $server ? trans('admin/webhook.server') . ': ' . $server->name : null;
+    }
+
     /** @return array<Action|ActionGroup> */
     protected function getDefaultHeaderActions(): array
     {
