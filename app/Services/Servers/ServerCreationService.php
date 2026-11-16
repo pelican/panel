@@ -18,6 +18,7 @@ use App\Services\Deployment\FindViableNodesService;
 use Closure;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -128,7 +129,9 @@ class ServerCreationService
             $this->daemonServerRepository
                 ->setServer($server)
                 ->create($data['start_on_completion'] ?? false);
-        } catch (ConnectionException $exception) {
+        } catch (ConnectionException|RequestException $exception) {
+            // Whether the node could not be reached or rejected the server, it does not
+            // have it, so the Panel does not keep it either.
             $this->serverDeletionService->withForce()->handle($server);
 
             throw $exception;
