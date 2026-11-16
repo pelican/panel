@@ -81,6 +81,7 @@ it('persists the type payload when creating a server webhook', function () {
             'type' => 'collapsing',
             'endpoint' => 'https://example.com/hook',
             'name' => 'Notifier',
+            'description' => 'Test webhook description',
             'events' => ['server:power.start'],
             'username' => 'Valheim-Server',
             'content' => 'Valheim-Server: {{event}}',
