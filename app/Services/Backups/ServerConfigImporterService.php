@@ -188,6 +188,35 @@ class ServerConfigImporterService
     }
 
     /**
+     * The egg's variables the configuration has no value for, so they use the egg
+     * default. Backups leave out variables users cannot see, and variables added to
+     * the egg after the backup was made are not in it either. A required variable
+     * with an empty default has to be filled in before the server can be created.
+     *
+     * @param  array<string, mixed>  $config
+     * @return list<array{name: string, env_variable: string, required_empty: bool}>
+     */
+    public function defaultedVariables(array $config): array
+    {
+        $egg = $this->findEgg($config);
+        if (!$egg) {
+            return [];
+        }
+
+        $values = Arr::get($config, 'variables', []);
+
+        return EggVariable::query()->where('egg_id', $egg->id)->orderBy('sort')->get()
+            ->reject(fn (EggVariable $variable) => array_key_exists($variable->env_variable, $values))
+            ->map(fn (EggVariable $variable) => [
+                'name' => $variable->name,
+                'env_variable' => $variable->env_variable,
+                'required_empty' => $variable->required && ($variable->default_value ?? '') === '',
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
      * Finds the configuration's allocations on the given node. Allocations that
      * are free are selected, the rest are returned as missing.
      *

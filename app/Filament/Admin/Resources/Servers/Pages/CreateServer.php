@@ -103,6 +103,18 @@ class CreateServer extends CreateRecord
      */
     public array $restoreMissingAllocations = [];
 
+    /**
+     * The restored egg's variables the backup has no value for.
+     *
+     * @var list<array{name: string, env_variable: string, required_empty: bool}>
+     */
+    #[Locked]
+    public array $restoreDefaultedVariables = [];
+
+    /** The egg the backup's variables belong to. */
+    #[Locked]
+    public ?int $restoreEggId = null;
+
     public function boot(
         ServerCreationService $serverCreationService,
         ServerConfigImporterService $configImporter,
@@ -170,6 +182,9 @@ class CreateServer extends CreateRecord
                 ->persistent()
                 ->send();
         }
+
+        $this->restoreEggId = $state['egg_id'] ?? null;
+        $this->restoreDefaultedVariables = $importer->defaultedVariables($this->restoreConfig);
 
         $allocations = $importer->matchAllocations($this->restoreConfig, Node::find($state['node_id'] ?? null));
         $state['allocation_id'] = $allocations['allocation_id'];
@@ -250,6 +265,18 @@ class CreateServer extends CreateRecord
                             $this->applyRestoreAllocations($set, $node);
                         }),
                 ]),
+                // Only shown while the backup's egg is selected, another egg has other variables.
+                TextEntry::make('restore_defaulted_variables')
+                    ->label(trans('admin/backup.restore.defaulted_variables'))
+                    ->state(fn () => collect($this->restoreDefaultedVariables)->map(fn (array $variable) => "{$variable['name']} ({$variable['env_variable']})")->implode(', '))
+                    ->visible(fn (Get $get) => !empty($this->restoreDefaultedVariables) && (int) $get('egg_id') === $this->restoreEggId)
+                    ->helperText(trans('admin/backup.restore.defaulted_variables_help')),
+                TextEntry::make('restore_required_variables')
+                    ->label(trans('admin/backup.restore.required_variables'))
+                    ->state(fn () => collect($this->restoreDefaultedVariables)->where('required_empty', true)->map(fn (array $variable) => "{$variable['name']} ({$variable['env_variable']})")->implode(', '))
+                    ->color('danger')
+                    ->visible(fn (Get $get) => collect($this->restoreDefaultedVariables)->contains('required_empty', true) && (int) $get('egg_id') === $this->restoreEggId)
+                    ->helperText(trans('admin/backup.restore.required_variables_help')),
             ]);
     }
 

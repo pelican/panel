@@ -262,6 +262,56 @@ it('shows the restored variables and keeps the additional allocations in the wiz
         ->and($server->variables()->where('env_variable', 'GREETING')->first()?->server_value)->toBe('from-the-backup');
 });
 
+it('lists the variables that are not in the backup and the required ones without a value', function () {
+    $node = Node::factory()->create();
+    $egg = Egg::factory()->create();
+    EggVariable::factory()->create(['egg_id' => $egg->id, 'name' => 'Greeting', 'env_variable' => 'GREETING', 'default_value' => 'hello', 'rules' => ['required', 'string'], 'user_viewable' => true, 'user_editable' => true, 'sort' => 1]);
+    EggVariable::factory()->create(['egg_id' => $egg->id, 'name' => 'Max Players', 'env_variable' => 'MAX_PLAYERS', 'default_value' => '20', 'rules' => ['required', 'integer'], 'user_viewable' => false, 'user_editable' => false, 'sort' => 2]);
+    EggVariable::factory()->create(['egg_id' => $egg->id, 'name' => 'License Key', 'env_variable' => 'LICENSE_KEY', 'default_value' => '', 'rules' => ['required', 'string'], 'user_viewable' => false, 'user_editable' => false, 'sort' => 3]);
+
+    $backup = keptBackup($node, $egg, 25620);
+    $config = $backup->pelican_config;
+    $config['variables'] = ['GREETING' => 'from-the-backup'];
+    $backup->update(['pelican_config' => $config]);
+
+    session()->put('last_utilized_node', $node->id);
+    session()->put('restore_source.defaults', RestoreSource::backup($backup)->toArray());
+
+    $page = Livewire::withQueryParams(['restore' => 'defaults'])->test(CreateServer::class);
+
+    expect($page->get('restoreDefaultedVariables'))->toBe([
+        ['name' => 'Max Players', 'env_variable' => 'MAX_PLAYERS', 'required_empty' => false],
+        ['name' => 'License Key', 'env_variable' => 'LICENSE_KEY', 'required_empty' => true],
+    ]);
+
+    $page->assertSeeText(trans('admin/backup.restore.defaulted_variables'))
+        ->assertSeeText('Max Players (MAX_PLAYERS), License Key (LICENSE_KEY)')
+        ->assertSeeText(trans('admin/backup.restore.required_variables'));
+
+    // Another egg has other variables, so the list no longer applies.
+    $page->set('data.egg_id', Egg::factory()->create()->id)
+        ->assertDontSeeText(trans('admin/backup.restore.defaulted_variables'))
+        ->assertDontSeeText(trans('admin/backup.restore.required_variables'));
+});
+
+it('does not list variables when the backup has all of them', function () {
+    $node = Node::factory()->create();
+    $egg = Egg::factory()->create();
+    EggVariable::factory()->create(['egg_id' => $egg->id, 'env_variable' => 'GREETING', 'default_value' => 'hello', 'rules' => ['required', 'string'], 'user_viewable' => true, 'user_editable' => true]);
+
+    $backup = keptBackup($node, $egg, 25621);
+    $config = $backup->pelican_config;
+    $config['variables'] = ['GREETING' => 'from-the-backup'];
+    $backup->update(['pelican_config' => $config]);
+
+    session()->put('last_utilized_node', $node->id);
+    session()->put('restore_source.complete', RestoreSource::backup($backup)->toArray());
+
+    Livewire::withQueryParams(['restore' => 'complete'])->test(CreateServer::class)
+        ->assertSet('restoreDefaultedVariables', [])
+        ->assertDontSeeText(trans('admin/backup.restore.defaulted_variables'));
+});
+
 it('lets administrators download a kept backup', function () {
     $node = Node::factory()->create();
     $backup = keptBackup($node, Egg::factory()->create(), 25596);
