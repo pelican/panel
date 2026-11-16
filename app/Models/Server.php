@@ -542,11 +542,14 @@ class Server extends Model implements HasAvatar, Validatable
             return ContainerStatus::Missing;
         }
 
-        return cache()->remember("servers.$this->uuid.status", now()->addSeconds(15), function () {
-            if ($this->node->isUnreachable()) {
-                return ContainerStatus::Missing;
-            }
+        $key = "servers.$this->uuid.status";
 
+        // Not cached: once the node's backoff ends, the next lookup asks the daemon again.
+        if (!cache()->has($key) && $this->node->isUnreachable()) {
+            return ContainerStatus::Missing;
+        }
+
+        return cache()->remember($key, now()->addSeconds(15), function () {
             // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
             $state = app(DaemonServerRepository::class)->setServer($this)->getState();
 
@@ -570,9 +573,22 @@ class Server extends Model implements HasAvatar, Validatable
             return [];
         }
 
-        return cache()->remember("servers.$this->uuid.resources", now()->addSeconds(15), function () {
+        $key = "servers.$this->uuid.resources";
+
+        // Same backoff as retrieveStatus(): a list of servers on a dead node waits for one timeout, not one per server.
+        if (!cache()->has($key) && $this->node->isUnreachable()) {
+            return [];
+        }
+
+        return cache()->remember($key, now()->addSeconds(15), function () {
             // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
-            $details = app(DaemonServerRepository::class)->setServer($this)->getDetails();
+            $details = app(DaemonServerRepository::class)->setServer($this)->getDetailsIfAnswered();
+
+            if ($details === null) {
+                $this->node->markUnreachable();
+
+                return [];
+            }
 
             return Arr::get($details, 'utilization', []);
         });

@@ -13,6 +13,24 @@ beforeEach(function () {
     Filament::setCurrentPanel('app');
 });
 
+it('asks an unreachable node only once while rendering the server list', function () {
+    [$user, $first] = generateTestAccount();
+    $user->setCustomization(CustomizationKey::DashboardLayout, 'table');
+    foreach (range(1, 2) as $ignored) {
+        createServerModel(['user_id' => $user->id, 'node_id' => $first->node_id]);
+    }
+    Http::fake(['*' => Http::failedConnection()]);
+
+    $this->actingAs($user);
+
+    // The list layout shows each server's condition and CPU, memory and disk usage.
+    livewire(ListServers::class)->assertSuccessful();
+
+    // One request for all three servers. The node's system information is fetched once per node anyway.
+    $serverRequests = Http::recorded(fn ($request) => str_contains($request->url(), '/api/servers/'));
+    expect($serverRequests)->toHaveCount(1);
+});
+
 it('persists a valid per-page selection to the user customization', function () {
     [$user] = generateTestAccount();
 

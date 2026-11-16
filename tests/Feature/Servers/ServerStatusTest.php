@@ -42,6 +42,41 @@ it('keeps asking other nodes while one is unreachable', function () {
     Http::assertSentCount(2);
 });
 
+it('asks the node again once its backoff ends', function () {
+    $server = createServerModel();
+    $server->node->markUnreachable();
+    Http::fake(["{$server->node->fqdn}*" => wingsResponse($server->node, ['state' => 'running'])]);
+
+    expect($server->retrieveStatus())->toBe(ContainerStatus::Missing);
+    Http::assertSentCount(0);
+
+    // The skipped lookup above must not have been cached for this server.
+    cache()->forget("nodes.{$server->node->id}.unreachable");
+
+    expect($server->retrieveStatus())->toBe(ContainerStatus::Running);
+    Http::assertSentCount(1);
+});
+
+it('applies the backoff to resource lookups too', function () {
+    $node = Node::factory()->create();
+    $servers = collect(range(1, 3))->map(fn () => createServerModel(['node_id' => $node->id]));
+    Http::fake(['*' => Http::failedConnection()]);
+
+    foreach ($servers as $server) {
+        expect($server->retrieveResources())->toBe([])
+            ->and($server->retrieveStatus())->toBe(ContainerStatus::Missing);
+    }
+
+    Http::assertSentCount(1);
+});
+
+it('returns the utilization the daemon reports', function () {
+    $server = createServerModel();
+    Http::fake(["{$server->node->fqdn}*" => wingsResponse($server->node, ['state' => 'running', 'utilization' => ['memory_bytes' => 1024]])]);
+
+    expect($server->retrieveResources())->toBe(['memory_bytes' => 1024]);
+});
+
 it('does not mark a node unreachable when it only lacks the server', function () {
     $node = Node::factory()->create();
     [$missing, $other] = [createServerModel(['node_id' => $node->id]), createServerModel(['node_id' => $node->id])];

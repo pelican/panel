@@ -20,6 +20,17 @@ class DaemonServerRepository extends DaemonRepository
      */
     public function getDetails(int $timeout = 1): array
     {
+        return $this->getDetailsIfAnswered($timeout) ?? ['state' => ContainerStatus::Missing->value];
+    }
+
+    /**
+     * Like getDetails(), but returns null when the daemon didn't answer, so callers can tell a daemon
+     * that is down apart from a server it doesn't have.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getDetailsIfAnswered(int $timeout = 1): ?array
+    {
         try {
             return $this->getHttpClient()->connectTimeout($timeout)->timeout($timeout)->get("/api/servers/{$this->server->uuid}")->throw()->json();
         } catch (RequestException $exception) {
@@ -38,11 +49,16 @@ class DaemonServerRepository extends DaemonRepository
                     ->danger()
                     ->send();
             }
+
+            // The daemon answered, it just doesn't have the server.
+            if ($exception->response->notFound()) {
+                return ['state' => ContainerStatus::Missing->value];
+            }
         } catch (Exception $exception) {
             report($exception);
         }
 
-        return ['state' => ContainerStatus::Missing->value];
+        return null;
     }
 
     /**
