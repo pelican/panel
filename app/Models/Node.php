@@ -486,6 +486,21 @@ class Node extends Model implements Validatable
         return $this->maintenance_mode;
     }
 
+    /**
+     * Whether the daemon recently failed to answer a status request. While it is marked, status
+     * lookups for its servers skip the request, so a list of servers on a dead node waits for one
+     * timeout instead of one per server.
+     */
+    public function isUnreachable(): bool
+    {
+        return cache()->has("nodes.$this->id.unreachable");
+    }
+
+    public function markUnreachable(): void
+    {
+        cache()->put("nodes.$this->id.unreachable", true, now()->addSeconds(15));
+    }
+
     public function mounts(): MorphToMany
     {
         return $this->morphToMany(Mount::class, 'mountable');

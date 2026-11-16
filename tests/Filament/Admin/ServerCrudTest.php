@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContainerStatus;
 use App\Enums\RolePermissionModels;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
@@ -77,7 +78,7 @@ it('can delete a server', function () {
     $daemon = Mockery::mock(DaemonServerRepository::class);
     $daemon->shouldReceive('setServer')->andReturnSelf();
     // Rendering the edit page polls the server's container status.
-    $daemon->shouldReceive('getDetails')->andReturn(['state' => 'offline']);
+    $daemon->shouldReceive('getState')->andReturn(ContainerStatus::Offline);
     $daemon->shouldReceive('delete');
     $this->swap(DaemonServerRepository::class, $daemon);
 

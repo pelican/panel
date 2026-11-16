@@ -543,10 +543,21 @@ class Server extends Model implements HasAvatar, Validatable
         }
 
         return cache()->remember("servers.$this->uuid.status", now()->addSeconds(15), function () {
-            // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
-            $details = app(DaemonServerRepository::class)->setServer($this)->getDetails();
+            if ($this->node->isUnreachable()) {
+                return ContainerStatus::Missing;
+            }
 
-            return ContainerStatus::tryFrom(Arr::get($details, 'state')) ?? ContainerStatus::Missing;
+            // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
+            $state = app(DaemonServerRepository::class)->setServer($this)->getState();
+
+            if ($state === null) {
+                // The daemon didn't answer, don't wait on it again for every other server on this node.
+                $this->node->markUnreachable();
+
+                return ContainerStatus::Missing;
+            }
+
+            return $state;
         });
     }
 

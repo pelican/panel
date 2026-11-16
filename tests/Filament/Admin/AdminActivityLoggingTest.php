@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContainerStatus;
 use App\Events\ActivityLogged;
 use App\Filament\Admin\Resources\Eggs\Pages\EditEgg;
 use App\Filament\Admin\Resources\Mounts\Pages\CreateMount;
@@ -251,7 +252,8 @@ it('logs server update', function () {
 it('logs server delete', function () {
     $daemon = Mockery::mock(DaemonServerRepository::class);
     $daemon->shouldReceive('setServer')->andReturnSelf();
-    $daemon->shouldReceive('getDetails')->andReturn(['state' => 'offline']);
+    // Rendering the edit page polls the server's container status.
+    $daemon->shouldReceive('getState')->andReturn(ContainerStatus::Offline);
     $daemon->shouldReceive('delete');
     $this->swap(DaemonServerRepository::class, $daemon);
 
