@@ -35,6 +35,7 @@ use Filament\Forms\Components\ToggleButtons;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Fieldset;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
@@ -44,9 +45,11 @@ use Filament\Schemas\Components\Wizard;
 use Filament\Schemas\Components\Wizard\Step;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\IconSize;
+use Filament\Support\Enums\Size;
 use Filament\Support\Exceptions\Halt;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
@@ -170,10 +173,24 @@ class CreateServer extends CreateRecord
 
         $allocations = $importer->matchAllocations($this->restoreConfig, Node::find($state['node_id'] ?? null));
         $state['allocation_id'] = $allocations['allocation_id'];
-        $state['allocation_additional'] = $allocations['allocation_additional'];
         $this->restoreMissingAllocations = $allocations['missing'];
 
-        $this->form->fill($state);
+        $this->form->fill(Arr::except($state, ['allocation_additional', 'server_variables']));
+
+        // Filling the form reloads the variables from the (not yet existing) server and
+        // does not wrap simple repeater items, so both repeaters are set afterwards in
+        // the shape their items have.
+        $this->data['allocation_additional'] = $this->repeaterItems(array_map(fn (int $id) => ['extra_allocations' => $id], $allocations['allocation_additional']));
+        $this->data['server_variables'] = $this->repeaterItems($state['server_variables'] ?? []);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<string, array<string, mixed>>
+     */
+    private function repeaterItems(array $items): array
+    {
+        return collect($items)->mapWithKeys(fn (array $item) => [(string) Str::uuid() => $item])->all();
     }
 
     /**
@@ -187,10 +204,7 @@ class CreateServer extends CreateRecord
 
         $allocations = $this->configImporter->matchAllocations($this->restoreConfig, $node);
         $set('allocation_id', $allocations['allocation_id']);
-        // Filament only wraps simple repeater items when the form is filled, not on $set.
-        $set('allocation_additional', collect($allocations['allocation_additional'])
-            ->mapWithKeys(fn (int $id) => [(string) Str::uuid() => ['extra_allocations' => $id]])
-            ->all());
+        $set('allocation_additional', $this->repeaterItems(array_map(fn (int $id) => ['extra_allocations' => $id], $allocations['allocation_additional'])));
         $this->restoreMissingAllocations = $allocations['missing'];
     }
 
@@ -212,27 +226,30 @@ class CreateServer extends CreateRecord
                     ->state(fn () => implode(', ', $this->restoreMissingAllocations))
                     ->visible(fn () => !empty($this->restoreMissingAllocations))
                     ->helperText(trans('admin/backup.restore.missing_allocations_help')),
-            ])
-            ->headerActions([
-                Action::make('create_missing_allocations')
-                    ->label(trans('admin/backup.restore.create_allocations'))
-                    ->icon(TablerIcon::Plus)
-                    ->authorize(fn () => user()?->can('create', Allocation::class))
-                    ->visible(fn (Get $get) => !empty($this->restoreMissingAllocations) && ($node = Node::find($get('node_id'))) &&
-                        !empty($this->configImporter->creatableAllocations($this->restoreMissingAllocations, $node)))
-                    ->action(function (Get $get, Set $set, AssignmentService $assignmentService) {
-                        $node = Node::findOrFail($get('node_id'));
-                        $creatable = $this->configImporter->creatableAllocations($this->restoreMissingAllocations, $node);
+                // A labeled button right below the addresses it creates.
+                Actions::make([
+                    Action::make('create_missing_allocations')
+                        ->label(trans('admin/backup.restore.create_allocations'))
+                        ->button()
+                        ->size(Size::Small)
+                        ->icon(TablerIcon::Plus)
+                        ->authorize(fn () => user()?->can('create', Allocation::class))
+                        ->visible(fn (Get $get) => !empty($this->restoreMissingAllocations) && ($node = Node::find($get('node_id'))) &&
+                            !empty($this->configImporter->creatableAllocations($this->restoreMissingAllocations, $node)))
+                        ->action(function (Get $get, Set $set, AssignmentService $assignmentService) {
+                            $node = Node::findOrFail($get('node_id'));
+                            $creatable = $this->configImporter->creatableAllocations($this->restoreMissingAllocations, $node);
 
-                        foreach ($creatable as $ip => $ports) {
-                            $assignmentService->handle($node, [
-                                'allocation_ip' => $ip,
-                                'allocation_ports' => array_map('strval', $ports),
-                            ]);
-                        }
+                            foreach ($creatable as $ip => $ports) {
+                                $assignmentService->handle($node, [
+                                    'allocation_ip' => $ip,
+                                    'allocation_ports' => array_map('strval', $ports),
+                                ]);
+                            }
 
-                        $this->applyRestoreAllocations($set, $node);
-                    }),
+                            $this->applyRestoreAllocations($set, $node);
+                        }),
+                ]),
             ]);
     }
 

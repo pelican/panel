@@ -146,6 +146,15 @@ class ServerRestoreService
             ->property('name', $this->sourceDescription($restore))
             ->log();
 
+        // The install notification is sent before the files are restored, so the
+        // owner is told separately when the server is ready.
+        $server->loadMissing('user');
+        Notification::make()
+            ->success()
+            ->title(trans('admin/backup.restore.completed_title', ['server' => $server->name]))
+            ->body(trans('admin/backup.restore.completed_body', ['source' => $this->sourceDescription($restore)]))
+            ->sendToDatabase($server->user);
+
         if ($restore->start_on_completion && $server->status !== ServerState::Suspended) {
             try {
                 $this->daemonServerRepository->setServer($server)->power('start');

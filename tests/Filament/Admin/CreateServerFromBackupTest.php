@@ -1,12 +1,15 @@
 <?php
 
 use App\Enums\RolePermissionModels;
+use App\Filament\Admin\Resources\Backups\BackupResource;
 use App\Filament\Admin\Resources\Backups\Pages\ListBackups;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
+use App\Filament\Admin\Resources\Servers\ServerResource;
 use App\Models\Allocation;
 use App\Models\Backup;
 use App\Models\BackupHost;
 use App\Models\Egg;
+use App\Models\EggVariable;
 use App\Models\Node;
 use App\Models\Role;
 use App\Models\Server;
@@ -215,4 +218,61 @@ it('does not create a server restored from a link to an internal address', funct
 
     expect(Server::query()->where('name', 'from-a-link')->exists())->toBeFalse()
         ->and(ServerRestore::query()->exists())->toBeFalse();
+});
+
+it('shows the restored variables and keeps the additional allocations in the wizard', function () {
+    $daemon = Mockery::mock(DaemonServerRepository::class);
+    $daemon->expects('setServer')->andReturnSelf();
+    $daemon->expects('create')->andReturnUndefined();
+    $this->swap(DaemonServerRepository::class, $daemon);
+
+    $node = Node::factory()->create();
+    $primary = Allocation::factory()->create(['node_id' => $node->id, 'server_id' => null, 'ip' => '127.0.0.1', 'port' => 25610]);
+    $extra = Allocation::factory()->create(['node_id' => $node->id, 'server_id' => null, 'ip' => '127.0.0.1', 'port' => 25611]);
+    $egg = Egg::factory()->create();
+    EggVariable::factory()->create(['egg_id' => $egg->id, 'env_variable' => 'GREETING', 'default_value' => 'hello', 'rules' => ['required', 'string'], 'user_viewable' => true, 'user_editable' => true]);
+
+    $backup = keptBackup($node, $egg, 25610);
+    $config = $backup->pelican_config;
+    $config['allocations']['additional'] = [['ip' => '127.0.0.1', 'ip_alias' => null, 'port' => 25611, 'notes' => null]];
+    $config['variables'] = ['GREETING' => 'from-the-backup'];
+    $config['limits']['memory'] = 0;
+    $backup->update(['pelican_config' => $config]);
+
+    session()->put('last_utilized_node', $node->id);
+    session()->put('restore_source.vars', RestoreSource::backup($backup)->toArray());
+
+    $page = Livewire::withQueryParams(['restore' => 'vars'])->test(CreateServer::class);
+
+    $data = $page->get('data');
+    expect(array_values($data['server_variables']))->toHaveCount(1)
+        ->and(array_values($data['server_variables'])[0]['variable_value'])->toBe('from-the-backup')
+        ->and(array_column(array_values($data['allocation_additional']), 'extra_allocations'))->toBe([$extra->id])
+        // Toggle buttons are keyed 0 and 1, so a prefilled false has to be 0 to be shown as selected.
+        ->and($data['unlimited_mem'])->toEqual(1)
+        ->and($data['oom_killer'])->toEqual(0)->not->toBe('');
+
+    $page->fillForm(['owner_id' => $this->admin->id])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $server = Server::query()->where('name', 'restored-server')->sole();
+    expect($server->allocation_id)->toBe($primary->id)
+        ->and($server->allocations()->pluck('id')->sort()->values()->all())->toBe([$primary->id, $extra->id])
+        ->and($server->variables()->where('env_variable', 'GREETING')->first()?->server_value)->toBe('from-the-backup');
+});
+
+it('lets administrators download a kept backup', function () {
+    $node = Node::factory()->create();
+    $backup = keptBackup($node, Egg::factory()->create(), 25596);
+
+    livewire(ListBackups::class)
+        ->assertActionVisible(TestAction::make('download')->table($backup));
+});
+
+it('lists backups under servers in the navigation', function () {
+    expect(BackupResource::getNavigationGroup())
+        ->toBe(ServerResource::getNavigationGroup())
+        ->and(BackupResource::getNavigationSort())
+        ->toBeGreaterThan(ServerResource::getNavigationSort() ?? -1);
 });

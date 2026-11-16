@@ -128,9 +128,9 @@ it('turns a configuration into the create server form state', function () {
     $state = $importer->toFormState($importer->parse($config));
 
     expect($state['egg_id'])->toBe($server->egg_id)
-        ->and($state['skip_scripts'])->toBeTrue()
+        ->and($state['skip_scripts'])->toBe(1)
         ->and($state['memory'])->toBe(2048)
-        ->and($state['unlimited_mem'])->toBeFalse()
+        ->and($state['unlimited_mem'])->toBe(0)
         ->and($state['swap_support'])->toBe('unlimited')
         ->and($state['backup_limit'])->toBe(3)
         ->and($state['image'])->toBe($server->image)
@@ -248,7 +248,10 @@ it('restores a backup from the same node into a new server', function () {
     app(ServerRestoreService::class)->complete($restore, true);
 
     expect($restore->refresh()->status)->toBe(ServerRestore::STATUS_COMPLETED)
-        ->and($new->refresh()->status)->toBeNull();
+        ->and($new->refresh()->status)->toBeNull()
+        // The owner hears that the files are in place, not only that the install finished.
+        ->and($new->user->notifications()->get()->pluck('data.title')->all())
+        ->toContain(trans('admin/backup.restore.completed_title', ['server' => $new->name]));
 });
 
 it('downloads a wings backup from its node when restoring on another node', function () {
@@ -356,7 +359,7 @@ it('accepts configurations with empty lists and pinning to cpu 0', function () {
     $state = $importer->toFormState($parsed);
 
     expect($state['environment'])->toBe(['VISIBLE_VAR' => 'default', 'HIDDEN_VAR' => 'hidden-default'])
-        ->and($state['cpu_pinning'])->toBeTrue()
+        ->and($state['cpu_pinning'])->toBe(1)
         ->and($state['threads'])->toBe(['0'])
         ->and($importer->matchAllocations($parsed, $server->node)['missing'])->toHaveCount(1);
 });
@@ -385,6 +388,36 @@ it('does not fetch links to internal addresses', function () {
     }
 
     Http::assertNothingSent();
+});
+
+it('follows redirects of a link to read its configuration', function () {
+    $config = ['meta' => ['version' => ServerConfigExporterService::VERSION], 'server' => ['name' => 'from-a-release']];
+    Http::fake([
+        'https://93.184.215.14/download/backup.tar.gz' => Http::response('', 302, ['Location' => 'https://1.1.1.1/assets/backup.tar.gz?sig=1']),
+        'https://1.1.1.1/assets/backup.tar.gz*' => Http::response(tarGz(['.pelicanconfig' => json_encode($config)]), 200, ['Content-Type' => 'application/octet-stream']),
+    ]);
+
+    expect(app(BackupConfigResolver::class)->resolve(RestoreSource::url('https://93.184.215.14/download/backup.tar.gz')))
+        ->toBe($config);
+});
+
+it('does not follow a redirect of a link to an internal address', function () {
+    Http::fake([
+        'https://93.184.215.14/*' => Http::response('', 302, ['Location' => 'http://10.0.0.5/backup.tar.gz']),
+        '*' => Http::response('should not be requested'),
+    ]);
+
+    expect(app(BackupConfigResolver::class)->resolve(RestoreSource::url('https://93.184.215.14/backup.tar.gz')))->toBeNull();
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '10.0.0.5'));
+});
+
+it('gives up on a link after a few redirects', function () {
+    Http::fake(['*' => Http::response('', 302, ['Location' => 'https://93.184.215.14/again'])]);
+
+    expect(app(BackupConfigResolver::class)->resolve(RestoreSource::url('https://93.184.215.14/start')))->toBeNull();
+
+    Http::assertSentCount(BackupConfigResolver::MAX_REDIRECTS + 1);
 });
 
 it('keeps the exact S3 object key, including a leading slash', function () {

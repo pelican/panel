@@ -2,6 +2,8 @@
 
 namespace App\Filament\Admin\Resources\Backups;
 
+use App\Enums\BackupStatus;
+use App\Enums\CustomizationKey;
 use App\Enums\TablerIcon;
 use App\Facades\Activity;
 use App\Filament\Admin\Resources\Backups\Pages\ListBackups;
@@ -11,6 +13,7 @@ use App\Filament\Components\Tables\Columns\BytesColumn;
 use App\Filament\Components\Tables\Columns\DateTimeColumn;
 use App\Models\Backup;
 use App\Services\Backups\DeleteBackupService;
+use App\Services\Backups\DownloadLinkService;
 use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanModifyTable;
 use BackedEnum;
@@ -60,7 +63,19 @@ class BackupResource extends Resource
 
     public static function getNavigationGroup(): ?string
     {
+        if (user()?->getCustomization(CustomizationKey::TopNavigation) === 'topbar') {
+            return null;
+        }
+
         return trans('admin/dashboard.server');
+    }
+
+    /**
+     * Listed last in its group, under Servers. Items without a sort come first.
+     */
+    public static function getNavigationSort(): ?int
+    {
+        return 100;
     }
 
     public static function canCreate(): bool
@@ -95,12 +110,14 @@ class BackupResource extends Resource
                 TextColumn::make('name')
                     ->label(trans('server/backup.actions.create.name'))
                     ->searchable(),
+                // The less important columns are left out on smaller screens, so the row
+                // actions fit without scrolling the table sideways.
                 TextColumn::make('node.name')
                     ->label(trans('admin/backup.node'))
-                    ->visibleFrom('md'),
+                    ->visibleFrom('lg'),
                 TextColumn::make('backupHost.name')
                     ->label(trans('admin/backup.backup_host'))
-                    ->visibleFrom('lg'),
+                    ->visibleFrom('xl'),
                 BytesColumn::make('bytes')
                     ->label(trans('server/backup.size')),
                 DateTimeColumn::make('created_at')
@@ -114,7 +131,7 @@ class BackupResource extends Resource
                     ->label(trans('admin/backup.has_config'))
                     ->state(fn (Backup $backup) => $backup->pelican_config !== null)
                     ->boolean()
-                    ->visibleFrom('md'),
+                    ->visibleFrom('xl'),
             ])
             ->filters([
                 TernaryFilter::make('orphaned')
@@ -133,6 +150,15 @@ class BackupResource extends Resource
             ->recordActions([
                 CreateServerFromBackupAction::make()
                     ->hiddenLabel(),
+                // Kept backups of deleted servers can only be downloaded here.
+                Action::make('download')
+                    ->hiddenLabel()
+                    ->tooltip(trans('server/backup.actions.download'))
+                    ->icon(TablerIcon::Download)
+                    ->color('primary')
+                    ->visible(fn (Backup $backup) => $backup->status === BackupStatus::Successful)
+                    ->authorize(fn (Backup $backup) => user()?->can('view', $backup))
+                    ->url(fn (Backup $backup, DownloadLinkService $downloadLinkService) => $downloadLinkService->handle($backup, user()), true),
                 // The page of a deleted server is gone, so its locked backups are unlocked here.
                 Action::make('unlock')
                     ->hiddenLabel()

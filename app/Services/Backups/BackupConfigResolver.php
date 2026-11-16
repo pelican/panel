@@ -7,6 +7,8 @@ use App\Extensions\BackupAdapter\Schemas\S3BackupSchema;
 use App\Extensions\BackupAdapter\Schemas\WingsBackupSchema;
 use Exception;
 use GuzzleHttp\Handler\CurlHandler;
+use GuzzleHttp\Psr7\Uri;
+use GuzzleHttp\Psr7\UriResolver;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\ResponseInterface;
 
@@ -27,6 +29,9 @@ class BackupConfigResolver
 
     /** How long reading the start of an archive may take in total, in seconds. */
     public const READ_DEADLINE = 15;
+
+    /** How many redirects of an administrator's link are followed. */
+    public const MAX_REDIRECTS = 3;
 
     public function __construct(private readonly BackupAdapterService $backupAdapterService) {}
 
@@ -148,26 +153,55 @@ class BackupConfigResolver
 
     /**
      * Reads the start of an administrator's link over cURL, the only Guzzle handler
-     * that can connect to the address that was checked. The download goes to a
-     * temporary file and is stopped once enough of it has arrived.
+     * that can connect to the address that was checked. Redirects are followed by
+     * hand, so each address they lead to is checked and connected to the same way;
+     * download links on GitHub and many CDNs redirect to the file.
      */
     private function readExternal(string $url): ?string
     {
-        $resolve = $this->publicAddress($url);
-        if ($resolve === null || !function_exists('curl_init')) {
+        if (!function_exists('curl_init')) {
             return null;
         }
 
+        $deadline = microtime(true) + self::READ_DEADLINE;
+        for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
+            $remaining = $deadline - microtime(true);
+            $resolve = $this->publicAddress($url);
+            if ($resolve === null || $remaining <= 0) {
+                return null;
+            }
+
+            $result = $this->readExternalOnce($url, $resolve, $remaining);
+            if (!is_array($result)) {
+                return $result;
+            }
+
+            $url = (string) UriResolver::resolve(new Uri($url), new Uri($result['location']));
+        }
+
+        return null;
+    }
+
+    /**
+     * Reads the start of one link at the checked address. The download is stopped
+     * once enough of it has arrived. Returns the bytes read, null when the link
+     * gave nothing usable, or the location of a redirect.
+     *
+     * @return string|array{location: string}|null
+     */
+    private function readExternalOnce(string $url, string $resolve, float $timeout): string|array|null
+    {
         $sink = fopen('php://temp', 'w+b');
         if ($sink === false) {
             return null;
         }
 
         $successful = false;
+        $response = null;
 
         try {
             $response = Http::setHandler(new CurlHandler())
-                ->timeout(self::READ_DEADLINE)
+                ->timeout((int) ceil($timeout))
                 ->connectTimeout(5)
                 ->withHeaders(['Range' => 'bytes=0-' . (self::MAX_READ_BYTES - 1)])
                 ->withOptions([
@@ -175,8 +209,9 @@ class BackupConfigResolver
                     'curl' => [CURLOPT_RESOLVE => [$resolve]],
                     'sink' => $sink,
                     'on_headers' => function (ResponseInterface $response) use (&$successful) {
-                        $successful = $response->getStatusCode() >= 200 && $response->getStatusCode() < 300;
-                        if (!$successful) {
+                        $status = $response->getStatusCode();
+                        $successful = $status >= 200 && $status < 300;
+                        if (!$successful && ($status < 300 || $status >= 400)) {
                             throw new Exception('The archive could not be downloaded.');
                         }
                     },
@@ -187,15 +222,24 @@ class BackupConfigResolver
                     },
                 ])
                 ->get($url);
-
-            $successful = $response->successful();
         } catch (Exception) {
             // Stopping the download, or the deadline, ends the request with an error.
             // What arrived before that is still in the sink.
         }
 
-        rewind($sink);
-        $compressed = $successful ? stream_get_contents($sink, self::MAX_READ_BYTES) : false;
+        if ($response?->redirect() && $response->header('Location') !== '') {
+            fclose($sink);
+
+            return ['location' => $response->header('Location')];
+        }
+
+        if ($response !== null) {
+            // The response body is the sink.
+            $compressed = $response->successful() ? substr($response->body(), 0, self::MAX_READ_BYTES) : false;
+        } else {
+            rewind($sink);
+            $compressed = $successful ? stream_get_contents($sink, self::MAX_READ_BYTES) : false;
+        }
         fclose($sink);
 
         return is_string($compressed) && $compressed !== '' ? $compressed : null;

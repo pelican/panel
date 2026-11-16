@@ -104,14 +104,15 @@ class ServerConfigImporterService
             'name' => Arr::get($config, 'server.name'),
             'description' => Arr::get($config, 'server.description'),
             // The files come from the backup, so the install script must not run.
-            'skip_scripts' => true,
+            'skip_scripts' => 1,
         ];
 
         $limits = Arr::get($config, 'limits', []);
+        // Toggle buttons are keyed 0 and 1, and a false state matches neither, so they are set as ints.
         foreach (['cpu' => 'unlimited_cpu', 'memory' => 'unlimited_mem', 'disk' => 'unlimited_disk'] as $limit => $toggle) {
             if (isset($limits[$limit])) {
                 $state[$limit] = (int) $limits[$limit];
-                $state[$toggle] = (int) $limits[$limit] === 0;
+                $state[$toggle] = (int) ((int) $limits[$limit] === 0);
             }
         }
         if (isset($limits['io'])) {
@@ -127,11 +128,11 @@ class ServerConfigImporterService
             };
         }
         if (isset($limits['threads']) && $limits['threads'] !== '') {
-            $state['cpu_pinning'] = true;
+            $state['cpu_pinning'] = 1;
             $state['threads'] = array_values(array_filter(explode(',', (string) $limits['threads']), fn ($thread) => $thread !== ''));
         }
         if (isset($limits['oom_killer'])) {
-            $state['oom_killer'] = (bool) $limits['oom_killer'];
+            $state['oom_killer'] = (int) (bool) $limits['oom_killer'];
         }
 
         foreach (['allocations' => 'allocation_limit', 'databases' => 'database_limit', 'backups' => 'backup_limit'] as $limit => $field) {
