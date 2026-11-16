@@ -42,7 +42,8 @@ class RegularSchema extends BaseSchema
                 ->default(fn () => self::DEFAULT_HEADERS)
                 ->hintAction(
                     Action::make('reset_headers')
-                        ->label(trans('admin/webhook.reset_headers'))
+                        ->hiddenLabel()
+                        ->tooltip(trans('admin/webhook.reset_headers'))
                         ->color('danger')
                         ->icon(TablerIcon::Trash)
                         ->action(fn (Set $set) => $set('headers', self::DEFAULT_HEADERS))
