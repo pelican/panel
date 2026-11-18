@@ -27,6 +27,16 @@ class HubCredentials
         return Http::withHeaders($headers)->withoutRedirecting();
     }
 
+    /**
+     * Whether the URL is on the configured Hub (https, same host and port).
+     */
+    public static function isHub(string $url): bool
+    {
+        $hub = self::origin((string) config('panel.plugin.hub_url'));
+
+        return $hub !== null && self::origin($url) === $hub;
+    }
+
     /** @return array<string, string> */
     public static function headersFor(string $url): array
     {

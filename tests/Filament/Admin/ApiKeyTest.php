@@ -7,6 +7,8 @@ use App\Models\ApiKey;
 use App\Models\Role;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 
@@ -82,4 +84,55 @@ it('prefills the create form from the query string', function () {
             'permissions_node' => 0,
             'permissions_user' => 0,
         ]);
+});
+
+it('posts the new key back to the hub and still redirects to the key list', function () {
+    config()->set('panel.plugin.hub_url', 'https://hub.example.com');
+    Http::fake(['hub.example.com/*' => Http::response(status: 204)]);
+
+    Livewire::withQueryParams([
+        'memo' => 'Pelican Hub',
+        'return_url' => 'https://hub.example.com/panels/connect/callback',
+        'state' => 'abc123',
+    ])->test(CreateApiKey::class)
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertRedirect(ListApiKeys::getUrl());
+
+    $apiKey = ApiKey::query()->where('memo', 'Pelican Hub')->firstOrFail();
+
+    Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+        && $request->url() === 'https://hub.example.com/panels/connect/callback'
+        && $request['key'] === $apiKey->identifier . $apiKey->token
+        && $request['state'] === 'abc123');
+});
+
+it('never posts the key to a url that is not the hub', function (string $returnUrl) {
+    config()->set('panel.plugin.hub_url', 'https://hub.example.com');
+    Http::fake();
+
+    Livewire::withQueryParams(['memo' => 'key', 'return_url' => $returnUrl])
+        ->test(CreateApiKey::class)
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertRedirect(ListApiKeys::getUrl());
+
+    Http::assertNothingSent();
+})->with([
+    'other host' => 'https://evil.example.com/steal',
+    'lookalike host' => 'https://hub.example.com.evil.com/steal',
+    'plain http' => 'http://hub.example.com/callback',
+    'other port' => 'https://hub.example.com:8443/callback',
+]);
+
+it('warns when the hub does not accept the key', function () {
+    config()->set('panel.plugin.hub_url', 'https://hub.example.com');
+    Http::fake(['hub.example.com/*' => Http::response(status: 500)]);
+
+    Livewire::withQueryParams(['memo' => 'key', 'return_url' => 'https://hub.example.com/callback'])
+        ->test(CreateApiKey::class)
+        ->call('create')
+        ->assertNotified(trans('admin/apikey.return_failed', ['host' => 'hub.example.com']));
+
+    expect(ApiKey::query()->where('memo', 'key')->exists())->toBeTrue();
 });
