@@ -40,6 +40,34 @@ class CreateApiKey extends CreateRecord
         return [];
     }
 
+    /**
+     * Prefills the form from the query string, so an integration can link straight to a key with
+     * the permissions it needs, e.g. `?memo=My+App&permissions[server]=1&permissions[plugin]=3`.
+     * Nothing is created until the admin reviews the form and presses Create.
+     */
+    protected function afterFill(): void
+    {
+        $state = [];
+
+        $memo = request()->query('memo');
+        if (is_string($memo)) {
+            $state['memo'] = str($memo)->limit(255, '')->toString();
+        }
+
+        $permissions = request()->query('permissions');
+        if (is_array($permissions)) {
+            foreach (ApiKey::getPermissionList() as $resource) {
+                $level = $permissions[$resource] ?? null;
+
+                if (in_array($level, ['0', '1', '3'], true)) {
+                    $state['permissions_' . $resource] = (int) $level;
+                }
+            }
+        }
+
+        $this->data = [...$this->data ?? [], ...$state];
+    }
+
     protected function handleRecordCreation(array $data): Model
     {
         $data['identifier'] = ApiKey::generateTokenIdentifier(ApiKey::TYPE_APPLICATION);

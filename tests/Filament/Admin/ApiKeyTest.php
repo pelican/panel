@@ -7,6 +7,7 @@ use App\Models\ApiKey;
 use App\Models\Role;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
@@ -67,4 +68,18 @@ it('non root admin without permission cannot create api keys', function () {
 
     $this->actingAs($user);
     livewire(CreateApiKey::class)->assertForbidden();
+});
+
+it('prefills the create form from the query string', function () {
+    Livewire::withQueryParams([
+        'memo' => 'Pelican Hub',
+        'permissions' => ['plugin' => '3', 'server' => '1', 'node' => '7', 'unknown' => '3'],
+    ])->test(CreateApiKey::class)
+        ->assertSchemaStateSet([
+            'memo' => 'Pelican Hub',
+            'permissions_plugin' => 3,
+            'permissions_server' => 1,
+            'permissions_node' => 0,
+            'permissions_user' => 0,
+        ]);
 });
