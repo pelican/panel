@@ -15,8 +15,10 @@ use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Deployment\AllocationSelectionService;
 use App\Services\Deployment\FindViableNodesService;
+use Closure;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -45,13 +47,14 @@ class ServerCreationService
      * no node_id the node_is will be picked from the allocation.
      *
      * @param  array<mixed, mixed>  $data
+     * @param  null|Closure(Server): void  $beforeDaemon  runs in the creation transaction, so its records exist before the daemon can report back
      *
      * @throws Throwable
      * @throws DisplayException
      * @throws ValidationException
      * @throws NoViableAllocationException
      */
-    public function handle(array $data, ?DeploymentObject $deployment = null): Server
+    public function handle(array $data, ?DeploymentObject $deployment = null, ?Closure $beforeDaemon = null): Server
     {
         if (!isset($data['oom_killer']) && isset($data['oom_disabled'])) {
             $data['oom_killer'] = !$data['oom_disabled'];
@@ -105,7 +108,7 @@ class ServerCreationService
         // If that connection fails out we will attempt to perform a cleanup by just
         // deleting the server itself from the system.
         /** @var Server $server */
-        $server = $this->connection->transaction(function () use ($data, $eggVariableData) {
+        $server = $this->connection->transaction(function () use ($data, $eggVariableData, $beforeDaemon) {
             // Create the server and assign any additional allocations to it.
             $server = $this->createModel($data);
 
@@ -115,6 +118,10 @@ class ServerCreationService
 
             $this->storeEggVariables($server, $eggVariableData);
 
+            if ($beforeDaemon) {
+                $beforeDaemon($server);
+            }
+
             return $server;
         }, 5);
 
@@ -122,7 +129,9 @@ class ServerCreationService
             $this->daemonServerRepository
                 ->setServer($server)
                 ->create($data['start_on_completion'] ?? false);
-        } catch (ConnectionException $exception) {
+        } catch (ConnectionException|RequestException $exception) {
+            // Whether the node could not be reached or rejected the server, it does not
+            // have it, so the Panel does not keep it either.
             $this->serverDeletionService->withForce()->handle($server);
 
             throw $exception;

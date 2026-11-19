@@ -19,6 +19,8 @@ class ServerDeletionService
 {
     protected bool $force = false;
 
+    protected bool $keepBackups = false;
+
     /**
      * ServerDeletionService constructor.
      */
@@ -40,6 +42,17 @@ class ServerDeletionService
     }
 
     /**
+     * Set if the server's finished backups should be kept so that it can be
+     * restored from them later.
+     */
+    public function keepBackups(bool $bool = true): self
+    {
+        $this->keepBackups = $bool;
+
+        return $this;
+    }
+
+    /**
      * Delete a server from the panel and remove any associated databases from hosts.
      *
      * @throws Throwable
@@ -48,7 +61,8 @@ class ServerDeletionService
     public function handle(Server $server): void
     {
         try {
-            $this->daemonServerRepository->setServer($server)->delete();
+            $repository = $this->daemonServerRepository->setServer($server);
+            $this->keepBackups ? $repository->delete(true) : $repository->delete();
         } catch (ConnectionException $exception) {
             // If there is an error not caused a 404 error and this isn't a forced delete,
             // go ahead and bail out. We specifically ignore a 404 since that can be assumed
@@ -82,13 +96,23 @@ class ServerDeletionService
                 }
             }
 
-            foreach ($server->backups as $backup) {
+            foreach ($server->backups()->with(['backupHost', 'server.node', 'node'])->get() as $backup) {
+                // Finished backups are kept, and stay in the Panel without a server.
+                if ($this->keepBackups && $backup->is_successful) {
+                    $backup->update(['server_id' => null]);
+
+                    continue;
+                }
+
                 try {
                     $schema = $this->backupService->get($backup->backupHost->schema);
 
                     if ($schema) {
                         if ($schema instanceof WingsBackupSchema) {
-                            // Local wings backups are already deleted by the daemon
+                            // Local wings backups are deleted by the daemon with the server
+                            if ($this->keepBackups) {
+                                $schema->deleteBackup($backup);
+                            }
                         } else {
                             $schema->deleteBackup($backup);
                         }
@@ -100,6 +124,8 @@ class ServerDeletionService
 
                     logger()->warning($exception);
                 }
+
+                $backup->delete();
             }
 
             $server->allocations()->update(Allocation::RELEASE_ATTRIBUTES);

@@ -13,6 +13,7 @@ use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use App\Traits\Filament\CanCustomizeTabs;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Forms\Components\Checkbox;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Schemas\Components\Tabs;
@@ -79,9 +80,14 @@ class EditServer extends EditRecord
                 ->modalHeading(trans('filament-actions::delete.single.modal.heading', ['label' => $this->getRecordTitle()]))
                 ->modalSubmitActionLabel(trans('filament-actions::delete.single.label'))
                 ->requiresConfirmation()
-                ->action(function (Server $server, ServerDeletionService $service) {
+                ->schema(fn (Server $server) => $server->backups()->restorable()->exists() ? [
+                    Checkbox::make('keep_backups')
+                        ->label(trans('admin/server.keep_backups'))
+                        ->helperText(trans('admin/server.keep_backups_help')),
+                ] : [])
+                ->action(function (Server $server, ServerDeletionService $service, array $data) {
                     try {
-                        $service->handle($server);
+                        $service->keepBackups((bool) ($data['keep_backups'] ?? false))->handle($server);
 
                         return redirect(ListServers::getUrl(panel: 'admin'));
                     } catch (ConnectionException) {
@@ -105,9 +111,14 @@ class EditServer extends EditRecord
                 ->modalHeading(trans('filament-actions::force-delete.single.modal.heading', ['label' => $this->getRecordTitle()]))
                 ->modalSubmitActionLabel(trans('filament-actions::force-delete.single.label'))
                 ->requiresConfirmation()
-                ->action(function (Server $server, ServerDeletionService $service) {
+                ->schema(fn (Server $server) => $server->backups()->restorable()->exists() ? [
+                    Checkbox::make('keep_backups')
+                        ->label(trans('admin/server.keep_backups'))
+                        ->helperText(trans('admin/server.keep_backups_help')),
+                ] : [])
+                ->action(function (Server $server, ServerDeletionService $service, array $data) {
                     try {
-                        $service->withForce()->handle($server);
+                        $service->withForce()->keepBackups((bool) ($data['keep_backups'] ?? false))->handle($server);
 
                         return redirect(ListServers::getUrl(panel: 'admin'));
                     } catch (ConnectionException) {

@@ -31,6 +31,8 @@ return [
             'ignored' => 'Ignored Files & Directories',
             'locked' => 'Locked?',
             'lock_helper' => 'Prevents this backup from being deleted until explicitly unlocked.',
+            'include_config' => 'Include .pelicanconfig?',
+            'include_config_helper' => 'Stores the server settings (egg, image, limits, ports and visible variables) with the backup so an administrator can create a new server from it.',
         ],
         'lock' => [
             'lock' => 'Lock',

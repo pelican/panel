@@ -54,6 +54,7 @@ return [
             'restore' => 'Restored the <b>:name</b> backup (deleted files: <b>:truncate</b>)',
             'restore-complete' => 'Completed restoration of the <b>:name</b> backup',
             'restore-failed' => 'Failed to complete restoration of the <b>:name</b> backup',
+            'restore-as-new' => 'Started restoring the server from the <b>:source</b> backup',
             'start' => 'Started a new backup <b>:name</b>',
             'complete' => 'Marked the <b>:name</b> backup as complete',
             'fail' => 'Marked the <b>:name</b> backup as failed',

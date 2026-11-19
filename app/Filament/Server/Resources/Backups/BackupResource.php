@@ -17,6 +17,7 @@ use App\Repositories\Daemon\DaemonBackupRepository;
 use App\Services\Backups\DeleteBackupService;
 use App\Services\Backups\DownloadLinkService;
 use App\Services\Backups\InitiateBackupService;
+use App\Services\Backups\ServerRestoreService;
 use App\Traits\Filament\BlockAccessInConflict;
 use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanCustomizeRelations;
@@ -92,6 +93,11 @@ class BackupResource extends Resource
                 Toggle::make('is_locked')
                     ->label(trans('server/backup.actions.create.locked'))
                     ->helperText(trans('server/backup.actions.create.lock_helper'))
+                    ->columnSpanFull(),
+                Toggle::make('include_config')
+                    ->label(trans('server/backup.actions.create.include_config'))
+                    ->helperText(trans('server/backup.actions.create.include_config_helper'))
+                    ->default(true)
                     ->columnSpanFull(),
             ]);
     }
@@ -185,7 +191,7 @@ class BackupResource extends Resource
                             Checkbox::make('truncate')
                                 ->label(trans('server/backup.actions.restore.delete_all')),
                         ])
-                        ->action(function (Backup $backup, $data, DaemonBackupRepository $daemonRepository, DownloadLinkService $downloadLinkService) use ($server) {
+                        ->action(function (Backup $backup, $data, DaemonBackupRepository $daemonRepository, DownloadLinkService $downloadLinkService, ServerRestoreService $restoreService) use ($server) {
                             if (!is_null($server->status)) {
                                 return Notification::make()
                                     ->title(trans('server/backup.actions.restore.notification_fail'))
@@ -206,15 +212,33 @@ class BackupResource extends Resource
                                 ->subject($backup)
                                 ->property(['name' => $backup->name, 'truncate' => $data['truncate']]);
 
-                            $log->transaction(function () use ($downloadLinkService, $daemonRepository, $backup, $server, $data) {
-                                $url = $downloadLinkService->handle($backup, user());
+                            // The node reports this restore with the backup's uuid, like a restore of the backup
+                            // into a new server on the same node, so only one of them may start at a time.
+                            $started = $restoreService->whileRestoring($backup, function () use ($restoreService, $log, $downloadLinkService, $daemonRepository, $backup, $server, $data) {
+                                if ($restoreService->isRestoringIntoNewServer($backup, $server->node_id)) {
+                                    return false;
+                                }
 
-                                // Update the status right away for the server so that we know not to allow certain
-                                // actions against it via the Panel API.
-                                $server->update(['status' => ServerState::RestoringBackup]);
+                                $log->transaction(function () use ($downloadLinkService, $daemonRepository, $backup, $server, $data) {
+                                    $url = $downloadLinkService->handle($backup, user());
 
-                                $daemonRepository->setServer($server)->restore($backup, $url, $data['truncate']);
+                                    // Update the status right away for the server so that we know not to allow certain
+                                    // actions against it via the Panel API.
+                                    $server->update(['status' => ServerState::RestoringBackup]);
+
+                                    $daemonRepository->setServer($server)->restore($backup, $url, $data['truncate']);
+                                });
+
+                                return true;
                             });
+
+                            if (!$started) {
+                                return Notification::make()
+                                    ->title(trans('server/backup.actions.restore.notification_fail'))
+                                    ->body(trans('admin/backup.restore.restoring_into_new_server'))
+                                    ->danger()
+                                    ->send();
+                            }
 
                             return Notification::make()
                                 ->title(trans('server/backup.actions.restore.notification_started'))
@@ -269,7 +293,9 @@ class BackupResource extends Resource
                     ->hiddenLabel()
                     ->successNotificationTitle(null)
                     ->action(function (InitiateBackupService $initiateBackupService, $data) use ($server) {
-                        $action = $initiateBackupService->setIgnoredFiles(explode(PHP_EOL, $data['ignored'] ?? ''));
+                        $action = $initiateBackupService
+                            ->setIgnoredFiles(explode(PHP_EOL, $data['ignored'] ?? ''))
+                            ->setIncludeConfig((bool) ($data['include_config'] ?? true));
 
                         if (user()?->can(SubuserPermission::BackupDelete, $server)) {
                             $action->setIsLocked((bool) $data['is_locked']);

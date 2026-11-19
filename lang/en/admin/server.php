@@ -5,6 +5,8 @@ return [
     'model_label' => 'Server',
     'model_label_plural' => 'Servers',
     'no_servers' => 'No Servers',
+    'keep_backups' => 'Keep backups',
+    'keep_backups_help' => 'Keep the finished backups of this server so a new server can be created from them later. They are listed under Backups.',
     'no_allocations' => 'No Allocations',
     'create' => 'Create Server',
     'ip_address' => 'IP Address',

@@ -53,6 +53,22 @@ final class S3BackupSchema extends BackupAdapterSchema
         return 's3';
     }
 
+    /**
+     * The key of a backup's archive in the bucket.
+     */
+    public function objectKey(Backup $backup): string
+    {
+        return "{$backup->sourceServerUuid()}/$backup->uuid.tar.gz";
+    }
+
+    /**
+     * The key of the server configuration stored next to an archive.
+     */
+    public static function configKey(string $archiveKey): string
+    {
+        return preg_replace('/\.tar\.gz$/', '', $archiveKey) . '.pelicanconfig.json';
+    }
+
     public function createBackup(Backup $backup): void
     {
         $this->repository->setServer($backup->server)->create($backup);
@@ -64,24 +80,80 @@ final class S3BackupSchema extends BackupAdapterSchema
 
         $client->deleteObject([
             'Bucket' => $backup->backupHost->configuration['bucket'],
-            'Key' => "{$backup->server->uuid}/$backup->uuid.tar.gz",
+            'Key' => $this->objectKey($backup),
         ]);
+
+        if ($backup->pelican_config) {
+            $client->deleteObject([
+                'Bucket' => $backup->backupHost->configuration['bucket'],
+                'Key' => self::configKey($this->objectKey($backup)),
+            ]);
+        }
+    }
+
+    /**
+     * Stores the backup's server configuration next to its archive, so the
+     * server can be restored from the bucket even without the Panel's record.
+     */
+    public function storeConfig(Backup $backup): void
+    {
+        if (!$backup->pelican_config) {
+            return;
+        }
+
+        $this->createClient($backup->backupHost)->putObject([
+            'Bucket' => $backup->backupHost->configuration['bucket'],
+            'Key' => self::configKey($this->objectKey($backup)),
+            'Body' => json_encode($backup->pelican_config, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            'ContentType' => 'application/json',
+        ]);
+    }
+
+    /**
+     * Reads the server configuration stored next to the archive with the given
+     * key. Returns null when there is none.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function readConfig(BackupHost $backupHost, string $archiveKey): ?array
+    {
+        try {
+            $result = $this->createClient($backupHost)->getObject([
+                'Bucket' => $backupHost->configuration['bucket'],
+                'Key' => self::configKey($archiveKey),
+            ]);
+        } catch (Exception) {
+            return null;
+        }
+
+        $config = json_decode((string) $result['Body'], true);
+
+        return is_array($config) ? $config : null;
+    }
+
+    /**
+     * A presigned link for downloading any object in the bucket, used to
+     * restore a server from a backup.
+     */
+    public function getObjectLink(BackupHost $backupHost, string $key, int $minutes = 5): string
+    {
+        $client = $this->createClient($backupHost);
+
+        $request = $client->createPresignedRequest(
+            $client->getCommand('GetObject', [
+                'Bucket' => $backupHost->configuration['bucket'],
+                'Key' => $key,
+                'ContentType' => 'application/x-gzip',
+            ]),
+            CarbonImmutable::now()->addMinutes($minutes)
+        );
+
+        return $request->getUri()->__toString();
     }
 
     public function getDownloadLink(Backup $backup, User $user): string
     {
-        $client = $this->createClient($backup->backupHost);
-
-        $request = $client->createPresignedRequest(
-            $client->getCommand('GetObject', [
-                'Bucket' => $backup->backupHost->configuration['bucket'],
-                'Key' => "{$backup->server->uuid}/$backup->uuid.tar.gz",
-                'ContentType' => 'application/x-gzip',
-            ]),
-            CarbonImmutable::now()->addMinutes(5)
-        );
-
-        return $request->getUri()->__toString();
+        return $this->getObjectLink($backup->backupHost, $this->objectKey($backup));
     }
 
     /** @return Component[] */
@@ -132,7 +204,7 @@ final class S3BackupSchema extends BackupAdapterSchema
         // Params for generating the presigned urls
         $params = [
             'Bucket' => $backup->backupHost->configuration['bucket'],
-            'Key' => "{$backup->server->uuid}/$backup->uuid.tar.gz",
+            'Key' => $this->objectKey($backup),
             'ContentType' => 'application/x-gzip',
         ];
 
@@ -201,7 +273,7 @@ final class S3BackupSchema extends BackupAdapterSchema
 
         $params = [
             'Bucket' => $backup->backupHost->configuration['bucket'],
-            'Key' => "{$backup->server->uuid}/$backup->uuid.tar.gz",
+            'Key' => $this->objectKey($backup),
             'UploadId' => $backup->upload_id,
         ];
 

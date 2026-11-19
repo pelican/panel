@@ -66,6 +66,8 @@ use Symfony\Component\Yaml\Yaml;
  * @property-read int|null $roles_count
  * @property-read Collection<int, Server> $servers
  * @property-read int|null $servers_count
+ * @property-read Collection<int, Backup> $backups
+ * @property-read int|null $backups_count
  * @property-read Collection<int, BackupHost> $backupHosts
  * @property-read int|null $backup_hosts_count
  * @property-read int|null $servers_sum_memory
@@ -142,11 +144,9 @@ class Node extends Model implements Validatable
         'api.ssl.key' => 'string',
         'api.remote_download.max_redirects' => 'int',
         'remote_query.timeout' => 'int',
-        'system.username' => 'string',
         'system.timezone' => 'string',
         'system.quotas.enabled' => 'bool',
         'system.sftp.bind_address' => 'string',
-        'system.user.rootless.enabled' => 'bool',
         'system.user.passwd.enable' => 'bool',
         'system.machine_id.enable' => 'bool',
         'docker.network.name' => 'string',
@@ -167,7 +167,6 @@ class Node extends Model implements Validatable
         'docker.overhead.override' => 'bool',
         'docker.overhead.default_multiplier' => 'float',
         'docker.use_performant_inspect' => 'bool',
-        'docker.userns_mode' => 'string',
         'docker.system_ips' => 'list',
         'docker.log_config.type' => 'string',
         'throttles.enabled' => 'bool',
@@ -499,6 +498,18 @@ class Node extends Model implements Validatable
     public function servers(): HasMany
     {
         return $this->hasMany(Server::class);
+    }
+
+    /**
+     * Gets the backups made on this node, including the ones kept after their
+     * server was deleted. Backups stored on a node move with their server when
+     * it is transferred.
+     *
+     * @return HasMany<Backup, $this>
+     */
+    public function backups(): HasMany
+    {
+        return $this->hasMany(Backup::class);
     }
 
     /**

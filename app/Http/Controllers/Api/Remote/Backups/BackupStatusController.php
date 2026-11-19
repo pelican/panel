@@ -12,6 +12,7 @@ use App\Http\Requests\Api\Remote\ReportBackupCompleteRequest;
 use App\Models\Backup;
 use App\Models\Node;
 use App\Models\Server;
+use App\Services\Backups\ServerRestoreService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,7 +24,7 @@ class BackupStatusController extends Controller
     /**
      * BackupStatusController constructor.
      */
-    public function __construct(private BackupAdapterService $backupService) {}
+    public function __construct(private BackupAdapterService $backupService, private ServerRestoreService $restoreService) {}
 
     /**
      * Handles updating the state of a backup.
@@ -74,6 +75,17 @@ class BackupStatusController extends Controller
             }
         });
 
+        // Keep the server configuration next to the archive in the bucket, so the
+        // server can be restored from it without this Panel's record.
+        $schema = $this->backupService->get($model->backupHost->schema);
+        if ($schema instanceof S3BackupSchema && $model->is_successful) {
+            try {
+                $schema->storeConfig($model);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
         event(new BackupCompleted($model));
 
         return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
@@ -91,15 +103,25 @@ class BackupStatusController extends Controller
      */
     public function restore(Request $request, string $backup): JsonResponse
     {
+        /** @var Node $node */
+        $node = $request->attributes->get('node');
+
+        // A backup restored into a new server created from it.
+        $restore = $this->restoreService->findRunning($backup, $node);
+        if ($restore) {
+            $this->restoreService->complete($restore, $request->boolean('successful'));
+
+            return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
+        }
+
         /** @var Backup $model */
         $model = Backup::query()->where('uuid', $backup)->firstOrFail();
 
-        $node = $request->attributes->get('node');
-        throw_unless($model->server->node->is($node), new HttpForbiddenException('Requesting node does not have permission to access this server.'));
+        throw_unless($model->server?->node->is($node), new HttpForbiddenException('Requesting node does not have permission to access this server.'));
 
         $model->server->update(['status' => null]);
 
-        Activity::event($request->boolean('successful') ? 'server:backup.restore-complete' : 'server.backup.restore-failed')
+        Activity::event($request->boolean('successful') ? 'server:backup.restore-complete' : 'server:backup.restore-failed')
             ->subject($model, $model->server)
             ->property('name', $model->name)
             ->log();

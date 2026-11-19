@@ -11,6 +11,7 @@ use App\Models\ActivityLog;
 use App\Models\Backup;
 use App\Models\Node;
 use App\Models\Server;
+use App\Models\ServerRestore;
 use App\Models\ServerTransfer;
 use App\Services\Eggs\EggConfigurationService;
 use App\Services\Servers\ServerConfigurationStructureService;
@@ -125,6 +126,17 @@ class ServerDetailsController extends Controller
                         ->log();
                 }
             }
+
+            // Restores into servers created from a backup did not finish either, and the ones
+            // waiting for an install that was interrupted would never start.
+            ServerRestore::query()
+                ->where(fn ($query) => $query
+                    ->where('status', ServerRestore::STATUS_RUNNING)
+                    ->orWhere(fn ($query) => $query
+                        ->where('status', ServerRestore::STATUS_PENDING)
+                        ->whereHas('server', fn ($query) => $query->where('status', ServerState::Installing))))
+                ->whereHas('server', fn ($query) => $query->where('node_id', $node->id))
+                ->update(['status' => ServerRestore::STATUS_FAILED, 'error' => trans('admin/backup.restore.node_restarted')]);
 
             // Update any server marked as installing or restoring as being in a normal state
             // at this point in the process.

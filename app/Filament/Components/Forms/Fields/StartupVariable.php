@@ -203,8 +203,14 @@ class StartupVariable extends Field
 
     public function getType(): StartupVariableType
     {
-        $rules = $this->getVariableRules();
+        return static::typeForRules($this->getVariableRules());
+    }
 
+    /**
+     * @param  string[]  $rules
+     */
+    public static function typeForRules(array $rules): StartupVariableType
+    {
         if (Arr::first($rules, fn ($value) => str($value)->startsWith('in:'), false)) {
             return StartupVariableType::Select;
         }

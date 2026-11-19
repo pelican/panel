@@ -15,7 +15,10 @@ use Illuminate\Database\Query\Builder;
 
 /**
  * @property int $id
- * @property int $server_id
+ * @property int|null $server_id
+ * @property string|null $server_uuid
+ * @property int|null $node_id
+ * @property array<string, mixed>|null $pelican_config
  * @property string $uuid
  * @property string $name
  * @property string[] $ignored_files
@@ -30,13 +33,16 @@ use Illuminate\Database\Query\Builder;
  * @property string|null $upload_id
  * @property bool $is_locked
  * @property bool $is_scheduled
- * @property-read Server $server
+ * @property-read Server|null $server
+ * @property-read Node|null $node
  * @property-read BackupStatus $status
  *
  * @method static \Database\Factories\BackupFactory factory($count = null, $state = [])
  * @method static BackupQueryBuilder<static>|Backup newModelQuery()
  * @method static BackupQueryBuilder<static>|Backup newQuery()
  * @method static BackupQueryBuilder<static>|Backup nonFailed()
+ * @method static BackupQueryBuilder<static>|Backup orphaned()
+ * @method static BackupQueryBuilder<static>|Backup restorable()
  * @method static BackupQueryBuilder<static>|Backup query()
  * @method static BackupQueryBuilder<static>|Backup whereBytes($value)
  * @method static BackupQueryBuilder<static>|Backup whereChecksum($value)
@@ -74,7 +80,10 @@ class Backup extends Model implements Validatable
 
     /** @var array<array-key, string[]> */
     public static array $validationRules = [
-        'server_id' => ['bail', 'required', 'numeric', 'exists:servers,id'],
+        'server_id' => ['bail', 'nullable', 'numeric', 'exists:servers,id'],
+        'server_uuid' => ['nullable', 'uuid'],
+        'node_id' => ['nullable', 'integer', 'exists:nodes,id'],
+        'pelican_config' => ['nullable', 'array'],
         'uuid' => ['required', 'uuid'],
         'is_successful' => ['boolean'],
         'is_locked' => ['boolean'],
@@ -95,6 +104,7 @@ class Backup extends Model implements Validatable
             'is_locked' => 'bool',
             'is_scheduled' => 'bool',
             'ignored_files' => 'array',
+            'pelican_config' => 'array',
             'bytes' => 'int',
             'completed_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
@@ -112,6 +122,46 @@ class Backup extends Model implements Validatable
     public function server(): BelongsTo
     {
         return $this->belongsTo(Server::class);
+    }
+
+    public function node(): BelongsTo
+    {
+        return $this->belongsTo(Node::class);
+    }
+
+    /**
+     * The uuid of the server this backup was made for. The server may have been
+     * deleted, with the backup kept so it can be restored.
+     */
+    public function sourceServerUuid(): ?string
+    {
+        return $this->server->uuid ?? $this->server_uuid;
+    }
+
+    /**
+     * The node that holds this backup. Transfers update it for the backups they
+     * move, the ones left behind stay on the old node.
+     */
+    public function sourceNode(): ?Node
+    {
+        return $this->node ?? $this->server?->node;
+    }
+
+    /**
+     * The name to show for this backup's server, including for deleted servers.
+     */
+    public function serverDisplayName(): string
+    {
+        if ($this->server) {
+            return $this->server->name;
+        }
+
+        return trans('admin/backup.deleted_server', ['name' => data_get($this->pelican_config, 'server.name') ?? $this->server_uuid ?? '?']);
+    }
+
+    public function isOrphaned(): bool
+    {
+        return $this->server_id === null;
     }
 
     public function backupHost(): BelongsTo

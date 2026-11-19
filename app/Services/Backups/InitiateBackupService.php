@@ -23,13 +23,16 @@ class InitiateBackupService
 
     private bool $isScheduled = false;
 
+    private bool $includeConfig = true;
+
     /**
      * InitiateBackupService constructor.
      */
     public function __construct(
         private readonly ConnectionInterface $connection,
         private readonly DeleteBackupService $deleteBackupService,
-        private readonly BackupAdapterService $backupService
+        private readonly BackupAdapterService $backupService,
+        private readonly ServerConfigExporterService $configExporterService,
     ) {}
 
     /**
@@ -49,6 +52,17 @@ class InitiateBackupService
     public function setIsScheduled(bool $isScheduled): self
     {
         $this->isScheduled = $isScheduled;
+
+        return $this;
+    }
+
+    /**
+     * Set if the server's configuration (.pelicanconfig) should be stored with
+     * the backup, so a new server can be created from it.
+     */
+    public function setIncludeConfig(bool $includeConfig): self
+    {
+        $this->includeConfig = $includeConfig;
 
         return $this;
     }
@@ -131,12 +145,15 @@ class InitiateBackupService
         return $this->connection->transaction(function () use ($backupHost, $schema, $server, $name) {
             $backup = Backup::create([
                 'server_id' => $server->id,
+                'server_uuid' => $server->uuid,
+                'node_id' => $server->node_id,
                 'uuid' => Uuid::uuid4()->toString(),
                 'name' => trim($name) ?: sprintf('Backup at %s', now()->toDateTimeString()),
                 'ignored_files' => array_values($this->ignoredFiles ?? []),
                 'backup_host_id' => $backupHost->id,
                 'is_locked' => $this->isLocked,
                 'is_scheduled' => $this->isScheduled,
+                'pelican_config' => $this->includeConfig ? $this->configExporterService->handle($server) : null,
             ]);
 
             $schema->createBackup($backup);
