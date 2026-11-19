@@ -13,6 +13,7 @@ use App\Filament\Admin\Resources\Servers\Pages\EditServer;
 use App\Filament\Admin\Resources\Servers\Pages\ListServers;
 use App\Filament\Admin\Resources\Servers\Pages\ViewServer;
 use App\Filament\Admin\Resources\Servers\RelationManagers\AllocationsRelationManager;
+use App\Filament\Admin\Resources\Servers\RelationManagers\BackupsRelationManager;
 use App\Filament\Admin\Resources\Servers\RelationManagers\DatabasesRelationManager;
 use App\Filament\Components\Actions\DeleteIcon;
 use App\Filament\Components\Actions\PreviewStartupAction;
@@ -141,6 +142,7 @@ class ServerResource extends Resource
         return [
             AllocationsRelationManager::class,
             DatabasesRelationManager::class,
+            BackupsRelationManager::class,
         ];
     }
 
