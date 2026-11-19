@@ -118,7 +118,7 @@ function actingAsRootAdmin(): void
     test()->actingAs($admin->syncRoles(Role::getRootAdmin()));
 }
 
-function hasTooltip(Testable $component, string $slug): ?string
+function actionTooltip(Testable $component, string $slug): ?string
 {
     $action = $component->instance()->getTable()->getAction('install');
 
@@ -265,7 +265,7 @@ it('filters to installed plugins', function () {
         ->assertSee('Hub Free Plugin')
         ->assertSee(trans('admin/plugin.hub.installed'));
 
-    expect(hasTooltip($component, 'hub-free-plugin'))->toBe(trans('admin/plugin.hub.reinstall'));
+    expect(actionTooltip($component, 'hub-free-plugin'))->toBe(trans('admin/plugin.hub.reinstall'));
 });
 
 it('offers to install a plugin that is downloaded but not installed', function () {
@@ -275,7 +275,7 @@ it('offers to install a plugin that is downloaded but not installed', function (
 
     $component = livewire(BrowsePlugins::class)->loadTable();
 
-    expect(hasTooltip($component, 'hub-free-plugin'))->toBe(trans('admin/plugin.install'));
+    expect(actionTooltip($component, 'hub-free-plugin'))->toBe(trans('admin/plugin.install'));
 });
 
 it('only lets admins who can update a plugin replace it', function () {
