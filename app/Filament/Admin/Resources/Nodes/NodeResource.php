@@ -10,6 +10,7 @@ use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
 use App\Filament\Admin\Resources\Nodes\Pages\ListNodes;
 use App\Filament\Admin\Resources\Nodes\Pages\ViewNode;
 use App\Filament\Admin\Resources\Nodes\RelationManagers\AllocationsRelationManager;
+use App\Filament\Admin\Resources\Nodes\RelationManagers\BackupsRelationManager;
 use App\Filament\Admin\Resources\Nodes\RelationManagers\ServersRelationManager;
 use App\Filament\Admin\Resources\Nodes\RelationManagers\ServerTransferBatchesRelationManager;
 use App\Models\Node;
@@ -100,6 +101,7 @@ class NodeResource extends Resource
         return [
             AllocationsRelationManager::class,
             ServersRelationManager::class,
+            BackupsRelationManager::class,
             ServerTransferBatchesRelationManager::class,
         ];
     }

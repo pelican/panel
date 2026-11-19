@@ -1,8 +1,15 @@
 <?php
 
+use App\Enums\EggFormat;
 use App\Enums\RolePermissionModels;
+use App\Exceptions\Service\InvalidFileUploadException;
+use App\Filament\Admin\Resources\BackupHosts\Pages\EditBackupHost;
+use App\Filament\Admin\Resources\BackupHosts\RelationManagers\BackupsRelationManager as BackupHostBackupsRelationManager;
 use App\Filament\Admin\Resources\Backups\BackupResource;
 use App\Filament\Admin\Resources\Backups\Pages\ListBackups;
+use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
+use App\Filament\Admin\Resources\Nodes\Pages\ViewNode;
+use App\Filament\Admin\Resources\Nodes\RelationManagers\BackupsRelationManager as NodeBackupsRelationManager;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Filament\Admin\Resources\Servers\ServerResource;
 use App\Models\Allocation;
@@ -14,13 +21,20 @@ use App\Models\Node;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\ServerRestore;
+use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Backups\RestoreSource;
 use App\Services\Backups\ServerConfigExporterService;
+use App\Services\Eggs\Sharing\EggExporterService;
+use App\Services\Helpers\EggHubService;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
+use Filament\Notifications\Livewire\Notifications;
+use Filament\Notifications\Notification as FilamentNotification;
+use Filament\Notifications\NotificationMailbox;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 
@@ -76,7 +90,7 @@ it('fills the create server wizard from a backup and records the restore', funct
     session()->put('last_utilized_node', $node->id);
     session()->put('restore_source.abc', RestoreSource::backup($backup)->toArray());
 
-    Livewire::withQueryParams(['restore' => 'abc'])
+    $component = Livewire::withQueryParams(['restore' => 'abc'])
         ->test(CreateServer::class)
         ->assertFormSet([
             'name' => 'restored-server',
@@ -103,6 +117,9 @@ it('fills the create server wizard from a backup and records the restore', funct
         ->and($restore->status)->toBe(ServerRestore::STATUS_PENDING)
         ->and($restore->start_on_completion)->toBeTrue()
         ->and(session()->has('restore_source.abc'))->toBeFalse();
+
+    // The new server opens on its edit page, not the view page.
+    $component->assertRedirect(ServerResource::getUrl('edit', ['record' => $server]));
 });
 
 it('lists the addresses that are not on the chosen node', function () {
@@ -438,4 +455,271 @@ it('lists backups under servers in the navigation', function () {
         ->toBe(ServerResource::getNavigationGroup())
         ->and(BackupResource::getNavigationSort())
         ->toBeGreaterThan(ServerResource::getNavigationSort() ?? -1);
+});
+
+it('lists all backups on a node, including kept ones, on the node page', function () {
+    $node = Node::factory()->create();
+    $otherNode = Node::factory()->create();
+    $server = Server::factory()->withNode($node)->create();
+    $serverBackup = Backup::factory()->create([
+        'server_id' => $server->id,
+        'server_uuid' => $server->uuid,
+        'node_id' => $node->id,
+        'backup_host_id' => BackupHost::factory()->create()->id,
+    ]);
+    $kept = keptBackup($node, Egg::factory()->create(), 25593);
+    $elsewhere = keptBackup($otherNode, Egg::factory()->create(), 25592);
+
+    livewire(NodeBackupsRelationManager::class, ['ownerRecord' => $node, 'pageClass' => EditNode::class])
+        ->assertCanSeeTableRecords([$serverBackup, $kept])
+        ->assertCanNotSeeTableRecords([$elsewhere])
+        // Backups of servers that still exist are deleted from the server's page.
+        ->assertActionHidden(TestAction::make('delete')->table($serverBackup))
+        ->assertActionVisible(TestAction::make('delete')->table($kept))
+        ->assertActionVisible(TestAction::make('create_from_backup')->table($kept));
+});
+
+it('keeps the node backups read-only on the view page', function () {
+    $node = Node::factory()->create();
+    $kept = keptBackup($node, Egg::factory()->create(), 25591);
+    $kept->update(['is_locked' => true]);
+
+    livewire(NodeBackupsRelationManager::class, ['ownerRecord' => $node, 'pageClass' => ViewNode::class])
+        ->assertCanSeeTableRecords([$kept])
+        ->assertActionHidden(TestAction::make('delete')->table($kept))
+        ->assertActionHidden(TestAction::make('unlock')->table($kept))
+        ->assertActionHidden(TestAction::make('create_from_backup')->table($kept));
+});
+
+it('shows kept backups on the backup host page without linking to their deleted server', function () {
+    $kept = keptBackup(Node::factory()->create(), Egg::factory()->create(), 25590);
+
+    livewire(BackupHostBackupsRelationManager::class, ['ownerRecord' => $kept->backupHost, 'pageClass' => EditBackupHost::class])
+        ->assertCanSeeTableRecords([$kept])
+        ->assertSee('restored-server');
+});
+
+/**
+ * An administrator who can create servers, limited to the given node.
+ */
+function restrictedBackupAdmin(Node ...$nodes): User
+{
+    $role = Role::query()->create(['name' => 'Node admin ' . $nodes[0]->id, 'guard_name' => 'web']);
+    $role->givePermissionTo([
+        Permission::findOrCreate(RolePermissionModels::Server->viewAny(), 'web'),
+        Permission::findOrCreate(RolePermissionModels::Server->create(), 'web'),
+    ]);
+    $role->nodes()->sync(array_map(fn (Node $node) => $node->id, $nodes));
+    [$admin] = generateTestAccount();
+    $admin->syncRoles($role);
+
+    return $admin;
+}
+
+it('only lets node admins use the S3 backup hosts of their nodes', function () {
+    // A node belongs to at most one backup host.
+    [$node, $sharedNode] = Node::factory()->count(2)->create();
+    $global = BackupHost::factory()->create(['schema' => 's3']);
+    $own = BackupHost::factory()->create(['schema' => 's3']);
+    $own->nodes()->sync([$node->id]);
+    $foreign = BackupHost::factory()->create(['schema' => 's3']);
+    $foreign->nodes()->sync([Node::factory()->create()->id]);
+    // Also serves a node the administrator cannot access.
+    $shared = BackupHost::factory()->create(['schema' => 's3']);
+    $shared->nodes()->sync([$sharedNode->id, Node::factory()->create()->id]);
+
+    $nodeAdmin = restrictedBackupAdmin($node, $sharedNode);
+
+    expect(BackupHost::query()->accessibleBy($nodeAdmin)->pluck('id')->sort()->values()->all())->toBe([$global->id, $own->id])
+        ->and(BackupHost::query()->accessibleBy($this->admin)->count())->toBe(4)
+        ->and(RestoreSource::s3($own, 'snapshots/a.tar.gz')->isAccessibleBy($nodeAdmin))->toBeTrue()
+        ->and(RestoreSource::s3($foreign, 'snapshots/a.tar.gz')->isAccessibleBy($nodeAdmin))->toBeFalse()
+        ->and(RestoreSource::s3($shared, 'snapshots/a.tar.gz')->isAccessibleBy($nodeAdmin))->toBeFalse()
+        ->and(RestoreSource::s3($foreign, 'snapshots/a.tar.gz')->isAccessibleBy($this->admin))->toBeTrue();
+});
+
+it('does not let node admins reach another node\'s backup through an S3 key', function () {
+    $node = Node::factory()->create();
+    $otherNode = Node::factory()->create();
+    $host = BackupHost::factory()->create(['schema' => 's3']);
+    $nodeAdmin = restrictedBackupAdmin($node);
+
+    $ownBackup = keptBackup($node, Egg::factory()->create(), 25589);
+    $foreignBackup = keptBackup($otherNode, Egg::factory()->create(), 25588);
+    $foreignServer = Server::factory()->withNode($otherNode)->create();
+
+    expect(RestoreSource::s3($host, "$ownBackup->server_uuid/$ownBackup->uuid.tar.gz")->isAccessibleBy($nodeAdmin))->toBeTrue()
+        ->and(RestoreSource::s3($host, "$foreignBackup->server_uuid/$foreignBackup->uuid.tar.gz")->isAccessibleBy($nodeAdmin))->toBeFalse()
+        ->and(RestoreSource::s3($host, "/$foreignBackup->server_uuid/$foreignBackup->uuid.tar.gz")->isAccessibleBy($nodeAdmin))->toBeFalse()
+        // An object the Panel has no backup of, in the folder of a server on another node.
+        ->and(RestoreSource::s3($host, "$foreignServer->uuid/" . fake()->uuid() . '.tar.gz')->isAccessibleBy($nodeAdmin))->toBeFalse()
+        ->and(RestoreSource::s3($host, 'snapshots/a.tar.gz')->isAccessibleBy($nodeAdmin))->toBeTrue()
+        ->and(RestoreSource::s3($host, "$foreignBackup->server_uuid/$foreignBackup->uuid.tar.gz")->isAccessibleBy($this->admin))->toBeTrue()
+        ->and(RestoreSource::backup($foreignBackup)->isAccessibleBy($nodeAdmin))->toBeFalse()
+        ->and(RestoreSource::backup($ownBackup)->isAccessibleBy($nodeAdmin))->toBeTrue();
+});
+
+it('refuses an S3 backup host on another node as a restore source', function () {
+    $node = Node::factory()->create();
+    $foreign = BackupHost::factory()->create(['schema' => 's3']);
+    $foreign->nodes()->sync([Node::factory()->create()->id]);
+
+    $this->actingAs(restrictedBackupAdmin($node));
+
+    livewire(ListBackups::class)
+        ->callAction(TestAction::make('create_from_source')->table(), [
+            'type' => RestoreSource::TYPE_S3,
+            'backup_host_id' => $foreign->id,
+            'key' => 'snapshots/a.tar.gz',
+        ])
+        ->assertNoRedirect();
+
+    expect(session()->get('restore_source'))->toBeEmpty();
+});
+
+it('ignores a restore source the administrator may not use', function () {
+    $node = Node::factory()->create();
+    $foreign = BackupHost::factory()->create(['schema' => 's3']);
+    $foreign->nodes()->sync([Node::factory()->create()->id]);
+
+    $this->actingAs(restrictedBackupAdmin($node));
+    session()->put('restore_source.foreign', RestoreSource::s3($foreign, 'snapshots/a.tar.gz')->toArray());
+
+    Livewire::withQueryParams(['restore' => 'foreign'])
+        ->test(CreateServer::class)
+        ->assertSet('restoreSource', null);
+});
+
+/**
+ * A backup whose egg is only in the Hub: the egg is exported, then deleted from the panel.
+ *
+ * @return array{0: Backup, 1: string, 2: string} the backup, the egg's uuid and its YAML
+ */
+function backupWithHubEgg(Node $node): array
+{
+    $egg = Egg::factory()->create();
+    $backup = keptBackup($node, $egg, 25587);
+    $yaml = app(EggExporterService::class)->handle($egg->id, EggFormat::YAML);
+    $uuid = $egg->uuid;
+    $egg->delete();
+
+    return [$backup, $uuid, $yaml];
+}
+
+/**
+ * The names of the actions on the "egg is missing" notification that was sent, read
+ * the way Notification::assertNotified() reads sent notifications.
+ *
+ * @return string[]
+ */
+function eggMissingActions(Backup $backup): array
+{
+    app(NotificationMailbox::class)->flush();
+    $notifications = new Notifications();
+    $notifications->mount();
+    $notifications->pullNotifications();
+
+    $title = trans('admin/backup.restore.egg_missing', ['egg' => $backup->pelican_config['egg']['name']]);
+    $notification = $notifications->notifications->first(fn (FilamentNotification $notification) => $notification->getTitle() === $title);
+    expect($notification)->not->toBeNull();
+
+    return array_map(fn ($action) => $action->getName(), $notification->getActions());
+}
+
+function fakeHubEgg(string $uuid, string $yaml, string $downloadUrl = 'https://hub.pelican.dev/eggs/hub-egg/download'): void
+{
+    Http::fake([
+        'hub.pelican.dev/api/eggs*' => Http::response(['data' => [[
+            'slug' => 'hub-egg',
+            'name' => 'Hub Egg',
+            'uuid' => $uuid,
+            'url' => 'https://hub.pelican.dev/api/eggs/hub-egg',
+            'download_url' => $downloadUrl,
+        ]]]),
+        'hub.pelican.dev/eggs/hub-egg/download' => Http::response($yaml, 200, ['Content-Type' => 'application/yaml', 'Content-Disposition' => 'attachment; filename="egg-hub.yaml"']),
+    ]);
+}
+
+it('offers to install a missing egg from the Hub and fills in its settings', function () {
+    config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+    $node = Node::factory()->create();
+    [$backup, $uuid, $yaml] = backupWithHubEgg($node);
+    fakeHubEgg($uuid, $yaml);
+
+    session()->put('last_utilized_node', $node->id);
+    session()->put('restore_source.hub', RestoreSource::backup($backup)->toArray());
+
+    $component = Livewire::withQueryParams(['restore' => 'hub'])->test(CreateServer::class);
+
+    expect(eggMissingActions($backup))->toBe(['install_egg_from_hub']);
+
+    $component->call('installEggFromHub');
+
+    $egg = Egg::query()->where('uuid', $uuid)->sole();
+    $component->assertFormSet(['egg_id' => $egg->id, 'name' => 'restored-server'])
+        ->assertSet('restoreEggId', $egg->id);
+});
+
+it('does not offer to install eggs from the Hub without permission to import eggs', function () {
+    config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+    $node = Node::factory()->create();
+    [$backup, $uuid, $yaml] = backupWithHubEgg($node);
+    fakeHubEgg($uuid, $yaml);
+
+    $this->actingAs(restrictedBackupAdmin($node));
+    session()->put('last_utilized_node', $node->id);
+    session()->put('restore_source.hub', RestoreSource::backup($backup)->toArray());
+
+    Livewire::withQueryParams(['restore' => 'hub'])
+        ->test(CreateServer::class)
+        ->call('installEggFromHub');
+
+    expect(eggMissingActions($backup))->toBe([])
+        ->and(Egg::query()->where('uuid', $uuid)->exists())->toBeFalse();
+    // The Hub is not even asked.
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'hub.pelican.dev'));
+});
+
+it('only installs the egg the backup uses from the Hub', function () {
+    config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+    $uuid = fake()->uuid();
+    $other = Egg::factory()->create();
+    $otherYaml = app(EggExporterService::class)->handle($other->id, EggFormat::YAML);
+    $other->delete();
+
+    // The Hub answers for the uuid with a file of another egg.
+    fakeHubEgg($uuid, $otherYaml);
+    expect(fn () => app(EggHubService::class)->install($uuid))->toThrow(InvalidFileUploadException::class)
+        ->and(Egg::query()->whereIn('uuid', [$uuid, $other->uuid])->exists())->toBeFalse();
+
+});
+
+it('does not follow a Hub egg download link that is not on the Hub', function () {
+    config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+    $uuid = fake()->uuid();
+    fakeHubEgg($uuid, '', 'https://example.com/egg.yaml');
+
+    expect(app(EggHubService::class)->findByUuid($uuid))->toBeNull();
+});
+
+it('lets administrators who may import eggs install one from the Hub', function () {
+    config()->set('panel.plugin.hub_url', 'https://hub.pelican.dev');
+    $node = Node::factory()->create();
+    [$backup, $uuid, $yaml] = backupWithHubEgg($node);
+    fakeHubEgg($uuid, $yaml);
+
+    $admin = restrictedBackupAdmin($node);
+    // Importing eggs is its own permission, creating eggs is not needed.
+    $admin->roles()->first()->givePermissionTo(Permission::findOrCreate('import egg', 'web'));
+    $this->actingAs($admin->refresh());
+    session()->put('last_utilized_node', $node->id);
+    session()->put('restore_source.hub', RestoreSource::backup($backup)->toArray());
+
+    $component = Livewire::withQueryParams(['restore' => 'hub'])->test(CreateServer::class);
+    expect(eggMissingActions($backup))->toBe(['install_egg_from_hub']);
+
+    $component->call('installEggFromHub');
+
+    expect(Egg::query()->where('uuid', $uuid)->exists())->toBeTrue()
+        ->and($admin->can('create egg'))->toBeFalse();
 });

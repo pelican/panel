@@ -4,6 +4,9 @@ namespace App\Services\Backups;
 
 use App\Models\Backup;
 use App\Models\BackupHost;
+use App\Models\Server;
+use App\Models\User;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -81,6 +84,52 @@ final readonly class RestoreSource
     public function getBackupHost(): ?BackupHost
     {
         return $this->backupHostId ? BackupHost::query()->find($this->backupHostId) : null;
+    }
+
+    /**
+     * Whether the user may restore from this source. Administrators limited to
+     * some nodes may only use the backups and backup hosts of those nodes, and
+     * may not reach another node's backup through an S3 key.
+     */
+    public function isAccessibleBy(?User $user): bool
+    {
+        return match ($this->type) {
+            self::TYPE_BACKUP => $this->backupId !== null && Backup::query()->restorable()->accessibleBy($user)->whereKey($this->backupId)->exists(),
+            self::TYPE_S3 => $this->isS3SourceAccessibleBy($user),
+            // Links can only point at public addresses, see BackupConfigResolver::isPublicUrl().
+            default => true,
+        };
+    }
+
+    private function isS3SourceAccessibleBy(?User $user): bool
+    {
+        if ($this->backupHostId === null || $this->key === null || $user === null) {
+            return false;
+        }
+
+        if (!BackupHost::query()->where('schema', 's3')->accessibleBy($user)->whereKey($this->backupHostId)->exists()) {
+            return false;
+        }
+
+        if ($user->isRootAdmin()) {
+            return true;
+        }
+
+        // Keys of Panel backups are "{server uuid}/{backup uuid}.tar.gz". A key that
+        // names a known backup or server is only usable if that one is accessible.
+        $segments = explode('/', trim($this->key, '/'));
+        $backupUuid = Str::beforeLast((string) end($segments), '.tar.gz');
+        $serverUuid = count($segments) >= 2 ? $segments[count($segments) - 2] : null;
+
+        if (Str::isUuid($backupUuid) && Backup::query()->where('uuid', $backupUuid)->exists()) {
+            return Backup::query()->accessibleBy($user)->where('uuid', $backupUuid)->exists();
+        }
+
+        if ($serverUuid !== null && Str::isUuid($serverUuid) && ($server = Server::query()->with('node')->where('uuid', $serverUuid)->first())) {
+            return $user->canTarget($server->node);
+        }
+
+        return true;
     }
 
     /**

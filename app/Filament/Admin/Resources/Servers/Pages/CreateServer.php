@@ -17,6 +17,7 @@ use App\Services\Backups\BackupConfigResolver;
 use App\Services\Backups\RestoreSource;
 use App\Services\Backups\ServerConfigImporterService;
 use App\Services\Backups\ServerRestoreService;
+use App\Services\Helpers\EggHubService;
 use App\Services\Servers\RandomWordService;
 use App\Services\Servers\ServerCreationService;
 use App\Services\Users\UserCreationService;
@@ -55,6 +56,7 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use LogicException;
 use Random\RandomException;
 
@@ -77,6 +79,8 @@ class CreateServer extends CreateRecord
     private BackupConfigResolver $configResolver;
 
     private ServerRestoreService $restoreService;
+
+    private EggHubService $eggHubService;
 
     /**
      * Where the files come from when creating a server from a backup.
@@ -122,17 +126,20 @@ class CreateServer extends CreateRecord
         ServerConfigImporterService $configImporter,
         BackupConfigResolver $configResolver,
         ServerRestoreService $restoreService,
+        EggHubService $eggHubService,
     ): void {
         $this->serverCreationService = $serverCreationService;
         $this->configImporter = $configImporter;
         $this->configResolver = $configResolver;
         $this->restoreService = $restoreService;
+        $this->eggHubService = $eggHubService;
     }
 
     public function mount(): void
     {
         $key = request()->query('restore');
-        if (is_string($key) && is_array($source = session()->get("restore_source.$key"))) {
+        // Nothing is read from a source the administrator may not use.
+        if (is_string($key) && is_array($source = session()->get("restore_source.$key")) && RestoreSource::fromArray($source)->isAccessibleBy(user())) {
             $this->restoreSource = $source;
             $this->restoreKey = $key;
         }
@@ -177,12 +184,7 @@ class CreateServer extends CreateRecord
         $state = array_merge($this->form->getRawState(), $importer->toFormState($this->restoreConfig));
 
         if (!$importer->findEgg($this->restoreConfig)) {
-            Notification::make()
-                ->warning()
-                ->title(trans('admin/backup.restore.egg_missing', ['egg' => data_get($this->restoreConfig, 'egg.name', '?')]))
-                ->body(trans('admin/backup.restore.egg_missing_body'))
-                ->persistent()
-                ->send();
+            $this->sendEggMissingNotification();
         }
 
         $this->restoreEggId = $state['egg_id'] ?? null;
@@ -198,14 +200,96 @@ class CreateServer extends CreateRecord
         // does not wrap simple repeater items, so both repeaters are set afterwards in
         // the shape their items have.
         $this->data['allocation_additional'] = $this->repeaterItems(array_map(fn (int $id) => ['extra_allocations' => $id], $allocations['allocation_additional']));
+        $this->setRestoredServerVariables($state['server_variables'] ?? []);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $variables
+     */
+    private function setRestoredServerVariables(array $variables): void
+    {
         $this->data['server_variables'] = $this->repeaterItems(array_map(
             // Set this way the field's state casts do not run, and a toggle would show "0"
             // as on. Toggles hold 0 or 1, like StartupVariable's boolean cast makes them.
             fn (array $variable) => StartupVariable::typeForRules($variable['rules'] ?? []) === StartupVariableType::Toggle
                 ? [...$variable, 'variable_value' => (int) boolval($variable['variable_value'])]
                 : $variable,
-            $state['server_variables'] ?? [],
+            $variables,
         ));
+    }
+
+    /**
+     * Installing an egg from the Hub is an egg import, like ImportEggAction.
+     */
+    private function canInstallEggs(): bool
+    {
+        return (bool) user()?->can('import egg');
+    }
+
+    /**
+     * Tells the administrator the backup's egg is missing. When the Hub has the
+     * egg and they may import eggs, they can install it from there.
+     */
+    private function sendEggMissingNotification(): void
+    {
+        $uuid = (string) data_get($this->restoreConfig, 'egg.uuid', '');
+        $hubEgg = $uuid !== '' && $this->canInstallEggs() ? $this->eggHubService->findByUuid($uuid) : null;
+
+        Notification::make()
+            ->warning()
+            ->title(trans('admin/backup.restore.egg_missing', ['egg' => data_get($this->restoreConfig, 'egg.name', '?')]))
+            ->body($hubEgg ? trans('admin/backup.restore.egg_missing_hub_body', ['egg' => $hubEgg['name']]) : trans('admin/backup.restore.egg_missing_body'))
+            ->actions($hubEgg ? [
+                Action::make('install_egg_from_hub')
+                    ->label(trans('admin/backup.restore.install_from_hub'))
+                    ->button()
+                    ->dispatch('install-egg-from-hub')
+                    ->close(),
+            ] : [])
+            ->persistent()
+            ->send();
+    }
+
+    /**
+     * Installs the backup's egg from the Hub, then fills in the egg settings the
+     * backup has for it.
+     */
+    #[On('install-egg-from-hub')]
+    public function installEggFromHub(): void
+    {
+        $uuid = (string) data_get($this->restoreConfig, 'egg.uuid', '');
+
+        if (!$this->canInstallEggs() || $uuid === '') {
+            return;
+        }
+
+        try {
+            $egg = $this->configImporter->findEgg($this->restoreConfig) ?? $this->eggHubService->install($uuid);
+        } catch (Exception $exception) {
+            Notification::make()
+                ->danger()
+                ->title(trans('admin/backup.restore.install_from_hub_failed'))
+                ->body($exception->getMessage())
+                ->send();
+
+            return;
+        }
+
+        // Only the egg's settings are filled in, so other changes in the wizard are kept.
+        $state = Arr::only($this->configImporter->toFormState($this->restoreConfig), ['egg_id', 'startup', 'select_startup', 'image', 'select_image', 'environment', 'server_variables']);
+        // Filling the form does not keep the repeaters' items as they are, see fillForm().
+        $additionalAllocations = $this->data['allocation_additional'] ?? [];
+        $this->form->fill(array_merge($this->form->getRawState(), Arr::except($state, ['server_variables'])));
+        $this->data['allocation_additional'] = $additionalAllocations;
+        $this->setRestoredServerVariables($state['server_variables'] ?? []);
+
+        $this->restoreEggId = $egg->id;
+        $this->restoreDefaultedVariables = $this->configImporter->defaultedVariables($this->restoreConfig);
+
+        Notification::make()
+            ->success()
+            ->title(trans('admin/backup.restore.installed_from_hub', ['egg' => $egg->name]))
+            ->send();
     }
 
     /**
@@ -1128,6 +1212,9 @@ class CreateServer extends CreateRecord
             // The restore is recorded before the node is asked to create the server, so a
             // fast (skipped) install that reports back right away still finds it.
             $source = RestoreSource::fromArray($this->restoreSource);
+            if (!$source->isAccessibleBy(user())) {
+                throw new DisplayException(trans('admin/backup.restore.source_not_accessible'));
+            }
             // The node downloads the link, so it is checked again in case its host now
             // resolves to another address than when it was entered.
             if ($source->type === RestoreSource::TYPE_URL && !$this->configResolver->isPublicUrl((string) $source->url)) {
@@ -1153,6 +1240,19 @@ class CreateServer extends CreateRecord
 
             throw new Halt();
         }
+    }
+
+    /**
+     * A server created from a backup opens on its edit page, where the restore
+     * can be followed and the server managed once its files are back.
+     */
+    protected function getRedirectUrl(): string
+    {
+        if ($this->restoreSource && $this->getResource()::canEdit($this->getRecord())) {
+            return $this->getResource()::getUrl('edit', ['record' => $this->getRecord()]);
+        }
+
+        return parent::getRedirectUrl();
     }
 
     /**

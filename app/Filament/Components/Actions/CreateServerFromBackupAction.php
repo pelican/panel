@@ -14,6 +14,7 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Utilities\Get;
 use Illuminate\Support\Str;
 
@@ -67,7 +68,7 @@ class CreateServerFromBackupAction extends Action
                 ->label(trans('admin/backup.restore.backup_host'))
                 ->visible(fn (Get $get) => $get('type') === RestoreSource::TYPE_S3)
                 ->required(fn (Get $get) => $get('type') === RestoreSource::TYPE_S3)
-                ->options(fn () => BackupHost::query()->where('schema', 's3')->pluck('name', 'id')),
+                ->options(fn () => BackupHost::query()->where('schema', 's3')->accessibleBy(user())->pluck('name', 'id')),
             TextInput::make('key')
                 ->label(trans('admin/backup.restore.key'))
                 ->helperText(trans('admin/backup.restore.key_help'))
@@ -98,6 +99,17 @@ class CreateServerFromBackupAction extends Action
                 $data['type'] === RestoreSource::TYPE_S3 => RestoreSource::s3(BackupHost::query()->findOrFail($data['backup_host_id']), $data['key']),
                 default => RestoreSource::url($data['url']),
             };
+
+            // Administrators limited to some nodes may only restore from those nodes'
+            // backups and backup hosts.
+            if (!$source->isAccessibleBy(user())) {
+                Notification::make()
+                    ->title(trans('admin/backup.restore.source_not_accessible'))
+                    ->danger()
+                    ->send();
+
+                $this->halt();
+            }
 
             $key = Str::random(16);
             session()->put("restore_source.$key", $source->toArray());

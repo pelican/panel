@@ -66,6 +66,8 @@ use Symfony\Component\Yaml\Yaml;
  * @property-read int|null $roles_count
  * @property-read Collection<int, Server> $servers
  * @property-read int|null $servers_count
+ * @property-read Collection<int, Backup> $backups
+ * @property-read int|null $backups_count
  * @property-read Collection<int, BackupHost> $backupHosts
  * @property-read int|null $backup_hosts_count
  * @property-read int|null $servers_sum_memory
@@ -499,6 +501,18 @@ class Node extends Model implements Validatable
     public function servers(): HasMany
     {
         return $this->hasMany(Server::class);
+    }
+
+    /**
+     * Gets the backups made on this node, including the ones kept after their
+     * server was deleted. Backups stored on a node move with their server when
+     * it is transferred.
+     *
+     * @return HasMany<Backup, $this>
+     */
+    public function backups(): HasMany
+    {
+        return $this->hasMany(Backup::class);
     }
 
     /**
