@@ -11,6 +11,6 @@ class UsedDiskSpaceCheck extends BaseCheck
         $freeSpace = disk_free_space($this->filesystemName ?? '/');
         $totalSpace = disk_total_space($this->filesystemName ?? '/');
 
-        return 100 - ($freeSpace * 100 / $totalSpace);
+        return (int) (100 - ($freeSpace * 100 / $totalSpace));
     }
 }

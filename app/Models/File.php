@@ -229,7 +229,7 @@ class File extends Model
             $rowCount = count($rows);
             $limit = 999;
             if ($rowCount > $limit) {
-                $this->sushiInsertChunkSize = min(floor($limit / count($this->getSchema())), $rowCount);
+                $this->sushiInsertChunkSize = min(intdiv($limit, count($this->getSchema())), $rowCount);
             }
 
             return $rows;
