@@ -73,7 +73,7 @@ class CreateApiKey extends CreateRecord
 
         $memo = request()->query('memo');
         if (is_string($memo)) {
-            $state['memo'] = str($memo)->limit(255, '')->toString();
+            $state['memo'] = Str::substr($memo, 0, 255);
         }
 
         $permissions = request()->query('permissions');
@@ -95,7 +95,7 @@ class CreateApiKey extends CreateRecord
 
             $returnState = request()->query('state');
             if (is_string($returnState)) {
-                $this->returnState = str($returnState)->limit(255, '')->toString();
+                $this->returnState = Str::substr($returnState, 0, 255);
             }
         }
     }
