@@ -8,6 +8,8 @@ return [
     'whitelist_placeholder' => 'Example: 127.0.0.1 or 192.168.1.1',
     'description' => 'Description',
     'description_help' => 'A brief description of what this key is for.',
+    'return_to' => 'After you press Create, this key is sent to :host.',
+    'return_failed' => 'The key was created, but it could not be sent to :host. Copy it from the list and paste it there instead.',
     'nav_title' => 'API Keys',
     'model_label' => 'Application API Key',
     'model_label_plural' => 'Application API Keys',
