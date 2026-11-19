@@ -108,6 +108,10 @@ class CreateApiKey extends CreateRecord
     #[Exposed]
     public function create(bool $another = false): void
     {
+        if ($this->isCreating) {
+            return;
+        }
+
         parent::create($another);
 
         if ($this->returnUrl === null || !$this->record instanceof ApiKey) {

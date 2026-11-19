@@ -107,6 +107,19 @@ it('posts the new key back to the hub and still redirects to the key list', func
         && $request['state'] === 'abc123');
 });
 
+it('posts the key to the hub only once when create is pressed twice', function () {
+    config()->set('panel.plugin.hub_url', 'https://hub.example.com');
+    Http::fake(['hub.example.com/*' => Http::response(status: 204)]);
+
+    Livewire::withQueryParams(['memo' => 'Pelican Hub', 'return_url' => 'https://hub.example.com/callback'])
+        ->test(CreateApiKey::class)
+        ->call('create')
+        ->call('create');
+
+    expect(ApiKey::query()->where('memo', 'Pelican Hub')->count())->toBe(1);
+    Http::assertSentCount(1);
+});
+
 it('never posts the key to a url that is not the hub', function (string $returnUrl) {
     config()->set('panel.plugin.hub_url', 'https://hub.example.com');
     Http::fake();
