@@ -5,17 +5,14 @@ namespace App\Filament\Admin\Resources\ApiKeys\Pages;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\ApiKeys\ApiKeyResource;
 use App\Models\ApiKey;
-use App\Services\Helpers\HubCredentials;
+use App\Services\Api\HubAuthorizationService;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
-use Filament\Support\Components\Attributes\Exposed;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
 
@@ -28,12 +25,23 @@ class CreateApiKey extends CreateRecord
 
     protected static bool $canCreateAnother = false;
 
-    /** Where the new key is POSTed after Create: only ever the configured Pelican Hub. */
+    /**
+     * Set when the page was opened with a valid Pelican Hub authorization request: after Create,
+     * the browser goes back to the Hub with a one-time code (see HubAuthorizationService).
+     *
+     * @var array{redirect_uri: string, state: string, code_challenge: string}|null
+     */
     #[Locked]
-    public ?string $returnUrl = null;
+    public ?array $hubRequest = null;
 
-    #[Locked]
-    public ?string $returnState = null;
+    protected ?string $hubCode = null;
+
+    protected HubAuthorizationService $hubAuthorization;
+
+    public function boot(HubAuthorizationService $hubAuthorization): void
+    {
+        $this->hubAuthorization = $hubAuthorization;
+    }
 
     /** @return array<Action|ActionGroup> */
     protected function getDefaultHeaderActions(): array
@@ -55,11 +63,11 @@ class CreateApiKey extends CreateRecord
 
     public function getSubheading(): ?string
     {
-        if ($this->returnUrl === null) {
+        if ($this->hubRequest === null) {
             return null;
         }
 
-        return trans('admin/apikey.return_to', ['host' => parse_url($this->returnUrl, PHP_URL_HOST)]);
+        return trans('admin/apikey.return_to', ['host' => parse_url($this->hubRequest['redirect_uri'], PHP_URL_HOST)]);
     }
 
     /**
@@ -73,7 +81,7 @@ class CreateApiKey extends CreateRecord
 
         $memo = request()->query('memo');
         if (is_string($memo)) {
-            $state['memo'] = str($memo)->limit(255, '')->toString();
+            $state['memo'] = mb_substr($memo, 0, 255);
         }
 
         $permissions = request()->query('permissions');
@@ -89,51 +97,32 @@ class CreateApiKey extends CreateRecord
 
         $this->data = [...$this->data ?? [], ...$state];
 
-        $returnUrl = request()->query('return_url');
-        if (is_string($returnUrl) && HubCredentials::isHub($returnUrl)) {
-            $this->returnUrl = $returnUrl;
+        $this->hubRequest = $this->hubAuthorization->authorizationRequest(request()->query());
+    }
 
-            $returnState = request()->query('state');
-            if (is_string($returnState)) {
-                $this->returnState = str($returnState)->limit(255, '')->toString();
-            }
+    protected function afterCreate(): void
+    {
+        if ($this->hubRequest !== null && $this->record instanceof ApiKey) {
+            $this->hubCode = $this->hubAuthorization->issueCode($this->record, $this->hubRequest['code_challenge']);
         }
     }
 
-    /**
-     * Creates the key as usual, then, when the page was opened with a Hub return URL, POSTs the
-     * new key to it from the server. That runs after the transaction commits, so the Hub can use
-     * the key straight away, and the key never passes through the browser.
-     */
-    #[Exposed]
-    public function create(bool $another = false): void
+    protected function getRedirectUrl(): string
     {
-        parent::create($another);
-
-        if ($this->returnUrl === null || !$this->record instanceof ApiKey) {
-            return;
+        if ($this->hubRequest === null || $this->hubCode === null) {
+            return parent::getRedirectUrl();
         }
 
-        try {
-            $sent = Http::timeout(10)
-                ->withoutRedirecting()
-                ->post($this->returnUrl, [
-                    'key' => $this->record->identifier . $this->record->token,
-                    'state' => $this->returnState,
-                ])
-                ->successful();
-        } catch (ConnectionException) {
-            $sent = false;
-        }
+        return $this->hubRequest['redirect_uri'] . '?' . http_build_query([
+            'code' => $this->hubCode,
+            'state' => $this->hubRequest['state'],
+        ]);
+    }
 
-        if ($sent) {
-            return;
-        }
-
-        Notification::make()
-            ->title(trans('admin/apikey.return_failed', ['host' => parse_url($this->returnUrl, PHP_URL_HOST)]))
-            ->warning()
-            ->send();
+    protected function getCreatedNotification(): ?Notification
+    {
+        // The admin is on the Hub next; the "Created" toast would only show on their next Panel visit.
+        return $this->hubCode === null ? parent::getCreatedNotification() : null;
     }
 
     protected function handleRecordCreation(array $data): Model

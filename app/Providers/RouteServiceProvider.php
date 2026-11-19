@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Enums\ResourceLimit;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\OAuthTokenController;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
@@ -31,6 +32,11 @@ class RouteServiceProvider extends ServiceProvider
         $this->routes(function () {
             // No middleware group: monitors poll this, so it shouldn't start a session on every hit.
             Route::get('health', HealthController::class)->name('health');
+
+            // Pelican Hub swaps a one-time code from the create-key page for the new key here.
+            Route::post('oauth/token', OAuthTokenController::class)
+                ->middleware('throttle:oauth.token')
+                ->name('oauth.token');
 
             Route::middleware('web')->group(function () {
                 Route::middleware(['auth.session'])
@@ -91,6 +97,8 @@ class RouteServiceProvider extends ServiceProvider
                 config('http.rate_limit.application')
             )->by($key);
         });
+
+        RateLimiter::for('oauth.token', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
 
         ResourceLimit::boot();
     }

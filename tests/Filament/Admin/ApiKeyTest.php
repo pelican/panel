@@ -7,8 +7,6 @@ use App\Models\ApiKey;
 use App\Models\Role;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
-use Illuminate\Http\Client\Request;
-use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 
@@ -86,53 +84,121 @@ it('prefills the create form from the query string', function () {
         ]);
 });
 
-it('posts the new key back to the hub and still redirects to the key list', function () {
-    config()->set('panel.plugin.hub_url', 'https://hub.example.com');
-    Http::fake(['hub.example.com/*' => Http::response(status: 204)]);
-
-    Livewire::withQueryParams([
+/**
+ * A create-key link from Pelican Hub: the OAuth 2.0 authorization request plus the prefill.
+ *
+ * @return array<string, mixed>
+ */
+function hubAuthorizationQuery(string $verifier, array $overrides = []): array
+{
+    return [
         'memo' => 'Pelican Hub',
-        'return_url' => 'https://hub.example.com/panels/connect/callback',
-        'state' => 'abc123',
-    ])->test(CreateApiKey::class)
+        'permissions' => ['plugin' => '3'],
+        'response_type' => 'code',
+        'client_id' => 'pelican-hub',
+        'redirect_uri' => 'https://hub.example.com/panels/connect/callback',
+        'state' => 'state-from-the-hub-session',
+        'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '='),
+        'code_challenge_method' => 'S256',
+        ...$overrides,
+    ];
+}
+
+/** Presses Create on a create-key page opened from the query and returns where the browser goes. */
+function createKeyFrom(array $query): string
+{
+    return Livewire::withQueryParams($query)
+        ->test(CreateApiKey::class)
         ->call('create')
         ->assertHasNoFormErrors()
-        ->assertRedirect(ListApiKeys::getUrl());
+        ->effects['redirect'];
+}
+
+/** @return array<string, string> */
+function tokenRequest(string $code, string $verifier, array $overrides = []): array
+{
+    return [
+        'grant_type' => 'authorization_code',
+        'client_id' => 'pelican-hub',
+        'redirect_uri' => 'https://hub.example.com/panels/connect/callback',
+        'code' => $code,
+        'code_verifier' => $verifier,
+        ...$overrides,
+    ];
+}
+
+beforeEach(fn () => config()->set('panel.plugin.hub_url', 'https://hub.example.com'));
+
+it('sends the admin back to the hub with a one-time code the hub swaps for the key', function () {
+    $verifier = str_repeat('v', 64);
+
+    $redirect = createKeyFrom(hubAuthorizationQuery($verifier));
+
+    expect($redirect)->toStartWith('https://hub.example.com/panels/connect/callback?');
+    parse_str((string) parse_url($redirect, PHP_URL_QUERY), $params);
+    expect($params['state'])->toBe('state-from-the-hub-session');
 
     $apiKey = ApiKey::query()->where('memo', 'Pelican Hub')->firstOrFail();
 
-    Http::assertSent(fn (Request $request) => $request->method() === 'POST'
-        && $request->url() === 'https://hub.example.com/panels/connect/callback'
-        && $request['key'] === $apiKey->identifier . $apiKey->token
-        && $request['state'] === 'abc123');
+    $this->postJson('/oauth/token', tokenRequest($params['code'], $verifier))
+        ->assertOk()
+        ->assertHeader('Cache-Control', 'no-store, private')
+        ->assertExactJson(['access_token' => $apiKey->identifier . $apiKey->token, 'token_type' => 'Bearer']);
+
+    // One use only.
+    $this->postJson('/oauth/token', tokenRequest($params['code'], $verifier))
+        ->assertStatus(400)
+        ->assertExactJson(['error' => 'invalid_grant']);
 });
 
-it('never posts the key to a url that is not the hub', function (string $returnUrl) {
-    config()->set('panel.plugin.hub_url', 'https://hub.example.com');
-    Http::fake();
+it('only gives the key to whoever holds the PKCE verifier, and burns the code on a wrong one', function () {
+    $verifier = str_repeat('v', 64);
+    parse_str((string) parse_url(createKeyFrom(hubAuthorizationQuery($verifier)), PHP_URL_QUERY), $params);
 
-    Livewire::withQueryParams(['memo' => 'key', 'return_url' => $returnUrl])
-        ->test(CreateApiKey::class)
-        ->call('create')
-        ->assertHasNoFormErrors()
-        ->assertRedirect(ListApiKeys::getUrl());
+    $this->postJson('/oauth/token', tokenRequest($params['code'], str_repeat('w', 64)))
+        ->assertStatus(400)
+        ->assertExactJson(['error' => 'invalid_grant']);
 
-    Http::assertNothingSent();
+    $this->postJson('/oauth/token', tokenRequest($params['code'], $verifier))
+        ->assertStatus(400)
+        ->assertExactJson(['error' => 'invalid_grant']);
+});
+
+it('ignores an authorization request that is not for the hub callback', function (array $overrides) {
+    $redirect = createKeyFrom(hubAuthorizationQuery(str_repeat('v', 64), $overrides));
+
+    expect($redirect)->toBe(ListApiKeys::getUrl());
 })->with([
-    'other host' => 'https://evil.example.com/steal',
-    'lookalike host' => 'https://hub.example.com.evil.com/steal',
-    'plain http' => 'http://hub.example.com/callback',
-    'other port' => 'https://hub.example.com:8443/callback',
+    'other host' => [['redirect_uri' => 'https://evil.example.com/panels/connect/callback']],
+    'lookalike host' => [['redirect_uri' => 'https://hub.example.com.evil.com/panels/connect/callback']],
+    'plain http' => [['redirect_uri' => 'http://hub.example.com/panels/connect/callback']],
+    'other port' => [['redirect_uri' => 'https://hub.example.com:8443/panels/connect/callback']],
+    'other path on the hub' => [['redirect_uri' => 'https://hub.example.com/somewhere-else']],
+    'other client' => [['client_id' => 'someone-else']],
+    'no PKCE' => [['code_challenge' => null]],
+    'plain PKCE' => [['code_challenge_method' => 'plain']],
+    'no state' => [['state' => null]],
 ]);
 
-it('warns when the hub does not accept the key', function () {
-    config()->set('panel.plugin.hub_url', 'https://hub.example.com');
-    Http::fake(['hub.example.com/*' => Http::response(status: 500)]);
-
-    Livewire::withQueryParams(['memo' => 'key', 'return_url' => 'https://hub.example.com/callback'])
+it('says where the admin goes after Create', function () {
+    Livewire::withQueryParams(hubAuthorizationQuery(str_repeat('v', 64)))
         ->test(CreateApiKey::class)
-        ->call('create')
-        ->assertNotified(trans('admin/apikey.return_failed', ['host' => 'hub.example.com']));
+        ->assertSee(trans('admin/apikey.return_to', ['host' => 'hub.example.com']));
+});
 
-    expect(ApiKey::query()->where('memo', 'key')->exists())->toBeTrue();
+it('rejects token requests that are not an authorization code for the hub', function (array $overrides, int $status, string $error) {
+    $this->postJson('/oauth/token', tokenRequest('unknown-code', str_repeat('v', 64), $overrides))
+        ->assertStatus($status)
+        ->assertExactJson(['error' => $error]);
+})->with([
+    'other grant' => [['grant_type' => 'client_credentials'], 400, 'unsupported_grant_type'],
+    'other client' => [['client_id' => 'someone-else'], 401, 'invalid_client'],
+    'other redirect uri' => [['redirect_uri' => 'https://evil.example.com/cb'], 400, 'invalid_grant'],
+    'unknown code' => [[], 400, 'invalid_grant'],
+]);
+
+it('keeps up to 255 characters of a prefilled description, counting characters not width', function () {
+    Livewire::withQueryParams(['memo' => str_repeat('界', 300)])
+        ->test(CreateApiKey::class)
+        ->assertSchemaStateSet(['memo' => str_repeat('界', 255)]);
 });
