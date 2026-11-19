@@ -67,5 +67,6 @@ return [
         'launch_failed' => 'Could not start the update process: :reason',
         'failed' => 'Could not start the update',
         'unauthorized' => 'Only root admins can update the panel.',
+        'disabled' => 'Updating from the dashboard is disabled on this panel.',
     ],
 ];
