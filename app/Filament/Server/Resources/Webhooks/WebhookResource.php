@@ -17,6 +17,7 @@ use App\Traits\Filament\CanCustomizePages;
 use App\Traits\Filament\CanCustomizeRelations;
 use App\Traits\Filament\CanModifyForm;
 use App\Traits\Filament\CanModifyTable;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -27,8 +28,10 @@ use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Group;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
@@ -85,13 +88,15 @@ class WebhookResource extends Resource
     {
         return $table
             ->columns([
+                TextColumn::make('name')
+                    ->label(trans('admin/webhook.name')),
+                TextColumn::make('description')
+                    ->label(trans('admin/webhook.table.description')),
                 IconColumn::make('type')
                     ->label(trans('admin/webhook.type'))
                     ->icon(fn (?string $state) => WebhookTypes::get($state)?->getIcon() ?? TablerIcon::PuzzleOff)
                     ->color(fn (?string $state) => WebhookTypes::get($state)?->getColor() ?? 'gray')
                     ->tooltip(fn (?string $state) => WebhookTypes::get($state)?->getLabel() ?? trans('admin/webhook.unavailable_type')),
-                TextColumn::make('name')
-                    ->label(trans('admin/webhook.name')),
                 TextColumn::make('endpoint')
                     ->label(trans('admin/webhook.endpoint'))
                     ->formatStateUsing(fn (string $state) => str($state)->after('://'))
@@ -108,16 +113,15 @@ class WebhookResource extends Resource
                     ->modal(false)
                     ->excludeAttributes(['created_at', 'updated_at']),
             ])
-            ->groupedBulkActions([
-                DeleteBulkAction::make(),
+            ->toolbarActions([
+                CreateAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make('exclude_bulk_delete'),
+                ]),
             ])
             ->emptyStateIcon('tabler-webhook')
             ->emptyStateDescription('')
             ->emptyStateHeading(trans('admin/webhook.no_webhooks'))
-            ->emptyStateActions([
-                CreateAction::make(),
-            ])
-            ->persistFiltersInSession()
             ->filters([
                 SelectFilter::make('type')
                     ->options(fn () => WebhookTypes::getOptions())
@@ -129,31 +133,51 @@ class WebhookResource extends Resource
     {
         return $schema
             ->components([
-                WebhookForm::typeSelector(),
-                TextInput::make('endpoint')
-                    ->label(trans('admin/webhook.endpoint'))
-                    ->required()
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (?string $state, ?string $old, Get $get, Set $set) => $set('type', WebhookTypes::detectFor($state, $old, $get('type')))),
-                TextInput::make('name')
-                    ->label(trans('admin/webhook.name'))
+                Tabs::make('webhook_tabs')
                     ->columnSpanFull()
-                    ->required(),
-                Group::make()
-                    ->columnSpanFull()
-                    ->schema(fn (Get $get) => [
-                        WebhookForm::payloadSection($get('type'), WebhookScope::Server),
-                    ]),
-                Section::make(trans('admin/webhook.events'))
-                    ->schema([
-                        CheckboxList::make('events')
-                            ->live()
-                            ->options(fn () => WebhookConfiguration::filamentCheckboxList(WebhookScope::Server))
-                            ->searchable()
-                            ->bulkToggleable()
-                            ->columns(3)
-                            ->columnSpanFull()
-                            ->required(),
+                    ->tabs([
+                        Tab::make(trans('admin/webhook.information'))
+                            ->icon(TablerIcon::InfoCircle)
+                            ->schema([
+                                Grid::make()
+                                    ->schema([
+                                        TextInput::make('name')
+                                            ->label(trans('admin/webhook.name'))
+                                            ->required(),
+                                        TextInput::make('description')
+                                            ->label(trans('admin/webhook.description'))
+                                            ->required(),
+                                    ]),
+                                Grid::make()
+                                    ->schema([
+                                        WebhookForm::typeSelector(),
+                                        TextInput::make('endpoint')
+                                            ->label(trans('admin/webhook.endpoint'))
+                                            ->required()
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(fn (?string $state, ?string $old, Get $get, Set $set) => $set('type', WebhookTypes::detectFor($state, $old, $get('type')))),
+                                    ]),
+                            ]),
+                        Tab::make(trans('admin/webhook.payload'))
+                            ->icon(TablerIcon::FileCode)
+                            ->schema(fn (Get $get) => [
+                                WebhookForm::payloadSection($get('type'), WebhookScope::Server),
+                            ]),
+                        Tab::make(trans('admin/webhook.events'))
+                            ->icon(TablerIcon::Star)
+                            ->schema([
+                                Section::make()
+                                    ->schema([
+                                        CheckboxList::make('events')
+                                            ->live()
+                                            ->options(fn () => WebhookConfiguration::filamentCheckboxList(WebhookScope::Server))
+                                            ->searchable()
+                                            ->bulkToggleable()
+                                            ->columns(3)
+                                            ->columnSpanFull()
+                                            ->required(),
+                                    ]),
+                            ]),
                     ]),
             ]);
     }

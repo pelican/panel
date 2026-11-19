@@ -4,6 +4,7 @@ namespace App\Filament\Admin\Resources\Webhooks\Pages;
 
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Webhooks\WebhookResource;
+use App\Models\Server;
 use App\Models\WebhookConfiguration;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
@@ -21,12 +22,23 @@ class EditWebhookConfiguration extends EditRecord
 
     protected static string $resource = WebhookResource::class;
 
+    public function getSubheading(): ?string
+    {
+        /** @var WebhookConfiguration $webhook */
+        $webhook = $this->getRecord();
+        /** @var Server|null $server */
+        $server = $webhook->server;
+
+        return $server ? trans('admin/webhook.server') . ': ' . $server->name : null;
+    }
+
     /** @return array<Action|ActionGroup> */
     protected function getDefaultHeaderActions(): array
     {
         return [
             DeleteAction::make(),
             Action::make('test_now')
+                ->hiddenLabel()
                 ->tooltip(trans('admin/webhook.test_now'))
                 ->color('primary')
                 ->disabled(fn (WebhookConfiguration $webhookConfiguration) => count($webhookConfiguration->events) === 0)

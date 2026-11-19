@@ -18,6 +18,11 @@ class ViewWebhook extends ViewRecord
         return $this->mutateWebhookDataBeforeFill($data);
     }
 
+    public function getBreadcrumbs(): array
+    {
+        return [];
+    }
+
     protected function getHeaderActions(): array
     {
         return [

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Server\Resources\Webhooks\Pages;
 
+use App\Enums\TablerIcon;
 use App\Filament\Server\Resources\Webhooks\WebhookResource;
 use App\Models\WebhookConfiguration;
 use App\Traits\Filament\CanCustomizeHeaderActions;
@@ -20,19 +21,29 @@ class EditWebhook extends EditRecord
 
     protected static string $resource = WebhookResource::class;
 
+    public function getBreadcrumbs(): array
+    {
+        return [];
+    }
+
     /** @return array<Action|ActionGroup> */
     protected function getDefaultHeaderActions(): array
     {
         return [
-            DeleteAction::make()
-                ->icon('tabler-trash'),
+            DeleteAction::make(),
             Action::make('test_now')
-                ->label(trans('admin/webhook.test_now'))
+                ->hiddenLabel()
+                ->tooltip(trans('admin/webhook.test_now'))
                 ->color('primary')
-                ->icon('tabler-send')
-                ->action(fn (WebhookConfiguration $record) => $record->run())
-                ->tooltip(trans('admin/webhook.test_now_help')),
-            $this->getSaveFormAction()->formId('form')->icon('tabler-device-floppy'),
+                ->disabled(fn (WebhookConfiguration $webhookConfiguration) => count($webhookConfiguration->events) === 0)
+                ->action(fn (WebhookConfiguration $webhookConfiguration) => $webhookConfiguration->run())
+                ->icon(TablerIcon::TestPipe),
+            Action::make('save')
+                ->hiddenLabel()
+                ->action('save')
+                ->keyBindings(['mod+s'])
+                ->tooltip(trans('filament-panels::resources/pages/edit-record.form.actions.save.label'))
+                ->icon(TablerIcon::DeviceFloppy),
         ];
     }
 
