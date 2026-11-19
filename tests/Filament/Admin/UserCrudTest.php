@@ -101,8 +101,8 @@ it('only offers suspend all when the user has unsuspended servers', function () 
     createServerModel(); // Another user's unsuspended server.
 
     livewire(ServersRelationManager::class, ['ownerRecord' => $user, 'pageClass' => EditUser::class])
-        ->assertActionHidden(TestAction::make('toggle_suspend')->table())
-        ->assertActionVisible(TestAction::make('toggle_unsuspend')->table());
+        ->assertActionHidden(TestAction::make('exclude_toggle_suspend')->table())
+        ->assertActionVisible(TestAction::make('exclude_toggle_unsuspend')->table());
 });
 
 it('lists the servers a user owns or is a subuser of', function () {

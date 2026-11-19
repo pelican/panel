@@ -21,6 +21,8 @@ class ViewConsoleAction extends Action
     {
         parent::setUp();
 
+        $this->hiddenLabel();
+
         $this->tooltip(trans('admin/server.view_console'));
 
         $this->icon(TablerIcon::Terminal);

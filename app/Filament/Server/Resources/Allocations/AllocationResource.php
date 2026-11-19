@@ -91,7 +91,8 @@ class AllocationResource extends Resource
                     ->visible(fn (Allocation $allocation) => (!$allocation->is_locked || $canUpdateNode()) && $hasSpareAllocations())
 
                     ->authorize(fn () => user()?->can(SubuserPermission::AllocationDelete, $server))
-                    ->label(trans('server/network.delete'))
+                    ->hiddenLabel()
+                    ->tooltip(trans('server/network.delete'))
                     ->action(function (Allocation $allocation) use ($server) {
                         $server->releaseAllocations([$allocation->id], keepOne: true);
 

@@ -29,7 +29,8 @@ class ListBackups extends ListRecords
 
         return [
             Action::make('notification_settings')
-                ->label(trans('server/backup.notifications.action'))
+                ->hiddenLabel()
+                ->tooltip(trans('server/backup.notifications.action'))
                 ->icon(TablerIcon::Bell)
                 ->schema([
                     Toggle::make(ServerUserSettingKey::ManualBackupNotifications->value)
