@@ -2,9 +2,11 @@
 
 namespace App\Tests\Integration\Api\Application;
 
+use App\Enums\AllocationProtocol;
 use App\Models\Allocation;
 use App\Models\Node;
 use App\Services\Acl\Api\AdminAcl;
+use App\Services\Servers\ServerConfigurationStructureService;
 use Illuminate\Http\Response;
 
 class AllocationControllerTest extends ApplicationApiIntegrationTestCase
@@ -49,6 +51,133 @@ class AllocationControllerTest extends ApplicationApiIntegrationTestCase
         $this->postJson("/api/application/nodes/{$this->node->id}/allocations", [
             'ip' => '10.0.0.1',
         ])->assertUnprocessable();
+    }
+
+    public function test_create_allocations_with_a_protocol(): void
+    {
+        $this->postJson("/api/application/nodes/{$this->node->id}/allocations", [
+            'ip' => '10.0.0.1',
+            'ports' => ['19132'],
+            'protocol' => 'udp',
+        ])->assertStatus(Response::HTTP_NO_CONTENT);
+
+        $this->assertSame(AllocationProtocol::Udp, Allocation::query()->where('node_id', $this->node->id)->firstOrFail()->protocol);
+    }
+
+    public function test_create_allocations_defaults_to_both_protocols(): void
+    {
+        $this->postJson("/api/application/nodes/{$this->node->id}/allocations", [
+            'ip' => '10.0.0.1',
+            'ports' => ['25565'],
+        ])->assertStatus(Response::HTTP_NO_CONTENT);
+
+        $this->assertSame(AllocationProtocol::Both, Allocation::query()->where('node_id', $this->node->id)->firstOrFail()->protocol);
+    }
+
+    public function test_create_allocations_rejects_an_invalid_protocol(): void
+    {
+        $this->postJson("/api/application/nodes/{$this->node->id}/allocations", [
+            'ip' => '10.0.0.1',
+            'ports' => ['25565'],
+            'protocol' => 'sctp',
+        ])->assertUnprocessable()->assertJsonPath('errors.0.meta.source_field', 'protocol');
+    }
+
+    public function test_list_node_allocations_includes_the_protocol(): void
+    {
+        Allocation::factory()->create(['node_id' => $this->node->id, 'protocol' => AllocationProtocol::Tcp]);
+
+        $this->getJson("/api/application/nodes/{$this->node->id}/allocations")
+            ->assertOk()
+            ->assertJsonPath('data.0.attributes.protocol', 'tcp');
+    }
+
+    public function test_create_allocations_merges_a_different_protocol_into_both(): void
+    {
+        $url = "/api/application/nodes/{$this->node->id}/allocations";
+
+        $this->postJson($url, ['ip' => '10.0.0.1', 'ports' => ['25565'], 'protocol' => 'tcp'])->assertStatus(Response::HTTP_NO_CONTENT);
+        $this->postJson($url, ['ip' => '10.0.0.1', 'ports' => ['25565', '25566'], 'protocol' => 'udp'])->assertStatus(Response::HTTP_NO_CONTENT);
+
+        $this->assertSame(
+            [25565 => AllocationProtocol::Both, 25566 => AllocationProtocol::Udp],
+            Allocation::query()->where('node_id', $this->node->id)->orderBy('port')->get()->mapWithKeys(fn (Allocation $a) => [$a->port => $a->protocol])->all(),
+        );
+
+        $this->getJson($url)->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('data.0.attributes.protocol', 'both');
+    }
+
+    public function test_update_allocation_protocol(): void
+    {
+        $allocation = Allocation::factory()->create(['node_id' => $this->node->id]);
+        $url = "/api/application/nodes/{$this->node->id}/allocations/{$allocation->id}";
+
+        foreach (['tcp', 'udp', 'both'] as $protocol) {
+            $this->patchJson($url, ['protocol' => $protocol])
+                ->assertOk()
+                ->assertJsonPath('object', 'allocation')
+                ->assertJsonPath('attributes.id', $allocation->id)
+                ->assertJsonPath('attributes.protocol', $protocol);
+
+            $this->assertSame($protocol, $allocation->refresh()->protocol->value);
+        }
+    }
+
+    public function test_update_allocation_protocol_validates_the_protocol(): void
+    {
+        $allocation = Allocation::factory()->create(['node_id' => $this->node->id, 'protocol' => AllocationProtocol::Tcp]);
+        $url = "/api/application/nodes/{$this->node->id}/allocations/{$allocation->id}";
+
+        $this->patchJson($url, ['protocol' => 'sctp'])->assertUnprocessable()->assertJsonPath('errors.0.meta.source_field', 'protocol');
+        $this->patchJson($url, [])->assertUnprocessable()->assertJsonPath('errors.0.meta.source_field', 'protocol');
+        $this->patchJson($url, ['protocol' => 'BOTH'])->assertUnprocessable();
+
+        $this->assertSame(AllocationProtocol::Tcp, $allocation->refresh()->protocol);
+    }
+
+    public function test_update_allocation_of_another_node_is_not_found(): void
+    {
+        $allocation = Allocation::factory()->create(['node_id' => Node::factory()->create()->id, 'protocol' => AllocationProtocol::Tcp]);
+
+        $this->patchJson("/api/application/nodes/{$this->node->id}/allocations/{$allocation->id}", ['protocol' => 'udp'])->assertNotFound();
+
+        $this->assertSame(AllocationProtocol::Tcp, $allocation->refresh()->protocol);
+    }
+
+    public function test_update_allocation_requires_write_permission(): void
+    {
+        $allocation = Allocation::factory()->create(['node_id' => $this->node->id, 'protocol' => AllocationProtocol::Tcp]);
+        $this->createNewDefaultApiKey($this->getApiUser(), [Allocation::RESOURCE_NAME => AdminAcl::READ]);
+
+        $this->assertAccessDeniedJson($this->patchJson("/api/application/nodes/{$this->node->id}/allocations/{$allocation->id}", ['protocol' => 'udp']));
+
+        $this->assertSame(AllocationProtocol::Tcp, $allocation->refresh()->protocol);
+    }
+
+    public function test_update_allocation_requires_authentication(): void
+    {
+        $allocation = Allocation::factory()->create(['node_id' => $this->node->id]);
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeaders(['Authorization' => ''])
+            ->patchJson("/api/application/nodes/{$this->node->id}/allocations/{$allocation->id}", ['protocol' => 'udp'])
+            ->assertUnauthorized();
+    }
+
+    public function test_update_protocol_of_an_assigned_allocation_changes_the_daemon_configuration(): void
+    {
+        $server = $this->createServerModel(['node_id' => $this->node->id]);
+        $allocation = $server->allocation;
+
+        $this->patchJson("/api/application/nodes/{$this->node->id}/allocations/{$allocation->id}", ['protocol' => 'udp'])
+            ->assertOk()
+            ->assertJsonPath('attributes.assigned', true)
+            ->assertJsonPath('attributes.protocol', 'udp');
+
+        $allocations = app(ServerConfigurationStructureService::class)->handle($server->refresh())['allocations'];
+
+        $this->assertSame([$allocation->ip => [$allocation->port => 'udp']], array_map(fn ($ports) => (array) $ports, (array) $allocations['protocols']));
+        $this->assertSame([$allocation->ip => [$allocation->port]], $allocations['mappings']);
     }
 
     public function test_delete_unassigned_allocation(): void

@@ -143,6 +143,7 @@ class PermissionMatrixTest extends IntegrationTestCase
 
             $e('GET', '/nodes/{node}/allocations', $alloc, $r),
             $e('POST', '/nodes/{node}/allocations', $alloc, $w),
+            $e('PATCH', '/nodes/{node}/allocations/{allocation}', $alloc, $w, ['protocol' => 'udp']),
             $e('DELETE', '/nodes/{node}/allocations/{allocation}', $alloc, $w),
 
             $e('GET', '/servers', $server, $r),

@@ -12,6 +12,7 @@ final class AllocationData extends ApiResource
         public string $ip,
         public ?string $ip_alias,
         public int $port,
+        public string $protocol,
         public ?string $notes,
         public bool $is_default,
     ) {}
@@ -28,6 +29,7 @@ final class AllocationData extends ApiResource
             ip: $model->ip,
             ip_alias: $model->ip_alias,
             port: $model->port,
+            protocol: $model->protocol->value,
             notes: $model->notes,
             is_default: $model->server->allocation_id === $model->id,
         );

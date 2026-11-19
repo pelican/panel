@@ -62,6 +62,10 @@ class AllocationResource extends Resource
                     ->label(trans('server/network.port'))
                     ->state(fn (Allocation $allocation) => $allocation->show_port ? $allocation->port : null)
                     ->placeholder(trans('server/network.port_hidden')),
+                TextColumn::make('protocol')
+                    ->label(trans('server/network.protocol'))
+                    ->badge()
+                    ->visibleFrom('sm'),
                 TextInputColumn::make('notes')
                     ->label(trans('server/network.notes'))
                     ->visibleFrom('sm')

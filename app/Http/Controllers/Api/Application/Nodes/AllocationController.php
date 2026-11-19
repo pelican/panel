@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\Application\ApplicationApiController;
 use App\Http\Requests\Api\Application\Allocations\DeleteAllocationRequest;
 use App\Http\Requests\Api\Application\Allocations\GetAllocationsRequest;
 use App\Http\Requests\Api\Application\Allocations\StoreAllocationRequest;
+use App\Http\Requests\Api\Application\Allocations\UpdateAllocationRequest;
 use App\Models\Allocation;
 use App\Models\Node;
 use App\Models\Server;
@@ -89,6 +90,22 @@ class AllocationController extends ApplicationApiController
         $this->assignmentService->handle($node, $request->validated());
 
         return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Update allocation
+     *
+     * @return array<mixed>
+     */
+    public function update(UpdateAllocationRequest $request, Node $node, Allocation $allocation): array
+    {
+        abort_unless($allocation->node_id === $node->id, 404);
+
+        $allocation->update(['protocol' => $request->validated('protocol')]);
+
+        return $this->response->item($allocation)
+            ->transformWith(AllocationData::class)
+            ->toArray();
     }
 
     /**

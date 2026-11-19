@@ -52,6 +52,7 @@
                             "ip": "192.0.2.10",
                             "alias": null,
                             "port": 25565,
+                            "protocol": "both",
                             "notes": null,
                             "assigned": true
                         }
@@ -63,6 +64,7 @@
                             "ip": "192.0.2.10",
                             "alias": null,
                             "port": 25566,
+                            "protocol": "both",
                             "notes": "Secondary allocation",
                             "assigned": true
                         }

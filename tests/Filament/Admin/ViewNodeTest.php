@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\AllocationProtocol;
 use App\Enums\RolePermissionModels;
 use App\Filament\Admin\Resources\Nodes\Pages\EditNode;
 use App\Filament\Admin\Resources\Nodes\Pages\ListNodes;
@@ -207,4 +208,56 @@ it('keeps the node relation managers read-only on the view page', function () {
         ->call('updateTableColumnState', 'ip_alias', (string) $allocation->getKey(), 'hacked-alias');
 
     expect($allocation->refresh()->ip_alias)->toBe($alias);
+});
+
+it('revalidates the typed ports when the protocol of the create form changes', function () {
+    $node = Node::factory()->create();
+    Allocation::factory()->create(['node_id' => $node->getKey(), 'ip' => '10.0.0.9', 'port' => 25565, 'protocol' => AllocationProtocol::Tcp]);
+
+    [$admin] = generateTestAccount([]);
+    $admin->syncRoles(Role::getRootAdmin());
+
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    $this->actingAs($admin);
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $node, 'pageClass' => EditNode::class])
+        ->mountAction(TestAction::make('create')->table())
+        ->set('mountedActions.0.data.allocation_ip', '10.0.0.9')
+        ->set('mountedActions.0.data.protocol', AllocationProtocol::Udp->value)
+        ->set('mountedActions.0.data.allocation_ports', ['25565', '25566'])
+        ->assertSet('mountedActions.0.data.allocation_ports', ['25565', '25566'])
+        ->set('mountedActions.0.data.protocol', AllocationProtocol::Tcp->value)
+        ->assertSet('mountedActions.0.data.allocation_ports', ['25566']);
+});
+
+it('only lets a user with allocation update permission change the protocol', function () {
+    $node = Node::factory()->create();
+    $allocation = Allocation::factory()->create(['node_id' => $node->getKey(), 'protocol' => AllocationProtocol::Tcp]);
+
+    $abilities = [
+        RolePermissionModels::Node->viewAny(),
+        RolePermissionModels::Node->view(),
+        RolePermissionModels::Node->update(),
+        RolePermissionModels::Allocation->viewAny(),
+    ];
+
+    [$viewer] = generateTestAccount([]);
+    $viewer->syncRoles(nodeRole('Allocation Viewer', $abilities));
+
+    [$editor] = generateTestAccount([]);
+    $editor->syncRoles(nodeRole('Allocation Editor', [...$abilities, RolePermissionModels::Allocation->update()]));
+
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+
+    $this->actingAs($viewer);
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $node, 'pageClass' => EditNode::class])
+        ->call('updateTableColumnState', 'protocol', (string) $allocation->getKey(), AllocationProtocol::Udp->value);
+
+    expect($allocation->refresh()->protocol)->toBe(AllocationProtocol::Tcp);
+
+    $this->actingAs($editor);
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $node, 'pageClass' => EditNode::class])
+        ->call('updateTableColumnState', 'protocol', (string) $allocation->getKey(), AllocationProtocol::Udp->value);
+
+    expect($allocation->refresh()->protocol)->toBe(AllocationProtocol::Udp);
 });

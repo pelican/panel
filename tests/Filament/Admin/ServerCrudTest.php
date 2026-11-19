@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\AllocationProtocol;
 use App\Enums\RolePermissionModels;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
@@ -149,4 +150,85 @@ it('non root admin without permission cannot create servers', function () {
 
     $this->actingAs($user);
     livewire(CreateServer::class)->assertForbidden();
+});
+
+it('creates a server allocation with the chosen protocol', function () {
+    $server = createServerModel();
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
+        ->callAction(TestAction::make('create')->table(), [
+            'allocation_ip' => '10.0.0.9',
+            'protocol' => AllocationProtocol::Udp->value,
+            'allocation_ports' => ['19132'],
+        ])
+        ->assertHasNoFormErrors();
+
+    $allocation = Allocation::query()->where('server_id', $server->id)->where('port', 19132)->firstOrFail();
+
+    expect($allocation->protocol)->toBe(AllocationProtocol::Udp)
+        ->and($server->refresh()->getAllocationProtocols())->toBe(['10.0.0.9' => [19132 => 'udp']]);
+});
+
+it('changes the protocol of a server allocation from the table', function () {
+    $server = createServerModel();
+    $primary = $server->allocation;
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
+        ->assertTableColumnExists('protocol')
+        ->call('updateTableColumnState', 'protocol', (string) $primary->getKey(), AllocationProtocol::Tcp->value);
+
+    expect($primary->refresh()->protocol)->toBe(AllocationProtocol::Tcp);
+});
+
+it('merges a server allocation created with the other protocol into one that uses both', function () {
+    $server = createServerModel();
+    Allocation::factory()->create(['node_id' => $server->node_id, 'ip' => '10.0.0.9', 'port' => 25565, 'protocol' => AllocationProtocol::Tcp]);
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
+        ->callAction(TestAction::make('create')->table(), [
+            'allocation_ip' => '10.0.0.9',
+            'protocol' => AllocationProtocol::Udp->value,
+            'allocation_ports' => ['25565', '25566'],
+        ])
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $merged = Allocation::query()->where('node_id', $server->node_id)->where('port', 25565)->get();
+
+    expect($merged)->toHaveCount(1)
+        ->and($merged->first())->protocol->toBe(AllocationProtocol::Both)->server_id->toBe($server->id)
+        ->and(Allocation::query()->where('port', 25566)->firstOrFail()->protocol)->toBe(AllocationProtocol::Udp);
+});
+
+it('revalidates the typed ports when the protocol of the create form changes', function () {
+    $server = createServerModel();
+    Allocation::factory()->create(['node_id' => $server->node_id, 'ip' => '10.0.0.9', 'port' => 25565, 'protocol' => AllocationProtocol::Tcp]);
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
+        ->mountAction(TestAction::make('create')->table())
+        ->set('mountedActions.0.data.allocation_ip', '10.0.0.9')
+        ->set('mountedActions.0.data.protocol', AllocationProtocol::Udp->value)
+        ->set('mountedActions.0.data.allocation_ports', ['25565', '25566'])
+        ->assertSet('mountedActions.0.data.allocation_ports', ['25565', '25566'])
+        ->set('mountedActions.0.data.protocol', AllocationProtocol::Tcp->value)
+        ->assertSet('mountedActions.0.data.allocation_ports', ['25566']);
+});
+
+it('does not let a user without allocation update permission change the protocol', function () {
+    $server = createServerModel();
+    $primary = $server->allocation;
+    $protocol = $primary->protocol;
+
+    $role = Role::factory()->create(['name' => 'Allocation Viewer', 'guard_name' => 'web']);
+    foreach ([RolePermissionModels::Server->viewAny(), RolePermissionModels::Server->view(), RolePermissionModels::Server->update(), RolePermissionModels::Allocation->viewAny()] as $ability) {
+        $role->givePermissionTo(Permission::findOrCreate($ability, 'web'));
+    }
+    [$user] = generateTestAccount();
+    $user->syncRoles($role);
+    $this->actingAs($user);
+
+    livewire(AllocationsRelationManager::class, ['ownerRecord' => $server, 'pageClass' => EditServer::class])
+        ->call('updateTableColumnState', 'protocol', (string) $primary->getKey(), AllocationProtocol::Udp->value);
+
+    expect($primary->refresh()->protocol)->toBe($protocol);
 });

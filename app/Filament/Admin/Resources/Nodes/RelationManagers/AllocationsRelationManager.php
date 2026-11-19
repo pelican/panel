@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Resources\Nodes\RelationManagers;
 
+use App\Enums\AllocationProtocol;
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\Pages\CreateServer;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
@@ -18,6 +19,7 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -84,6 +86,12 @@ class AllocationsRelationManager extends RelationManager
                     ->searchable()
                     ->sortable()
                     ->label(trans('admin/node.port')),
+                SelectColumn::make('protocol')
+                    ->label(trans('admin/node.protocol'))
+                    ->options(AllocationProtocol::class)
+                    ->selectablePlaceholder(false)
+                    ->sortable()
+                    ->disabled(fn (Allocation $allocation) => $this->isReadOnly() || !user()?->can('update', $allocation)),
                 TextInputColumn::make('ip_alias')
                     ->searchable()
                     ->sortable()
@@ -150,17 +158,41 @@ class AllocationsRelationManager extends RelationManager
                             ->inlineLabel()
                             ->default(null)
                             ->helperText(trans('admin/node.alias_help')),
+                        Select::make('protocol')
+                            ->label(trans('admin/node.protocol'))
+                            ->inlineLabel()
+                            ->options(AllocationProtocol::class)
+                            ->default(AllocationProtocol::Both->value)
+                            ->selectablePlaceholder(false)
+                            ->helperText(trans('admin/node.protocol_help'))
+                            ->live()
+                            ->afterStateUpdated(function ($state, Set $set, Get $get) {
+                                if (empty($get('allocation_ip')) || empty($get('allocation_ports'))) {
+                                    return;
+                                }
+
+                                $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord(), $get('allocation_ports'), $get('allocation_ip'), $state));
+                            })
+                            ->required(),
                         TagsInput::make('allocation_ports')
                             ->placeholder('27015, 27017-27019')
                             ->label(trans('admin/node.ports'))
                             ->inlineLabel()
                             ->live()
                             ->disabled(fn (Get $get) => empty($get('allocation_ip')))
-                            ->afterStateUpdated(fn ($state, Set $set, Get $get) => $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord(), $state, $get('allocation_ip'))))
+                            ->afterStateUpdated(fn ($state, Set $set, Get $get) => $set('allocation_ports', CreateServer::retrieveValidPorts($this->getOwnerRecord(), $state, $get('allocation_ip'), $get('protocol'))))
                             ->splitKeys(['Tab', ' ', ','])
                             ->required(),
                     ])
-                    ->action(fn (array $data, AssignmentService $service) => $service->handle($this->getOwnerRecord(), $data)),
+                    ->action(function (array $data, AssignmentService $service) {
+                        $result = $service->assign($this->getOwnerRecord(), $data);
+
+                        Notification::make()
+                            ->title(trans_choice('admin/node.allocations_created', count($result['created'])))
+                            ->body(count($result['merged']) > 0 ? trans_choice('admin/node.allocations_merged', count($result['merged'])) : null)
+                            ->success()
+                            ->send();
+                    }),
                 UpdateNodeAllocations::make()
                     ->nodeRecord($this->getOwnerRecord())
                     ->authorize(fn () => user()?->can('update', $this->getOwnerRecord()))

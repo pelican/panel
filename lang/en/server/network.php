@@ -8,6 +8,12 @@ return [
     'address' => 'Address',
     'port' => 'Port',
     'port_hidden' => 'Hidden',
+    'protocol' => 'Protocol',
+    'protocol_enum' => [
+        'tcp' => 'TCP',
+        'udp' => 'UDP',
+        'both' => 'TCP + UDP',
+    ],
     'notes' => 'Notes',
     'no_notes' => 'No Notes',
     'make_primary' => 'Make Primary',

@@ -2,6 +2,7 @@
 
 namespace App\Tests\Unit\Models;
 
+use App\Enums\AllocationProtocol;
 use App\Models\Allocation;
 use App\Tests\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -42,6 +43,33 @@ class AllocationTest extends TestCase
         ]);
 
         $this->assertSame('192.0.2.1', $allocation->display_address);
+    }
+
+    public function test_protocol_is_both_by_default(): void
+    {
+        $allocation = new Allocation(['ip' => '192.0.2.1', 'port' => 25565]);
+
+        $this->assertSame(AllocationProtocol::Both, $allocation->protocol);
+    }
+
+    #[DataProvider('protocolValidationDataProvider')]
+    public function test_protocol_validation(string $protocol, bool $valid): void
+    {
+        $validator = validator(['protocol' => $protocol], ['protocol' => Allocation::getRulesForField('protocol')]);
+
+        $this->assertSame($valid, $validator->passes());
+    }
+
+    public static function protocolValidationDataProvider(): array
+    {
+        return [
+            'tcp' => ['tcp', true],
+            'udp' => ['udp', true],
+            'both' => ['both', true],
+            'unknown protocol' => ['sctp', false],
+            'wrong case' => ['TCP', false],
+            'empty' => ['', false],
+        ];
     }
 
     public static function displayAddressDataProvider(): array
