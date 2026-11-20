@@ -18,7 +18,7 @@
         "guzzlehttp/guzzle": "^8.2",
         "laravel/framework": "^13.43",
         "laravel/helpers": "^1.8",
-        "laravel/passkeys": "^0.2",
+        "laravel/passkeys": "^0.3",
         "laravel/sanctum": "^4.3",
         "laravel/socialite": "^5.31",
         "laravel/tinker": "^3.0",
