@@ -117,8 +117,7 @@ class ListServers extends ListRecords
             ])
             ->toolbarActions([
                 CreateAction::make(),
-                CreateServerFromBackupAction::make()
-                    ->hiddenLabel(),
+                CreateServerFromBackupAction::make(),
             ])
             ->searchable()
             ->emptyStateIcon(TablerIcon::BrandDocker)

@@ -11,6 +11,7 @@ use Filament\Facades\Filament;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Features\SupportTesting\Testable;
 use Spatie\Permission\Models\Permission;
 
 use function Pest\Livewire\livewire;
@@ -117,6 +118,13 @@ function actingAsRootAdmin(): void
     test()->actingAs($admin->syncRoles(Role::getRootAdmin()));
 }
 
+function actionTooltip(Testable $component, string $slug): ?string
+{
+    $action = $component->instance()->getTable()->getAction('install');
+
+    return $action->record(hubPlugin($slug))->getTooltip();
+}
+
 it('lists free hub plugins for an admin', function () {
     fakeHub(hubPlugin('hub-free-plugin'));
     actingAsRootAdmin();
@@ -183,7 +191,7 @@ it('installs a free plugin from the hub', function () {
 
     livewire(BrowsePlugins::class)
         ->loadTable()
-        ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->callAction(TestAction::make('install')->table('hub-free-plugin'))
         ->assertNotified(trans('admin/plugin.notifications.install_started'));
 
     expect(File::exists(plugin_path('hub-free-plugin', 'plugin.json')))->toBeTrue();
@@ -197,7 +205,7 @@ it('refuses to install a plugin that is not free', function () {
 
     livewire(BrowsePlugins::class)
         ->loadTable()
-        ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->callAction(TestAction::make('install')->table('hub-free-plugin'))
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 
     expect(File::exists(plugin_path('hub-free-plugin')))->toBeFalse();
@@ -212,7 +220,7 @@ it('refuses a download that does not match the hub checksum', function () {
 
     livewire(BrowsePlugins::class)
         ->loadTable()
-        ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->callAction(TestAction::make('install')->table('hub-free-plugin'))
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 
     expect(File::exists(plugin_path('hub-free-plugin')))->toBeFalse();
@@ -227,7 +235,7 @@ it('refuses a release it cannot verify', function (array $release) {
 
     livewire(BrowsePlugins::class)
         ->loadTable()
-        ->callAction(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->callAction(TestAction::make('install')->table('hub-free-plugin'))
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 
     expect(File::exists(plugin_path('hub-free-plugin')))->toBeFalse();
@@ -251,12 +259,13 @@ it('filters to installed plugins', function () {
 
     putLocalPlugin(PluginStatus::Disabled);
 
-    livewire(BrowsePlugins::class)
+    $component = livewire(BrowsePlugins::class)
         ->loadTable()
         ->filterTable('installed')
         ->assertSee('Hub Free Plugin')
-        ->assertSee(trans('admin/plugin.hub.installed'))
-        ->assertActionHasLabel(TestAction::make('exclude_install')->table('hub-free-plugin'), trans('admin/plugin.hub.reinstall'));
+        ->assertSee(trans('admin/plugin.hub.installed'));
+
+    expect(actionTooltip($component, 'hub-free-plugin'))->toBe(trans('admin/plugin.hub.reinstall'));
 });
 
 it('offers to install a plugin that is downloaded but not installed', function () {
@@ -264,9 +273,9 @@ it('offers to install a plugin that is downloaded but not installed', function (
     actingAsRootAdmin();
     putLocalPlugin();
 
-    livewire(BrowsePlugins::class)
-        ->loadTable()
-        ->assertActionHasLabel(TestAction::make('exclude_install')->table('hub-free-plugin'), trans('admin/plugin.install'));
+    $component = livewire(BrowsePlugins::class)->loadTable();
+
+    expect(actionTooltip($component, 'hub-free-plugin'))->toBe(trans('admin/plugin.install'));
 });
 
 it('only lets admins who can update a plugin replace it', function () {
@@ -280,14 +289,14 @@ it('only lets admins who can update a plugin replace it', function () {
 
     livewire(BrowsePlugins::class)
         ->loadTable()
-        ->assertActionVisible(TestAction::make('exclude_install')->table('hub-free-plugin'));
+        ->assertActionVisible(TestAction::make('install')->table('hub-free-plugin'));
 
     putLocalPlugin(PluginStatus::Disabled);
     $manifest = File::get(plugin_path('hub-free-plugin', 'plugin.json'));
 
     livewire(BrowsePlugins::class)
         ->loadTable()
-        ->assertActionHidden(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->assertActionHidden(TestAction::make('install')->table('hub-free-plugin'))
         ->call('installFromHub', 'hub-free-plugin')
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 
@@ -311,7 +320,7 @@ it('does not let admins who cannot update plugins replace an unreadable plugin f
 
     livewire(BrowsePlugins::class)
         ->loadTable()
-        ->assertActionHidden(TestAction::make('exclude_install')->table('hub-free-plugin'))
+        ->assertActionHidden(TestAction::make('install')->table('hub-free-plugin'))
         ->call('installFromHub', 'hub-free-plugin')
         ->assertNotified(trans('admin/plugin.notifications.install_error'));
 

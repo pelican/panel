@@ -38,7 +38,7 @@ class ServersRelationManager extends RelationManager
                     ->orWhereHas('subusers', fn (Builder $query) => $query->where('user_id', $user->id))
                 ))
             ->headerActions([
-                Action::make('toggle_suspend')
+                Action::make('exclude_toggle_suspend')
                     ->authorize(fn () => user()?->can('update server'))
                     ->hidden(fn () => $user->servers()
                         ->where(fn (Builder $query) => $query->whereNot('status', ServerState::Suspended)->orWhereNull('status'))
@@ -51,7 +51,7 @@ class ServersRelationManager extends RelationManager
                         collect($user->servers)->filter(fn ($server) => !$server->isSuspended())
                             ->each(fn ($server) => $suspensionService->handle($server, SuspendAction::Suspend));
                     }),
-                Action::make('toggle_unsuspend')
+                Action::make('exclude_toggle_unsuspend')
                     ->authorize(fn () => user()?->can('update server'))
                     ->hidden(fn () => $user->servers()->where('status', ServerState::Suspended)->count() === 0)
                     ->label(trans('admin/server.unsuspend_all'))

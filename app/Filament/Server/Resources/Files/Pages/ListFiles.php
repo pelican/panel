@@ -133,7 +133,8 @@ class ListFiles extends ListRecords
             ->recordActions([
                 Action::make('view')
                     ->authorize(fn () => user()?->can(SubuserPermission::FileRead, $server))
-                    ->label(trans('server/file.actions.open'))
+                    ->hiddenLabel()
+                    ->tooltip(trans('server/file.actions.open'))
                     ->icon(TablerIcon::Eye)
                     ->visible(fn (File $file) => $file->is_directory)
                     ->url(fn (File $file) => self::getUrl(['path' => join_paths($this->path, $file->name)])),

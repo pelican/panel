@@ -148,8 +148,7 @@ class BackupResource extends Resource
                     ->relationship('backupHost', 'name'),
             ])
             ->recordActions([
-                CreateServerFromBackupAction::make()
-                    ->hiddenLabel(),
+                CreateServerFromBackupAction::make(),
                 // Kept backups of deleted servers can only be downloaded here.
                 Action::make('download')
                     ->hiddenLabel()
@@ -194,8 +193,7 @@ class BackupResource extends Resource
             ])
             ->toolbarActions([
                 CreateServerFromBackupAction::make('create_from_source')
-                    ->label(trans('admin/backup.restore.action_source'))
-                    ->tooltip(null)
+                    ->tooltip(trans('admin/backup.restore.action_source'))
                     ->icon(TablerIcon::FileImport),
             ])
             ->emptyStateIcon(TablerIcon::FileZip)

@@ -20,6 +20,8 @@ class ExportEggAction extends Action
     {
         parent::setUp();
 
+        $this->hiddenLabel();
+
         $this->tooltip(trans('filament-actions::export.modal.actions.export.label'));
 
         $this->icon(TablerIcon::Download);

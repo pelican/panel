@@ -72,6 +72,7 @@ class ListEggs extends ListRecords
                 UpdateEggAction::make()
                     ->tooltip(trans_choice('admin/egg.update', 1)),
                 ReplicateAction::make()
+                    ->hiddenLabel()
                     ->tooltip(trans('filament-actions::replicate.single.label'))
                     ->modal(false)
                     ->excludeAttributes(['author', 'uuid', 'update_url', 'servers_count', 'created_at', 'updated_at'])

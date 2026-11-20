@@ -81,12 +81,14 @@ class BrowsePlugins extends Page implements HasTable
     {
         return [
             Action::make('back')
-                ->label(trans('admin/plugin.hub.back'))
+                ->hiddenLabel()
+                ->tooltip(trans('admin/plugin.hub.back'))
                 ->icon(TablerIcon::ArrowLeft)
                 ->color('gray')
                 ->url(ListPlugins::getUrl()),
             Action::make('open_hub')
-                ->label(trans('admin/plugin.hub.open_hub'))
+                ->hiddenLabel()
+                ->tooltip(trans('admin/plugin.hub.open_hub'))
                 ->icon(TablerIcon::ExternalLink)
                 ->color('gray')
                 ->url(fn (PluginHubService $hub) => $hub->hubUrl(), true),
@@ -193,8 +195,9 @@ class BrowsePlugins extends Page implements HasTable
                     ->toggle(),
             ])
             ->recordActions([
-                Action::make('exclude_view')
-                    ->label(trans('filament-actions::view.single.label'))
+                Action::make('view')
+                    ->hiddenLabel()
+                    ->tooltip(trans('filament-actions::view.single.label'))
                     ->icon(TablerIcon::Eye)
                     ->color('gray')
                     ->slideOver()
@@ -204,8 +207,9 @@ class BrowsePlugins extends Page implements HasTable
                     ->modalCancelActionLabel(trans('filament::components/modal.actions.close.label'))
                     ->extraModalFooterActions(fn (array $record) => $this->linkActions($hub->find($record['slug']) ?? $record))
                     ->schema(fn (array $record) => $this->detailSchema($hub->find($record['slug']) ?? $record)),
-                Action::make('exclude_install')
-                    ->label(fn (array $record) => match ($this->installState($record)) {
+                Action::make('install')
+                    ->hiddenLabel()
+                    ->tooltip(fn (array $record) => match ($this->installState($record)) {
                         'update' => trans('admin/plugin.update'),
                         'installed' => trans('admin/plugin.hub.reinstall'),
                         default => trans('admin/plugin.install'),

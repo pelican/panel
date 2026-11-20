@@ -92,8 +92,9 @@ class PluginResource extends Resource
                     ->sortable(),
             ])
             ->recordActions([
-                Action::make('exclude_view')
-                    ->label(trans('filament-actions::view.single.label'))
+                Action::make('view')
+                    ->hiddenLabel()
+                    ->tooltip(trans('filament-actions::view.single.label'))
                     ->icon(fn (Plugin $plugin) => $plugin->getReadme() ? TablerIcon::Eye : TablerIcon::EyeShare)
                     ->color('gray')
                     ->visible(fn (Plugin $plugin) => $plugin->getReadme() || $plugin->url)
@@ -112,8 +113,9 @@ class PluginResource extends Resource
                             ->markdown()
                             ->state(fn (Plugin $plugin) => $plugin->getReadme()),
                     ] : null),
-                Action::make('exclude_settings')
-                    ->label(trans('admin/plugin.settings'))
+                Action::make('settings')
+                    ->hiddenLabel()
+                    ->tooltip(trans('admin/plugin.settings'))
                     ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
                     ->icon(TablerIcon::Settings)
                     ->color('primary')
