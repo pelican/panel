@@ -111,4 +111,9 @@ return [
         // Offer the one-click update on the admin dashboard. Updating with `php artisan p:update` is unaffected.
         'dashboard_enabled' => env('PANEL_DASHBOARD_UPDATE_ENABLED', true),
     ],
+
+    'updates' => [
+        // Snapshots contain .env and possibly SQLite data, so retain only a small recovery window.
+        'retained_snapshots' => env('PANEL_UPDATE_RETAINED_SNAPSHOTS', 3),
+    ],
 ];
