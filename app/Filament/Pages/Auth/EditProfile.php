@@ -9,10 +9,12 @@ use App\Facades\Activity;
 use App\Models\ActivityLog;
 use App\Models\ApiKey;
 use App\Models\User;
+use App\Models\UserSession;
 use App\Models\UserSSHKey;
 use App\Services\Helpers\LanguageService;
 use App\Services\Helpers\ThemeService;
 use App\Services\Ssh\KeyCreationService;
+use App\Services\Users\UserSessionService;
 use App\Services\Users\UserUpdateService;
 use App\Traits\Filament\CanCustomizeHeaderActions;
 use App\Traits\Filament\CanCustomizeHeaderWidgets;
@@ -46,6 +48,7 @@ use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Width;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
@@ -72,11 +75,16 @@ class EditProfile extends BaseEditProfile
 
     protected bool $themeChanged = false;
 
-    public function boot(OAuthService $oauthService, Request $request, ThemeService $themeService): void
+    protected bool $passwordChanged = false;
+
+    protected UserSessionService $sessionService;
+
+    public function boot(OAuthService $oauthService, Request $request, ThemeService $themeService, UserSessionService $sessionService): void
     {
         $this->oauthService = $oauthService;
         $this->request = $request;
         $this->themeService = $themeService;
+        $this->sessionService = $sessionService;
     }
 
     public function getMaxWidth(): Width|string
@@ -196,6 +204,7 @@ class EditProfile extends BaseEditProfile
                                 return $fileUpload->getDisk()->delete($path);
                             }
                         }),
+                    $this->getSessionsSection(),
                 ]),
             Tab::make('oauth')
                 ->label(trans('profile.tabs.oauth'))
@@ -620,6 +629,216 @@ class EditProfile extends BaseEditProfile
         ];
     }
 
+    protected function getSessionsSection(): Section
+    {
+        $item = fn (array $arguments, Repeater $component): array => $component->getState()[$arguments['item']] ?? [];
+
+        return Section::make(trans('profile.sessions.heading'))
+            ->inlineLabel(false)
+            ->collapsible()
+            ->description(trans('profile.sessions.description'))
+            ->icon(TablerIcon::DevicesPc)
+            ->headerActions([
+                Action::make('exclude_sign_out_other_sessions')
+                    ->label(trans('profile.sessions.sign_out_others'))
+                    ->icon(TablerIcon::Logout2)
+                    ->color('danger')
+                    ->visible(fn () => count($this->data['sessions'] ?? []) > 1)
+                    ->requiresConfirmation()
+                    ->modalHeading(trans('profile.sessions.sign_out_others'))
+                    ->modalDescription(trans('profile.sessions.sign_out_others_description'))
+                    ->modalSubmitActionLabel(trans('profile.sessions.sign_out'))
+                    ->action(function (User $user, UserSessionService $service) {
+                        $current = $service->current($this->request, $user);
+                        // Without a known current device we'd sign this browser out as well.
+                        $count = $current ? $service->revokeOthers($user, $current) : 0;
+
+                        $this->data['sessions'] = $this->getSessionsState();
+
+                        Notification::make()
+                            ->title(trans_choice('profile.sessions.signed_out_others', $count, ['count' => $count]))
+                            ->success()
+                            ->send();
+                    }),
+            ])
+            ->schema([
+                Repeater::make('sessions')
+                    ->hiddenLabel()
+                    ->inlineLabel(false)
+                    ->addable(false)
+                    ->reorderable(false)
+                    ->dehydrated(false)
+                    ->grid(['default' => 1, 'md' => 2, '2xl' => 3])
+                    ->itemLabel(fn (array $state) => $this->sessionItemLabel($state))
+                    ->extraItemActions([
+                        Action::make('rename')
+                            ->iconButton()
+                            ->icon(TablerIcon::Pencil)
+                            ->color('gray')
+                            ->tooltip(trans('profile.sessions.rename'))
+                            ->modalHeading(trans('profile.sessions.rename_heading'))
+                            ->modalIcon(TablerIcon::Pencil)
+                            ->modalWidth(Width::Medium)
+                            ->modalSubmitActionLabel(trans('profile.sessions.rename'))
+                            ->fillForm(fn (array $arguments, Repeater $component) => ['name' => $item($arguments, $component)['name'] ?? null])
+                            ->schema(fn (array $arguments, Repeater $component) => [
+                                TextInput::make('name')
+                                    ->label(trans('profile.sessions.name'))
+                                    ->placeholder($item($arguments, $component)['detected'] ?? null)
+                                    ->helperText(trans('profile.sessions.name_help', ['detected' => $item($arguments, $component)['detected'] ?? '']))
+                                    ->maxLength(64)
+                                    ->autofocus(),
+                            ])
+                            ->action(function (array $data, array $arguments, Repeater $component, User $user, UserSessionService $service) {
+                                $items = $component->getState();
+                                $session = $user->sessions()->find($items[$arguments['item']]['id'] ?? null);
+                                if (!$session) {
+                                    return;
+                                }
+
+                                $service->rename($user, $session, $data['name'] ?? null);
+
+                                $items[$arguments['item']] = $this->sessionState($session, (bool) ($items[$arguments['item']]['is_current'] ?? false));
+                                $component->state($items);
+
+                                Notification::make()->title(trans('profile.sessions.renamed'))->success()->send();
+                            }),
+                    ])
+                    ->deleteAction(fn (Action $action) => $action
+                        ->icon(TablerIcon::Logout)
+                        ->tooltip(trans('profile.sessions.sign_out'))
+                        ->hidden(fn (array $arguments, Repeater $component) => (bool) ($item($arguments, $component)['is_current'] ?? false))
+                        ->requiresConfirmation()
+                        ->modalIcon(TablerIcon::Logout)
+                        ->modalHeading(fn (array $arguments, Repeater $component) => trans('profile.sessions.sign_out_heading', ['device' => $item($arguments, $component)['display'] ?? '']))
+                        ->modalDescription(trans('profile.sessions.sign_out_description'))
+                        ->modalSubmitActionLabel(trans('profile.sessions.sign_out'))
+                        ->action(function (array $arguments, Repeater $component, User $user, UserSessionService $service) {
+                            $items = $component->getState();
+                            $session = $user->sessions()->find($items[$arguments['item']]['id'] ?? null);
+
+                            if ($session && !$service->revoke($user, $session, $service->current($this->request, $user))) {
+                                Notification::make()->title(trans('profile.sessions.sign_out_failed'))->danger()->send();
+
+                                return;
+                            }
+
+                            unset($items[$arguments['item']]);
+                            $component->state($items);
+                            $component->callAfterStateUpdated();
+
+                            Notification::make()->title(trans('profile.sessions.signed_out'))->success()->send();
+                        }))
+                    ->schema([
+                        TextEntry::make('meta')
+                            ->hiddenLabel()
+                            ->inlineLabel(false)
+                            ->state(fn (Get $get) => $this->sessionMeta($get)),
+                    ]),
+                TextEntry::make('inactivity_notice')
+                    ->hiddenLabel()
+                    ->inlineLabel(false)
+                    ->color('gray')
+                    ->icon(TablerIcon::InfoCircle)
+                    ->state(fn () => trans('profile.sessions.inactivity_notice', ['days' => UserSession::inactivityDays()]))
+                    ->visible(fn () => UserSession::inactivityDays() !== null),
+            ]);
+    }
+
+    /**
+     * Repeater state for the signed-in devices, the current device first.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    protected function getSessionsState(): array
+    {
+        $user = $this->getUser();
+        $current = $this->sessionService->current($this->request, $user);
+
+        return $user->sessions()
+            ->active()
+            ->orderByDesc('last_active_at')
+            ->get()
+            ->sortByDesc(fn (UserSession $session) => $current && $session->is($current))
+            ->mapWithKeys(fn (UserSession $session) => [
+                "session-$session->id" => $this->sessionState($session, $current && $session->is($current)),
+            ])
+            ->all();
+    }
+
+    /**
+     * Card header: device icon, name and a "This device" badge.
+     *
+     * @param  array<string, mixed>  $state
+     */
+    protected function sessionItemLabel(array $state): HtmlString
+    {
+        $badge = ($state['is_current'] ?? false)
+            ? Blade::render('<x-filament::badge color="success" size="sm" :icon="$icon">{{ $label }}</x-filament::badge>', [
+                'icon' => TablerIcon::CircleCheck,
+                'label' => trans('profile.sessions.this_device'),
+            ])
+            : '';
+
+        return new HtmlString(
+            '<span class="flex items-center gap-2 min-w-0">'
+            . svg($state['icon'] ?? TablerIcon::QuestionMark->value, 'h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400')->toHtml()
+            . '<span class="truncate">' . e($state['display'] ?? '') . '</span>'
+            . $badge
+            . '</span>'
+        );
+    }
+
+    /**
+     * One compact, wrapping line of details: detected device (when renamed), last active, IP,
+     * signed in, remembered.
+     */
+    protected function sessionMeta(Get $get): HtmlString
+    {
+        $parts = [
+            filled($get('name')) ? [TablerIcon::DeviceDesktopAnalytics, $get('detected'), $get('user_agent')] : null,
+            [TablerIcon::Clock, $get('last_active'), $get('last_active_at_full')],
+            [TablerIcon::World, $get('ip_address') ?? '—', null],
+            [TablerIcon::Login, $get('signed_in'), $get('created_at_full')],
+            $get('remember') ? [TablerIcon::Lock, trans('profile.sessions.remembered'), null] : null,
+        ];
+
+        $html = collect($parts)->filter()->map(fn (array $part) => sprintf(
+            '<span class="inline-flex items-center gap-1 min-w-0 break-all"%s>%s<span>%s</span></span>',
+            $part[2] ? ' title="' . e($part[2]) . '"' : '',
+            svg($part[0]->value, 'h-4 w-4 shrink-0')->toHtml(),
+            e($part[1]),
+        ))->implode('');
+
+        return new HtmlString('<span class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">' . $html . '</span>');
+    }
+
+    /** @return array<string, mixed> */
+    protected function sessionState(UserSession $session, bool $isCurrent): array
+    {
+        $timezone = $this->getUser()->timezone ?? config('app.timezone');
+        $lastActive = $session->last_active_at;
+        $activeNow = $isCurrent || ($lastActive && $lastActive->gt(now()->subMinutes(5)));
+
+        return [
+            'id' => $session->id,
+            'name' => $session->name,
+            'detected' => $session->detectedLabel(),
+            'display' => $session->displayName(),
+            'icon' => $session->icon()->value,
+            'user_agent' => $session->user_agent,
+            'ip_address' => $session->ip_address,
+            'remember' => $session->remember,
+            'is_current' => $isCurrent,
+            'last_active' => $activeNow
+                ? trans('profile.sessions.active_now')
+                : trans('profile.sessions.last_active', ['time' => $lastActive?->diffForHumans() ?? '—']),
+            'last_active_at_full' => $lastActive?->timezone($timezone)->format('M j, Y g:ia'),
+            'signed_in' => trans('profile.sessions.signed_in', ['time' => $session->created_at?->diffForHumans() ?? '—']),
+            'created_at_full' => $session->created_at?->timezone($timezone)->format('M j, Y g:ia'),
+        ];
+    }
+
     protected function getFormActions(): array
     {
         return [];
@@ -722,12 +941,24 @@ class EditProfile extends BaseEditProfile
         $data['customization'] = json_encode($customization);
 
         $this->themeChanged = $theme !== $this->getUser()->getCustomization(CustomizationKey::Theme);
+        $this->passwordChanged = filled($data['password'] ?? null);
 
         return $data;
     }
 
     protected function afterSave(): void
     {
+        if ($this->passwordChanged) {
+            // Sign out every other device; they need the new password to get back in.
+            $user = $this->getUser();
+
+            if ($current = $this->sessionService->current($this->request, $user)) {
+                $this->sessionService->revokeOthers($user, $current);
+            }
+
+            $this->data['sessions'] = $this->getSessionsState();
+        }
+
         if ($this->themeChanged) {
             $this->js('window.location.reload()');
         }
@@ -743,6 +974,7 @@ class EditProfile extends BaseEditProfile
         $data['theme'] = $this->themeService->getSelectedOption();
         $data['button_style'] = $this->getUser()->getCustomization(CustomizationKey::ButtonStyle);
         $data['redirect_to_admin'] = $this->getUser()->getCustomization(CustomizationKey::RedirectToAdmin);
+        $data['sessions'] = $this->getSessionsState();
 
         // Handle migration from boolean to string navigation types
         $topNavigation = $this->getUser()->getCustomization(CustomizationKey::TopNavigation);

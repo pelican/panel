@@ -10,6 +10,7 @@ use App\Console\Commands\Maintenance\PruneOrphanedBackupsCommand;
 use App\Console\Commands\Schedule\ProcessRunnableCommand;
 use App\Console\Commands\Server\AdvanceTransferBatchesCommand;
 use App\Models\ActivityLog;
+use App\Models\UserSession;
 use App\Models\Webhook;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Console\PruneCommand;
@@ -62,6 +63,9 @@ class Kernel extends ConsoleKernel
         if (config('panel.webhook.prune_days')) {
             $schedule->command(PruneCommand::class, ['--model' => [Webhook::class]])->daily();
         }
+
+        // Clean up signed-in devices that expired or were inactive for too long.
+        $schedule->command(PruneCommand::class, ['--model' => [UserSession::class]])->daily();
 
         $schedule->command(ScheduleCheckHeartbeatCommand::class)->everyMinute();
         $schedule->command(DispatchQueueCheckJobsCommand::class)->everyMinute();
