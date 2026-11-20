@@ -9,6 +9,8 @@ use Filament\Facades\Filament;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Auth\SessionGuard;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -22,9 +24,10 @@ class TrackUserSession
     /**
      * @throws AuthenticationException
      */
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, ?string $guardName = null): Response
     {
-        $guard = Filament::auth();
+        // API routes pass the session guard explicitly, as auth:sanctum switches the default guard.
+        $guard = $guardName ? Auth::guard($guardName) : Filament::auth();
         $user = $guard->user();
 
         if (!$user instanceof User || !$guard instanceof SessionGuard || !$request->hasSession()) {
@@ -59,11 +62,16 @@ class TrackUserSession
     }
 
     /**
+     * Signs out only this device: logout() would rotate the user's remember token and break
+     * remember-me on their other devices. The device row is already gone at this point.
+     *
      * @throws AuthenticationException
      */
     private function signOut(Request $request, SessionGuard $guard): never
     {
-        $guard->logout();
+        $guard->logoutCurrentDevice();
+
+        Cookie::queue(Cookie::forget(UserSessionService::cookieName()));
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

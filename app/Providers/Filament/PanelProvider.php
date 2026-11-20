@@ -103,6 +103,10 @@ abstract class PanelProvider extends BasePanelProvider
                 Authenticate::class,
                 TrackUserSession::class,
                 RequireTwoFactorAuthentication::class,
+            ])
+            // Also sign out revoked devices on Livewire update requests.
+            ->persistentMiddleware([
+                TrackUserSession::class,
             ]);
     }
 }

@@ -70,6 +70,42 @@ it('prunes inactive and expired devices', function () {
         ->and(UserSession::query()->find($expired->id))->toBeNull();
 });
 
+it('keeps the remember token of other devices when signing out an inactive device', function () {
+    $this->user->forceFill(['remember_token' => 'remember-token'])->save();
+
+    $this->actingAs($this->user)->get($this->url)->assertOk();
+    $this->user->sessions()->first()->forceFill(['last_active_at' => now()->subDays(15)])->save();
+
+    $this->withHeader('Accept', 'text/html')->get($this->url)->assertRedirect(Filament::getLoginUrl());
+
+    expect($this->user->fresh()->remember_token)->toBe('remember-token');
+});
+
+it('signs out a revoked device on session-authenticated API requests', function () {
+    $this->actingAs($this->user)->get($this->url)->assertOk();
+
+    $this->user->sessions()->delete();
+
+    $this->withCredentials()
+        ->withCookie(config('session.cookie'), 'session')
+        ->getJson(route('api:client.account'))
+        ->assertUnauthorized();
+    $this->assertGuest('web');
+});
+
+it('does not prune or hide a session whose last activity is within the touch interval of expiring', function () {
+    $session = UserSession::factory()->create([
+        'user_id' => $this->user->id,
+        'remember' => false,
+        'last_active_at' => now()->subMinutes((int) config('session.lifetime', 120))->subSeconds(UserSessionService::TOUCH_INTERVAL_SECONDS / 2),
+    ]);
+
+    $this->artisan('model:prune', ['--model' => [UserSession::class]])->assertSuccessful();
+
+    expect(UserSession::query()->find($session->id))->not->toBeNull()
+        ->and(UserSession::query()->active()->find($session->id))->not->toBeNull();
+});
+
 it('signs out every device when an admin changes the user\'s password', function () {
     UserSession::factory()->count(2)->create(['user_id' => $this->user->id]);
 

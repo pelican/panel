@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\TablerIcon;
 use App\Helpers\UserAgent;
+use App\Services\Users\UserSessionService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -99,7 +100,19 @@ class UserSession extends Model
 
         $query->where(fn (Builder $query) => $query
             ->where('remember', true)
-            ->orWhere('last_active_at', '>', now()->subMinutes((int) config('session.lifetime', 120))));
+            ->orWhere('last_active_at', '>', static::sessionExpiryCutoff()));
+    }
+
+    /**
+     * Devices without "remember me" that were last active before this have an expired session.
+     * last_active_at is only written every TOUCH_INTERVAL_SECONDS, so that much slack is added
+     * on top of the session lifetime.
+     */
+    public static function sessionExpiryCutoff(): Carbon
+    {
+        return now()
+            ->subMinutes((int) config('session.lifetime', 120))
+            ->subSeconds(UserSessionService::TOUCH_INTERVAL_SECONDS);
     }
 
     public function isInactive(): bool
@@ -168,7 +181,7 @@ class UserSession extends Model
             $query->orWhereNull('last_active_at')
                 ->orWhere(fn (Builder $query) => $query
                     ->where('remember', false)
-                    ->where('last_active_at', '<=', now()->subMinutes((int) config('session.lifetime', 120))));
+                    ->where('last_active_at', '<=', static::sessionExpiryCutoff()));
         });
     }
 
