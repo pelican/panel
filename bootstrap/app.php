@@ -15,6 +15,7 @@ use App\Http\Middleware\MaintenanceMiddleware;
 use App\Http\Middleware\PreventRequestForgery;
 use App\Http\Middleware\RedirectIfAuthenticated;
 use App\Http\Middleware\SetSecurityHeaders;
+use App\Http\Middleware\TrackUserSession;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables;
@@ -39,6 +40,8 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $middleware->api([
             EnsureStatefulRequests::class,
             'auth:sanctum',
+            // Signs out revoked devices on cookie-authenticated (stateful) requests; API keys are unaffected.
+            TrackUserSession::class . ':web',
             IsValidJson::class,
             TrackAPIKey::class,
             AuthenticateIPAccess::class,

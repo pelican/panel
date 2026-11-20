@@ -11,6 +11,7 @@ use App\Http\Middleware\PreventRequestForgery;
 use App\Http\Middleware\RedirectIfNotInstalled;
 use App\Http\Middleware\RequireTwoFactorAuthentication;
 use App\Http\Middleware\SetSecurityHeaders;
+use App\Http\Middleware\TrackUserSession;
 use App\Services\Helpers\PluginService;
 use App\Services\Helpers\ThemeService;
 use Filament\Actions\Action;
@@ -100,7 +101,12 @@ abstract class PanelProvider extends BasePanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                TrackUserSession::class,
                 RequireTwoFactorAuthentication::class,
+            ])
+            // Also sign out revoked devices on Livewire update requests.
+            ->persistentMiddleware([
+                TrackUserSession::class,
             ]);
     }
 }

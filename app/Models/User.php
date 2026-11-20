@@ -83,6 +83,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Server> $servers
  * @property-read int|null $servers_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, UserSSHKey> $sshKeys
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, UserSession> $sessions
  * @property-read int|null $ssh_keys_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Server> $subServers
  * @property-read int|null $sub_servers_count
@@ -292,6 +293,16 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
     public function sshKeys(): HasMany
     {
         return $this->hasMany(UserSSHKey::class);
+    }
+
+    /**
+     * Devices this user is signed in on.
+     *
+     * @return HasMany<UserSession, $this>
+     */
+    public function sessions(): HasMany
+    {
+        return $this->hasMany(UserSession::class);
     }
 
     /**

@@ -33,6 +33,11 @@ return [
             'create' => 'Added SSH key <b>:fingerprint</b> to account',
             'delete' => 'Removed SSH key <b>:fingerprint</b> from account',
         ],
+        'session' => [
+            'revoke' => 'Signed out device <b>:device</b>',
+            'revoke-all' => 'Signed out of :count other device|Signed out of :count other devices',
+            'rename' => 'Renamed device <b>:old</b> to <b>:new</b>',
+        ],
         'two-factor' => [
             'create' => 'Enabled two-factor auth',
             'delete' => 'Disabled two-factor auth',
