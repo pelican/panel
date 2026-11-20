@@ -8,6 +8,9 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // The create runs as several statements on MySQL, so a failed run can leave a partial table behind.
+        Schema::dropIfExists('user_sessions');
+
         Schema::create('user_sessions', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('user_id');
