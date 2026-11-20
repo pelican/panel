@@ -119,8 +119,9 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
         $host = DatabaseHost::factory()->recycle($server->node)->create();
 
         // CREATE DATABASE, CREATE USER, GRANT, FLUSH PRIVILEGES
-        $this->fakeRemoteDatabaseConnection()
-            ->shouldReceive('statement')->times(4)->andReturnTrue();
+        $connection = $this->fakeRemoteDatabaseConnection();
+        $connection->shouldReceive('select')->andReturn([]);
+        $connection->shouldReceive('statement')->times(4)->andReturnTrue();
 
         $response = $this->getService()->create($server, [
             'remote' => '%',
@@ -134,6 +135,69 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
         $this->assertSame(24, strlen($response->password));
 
         $this->assertDatabaseHas('databases', ['server_id' => $server->id, 'id' => $response->id]);
+    }
+
+    /**
+     * "_" and "%" are wildcards in a database-level GRANT, so the name must be escaped or a
+     * database like "s1__luckperms" would also grant access to "s10_luckperms".
+     */
+    public function test_grant_escapes_wildcards_in_database_name(): void
+    {
+        $server = $this->createServerModel();
+        $name = DatabaseManagementService::generateUniqueDatabaseName('_luck_perms', $server->id);
+        $host = DatabaseHost::factory()->recycle($server->node)->create();
+
+        $statements = $this->captureRemoteStatements();
+
+        $this->getService()->create($server, [
+            'remote' => '%',
+            'database' => $name,
+            'database_host_id' => $host->id,
+        ]);
+
+        $grant = $this->findGrant($statements);
+        $this->assertStringContainsString(sprintf('ON `s%d\\_\\_luck\\_perms`.* TO', $server->id), $grant);
+    }
+
+    /**
+     * MySQL with partial_revokes enabled matches grant names literally, so escaping would
+     * lock the owner out of their own database there.
+     */
+    public function test_grant_is_not_escaped_when_partial_revokes_is_enabled(): void
+    {
+        $server = $this->createServerModel();
+        $name = DatabaseManagementService::generateUniqueDatabaseName('my_db', $server->id);
+        $host = DatabaseHost::factory()->recycle($server->node)->create();
+
+        $statements = $this->captureRemoteStatements([(object) ['Variable_name' => 'partial_revokes', 'Value' => 'ON']]);
+
+        $this->getService()->create($server, [
+            'remote' => '%',
+            'database' => $name,
+            'database_host_id' => $host->id,
+        ]);
+
+        $this->assertStringContainsString("ON `{$name}`.* TO", $this->findGrant($statements));
+    }
+
+    /**
+     * Rotating the password recreates the user, so it must also use the escaped grant.
+     */
+    public function test_rotate_password_issues_escaped_grant(): void
+    {
+        $server = $this->createServerModel();
+        $host = DatabaseHost::factory()->recycle($server->node)->create();
+        $database = Database::factory()->create([
+            'database' => "s{$server->id}_my_db",
+            'database_host_id' => $host->id,
+            'server_id' => $server->id,
+        ]);
+
+        $statements = $this->captureRemoteStatements();
+
+        $this->getService()->rotatePassword($database);
+
+        $this->assertStringContainsString("ON `s{$server->id}\\_my\\_db`.* TO", $this->findGrant($statements));
     }
 
     /**
@@ -178,6 +242,38 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
         $this->app->instance('db', $manager);
 
         return $connection;
+    }
+
+    /**
+     * Fake the remote connection and record every statement sent to it.
+     *
+     * @param  array<int, object>  $partialRevokes  rows returned for the partial_revokes lookup
+     * @return \ArrayObject<int, string>
+     */
+    private function captureRemoteStatements(array $partialRevokes = []): \ArrayObject
+    {
+        $statements = new \ArrayObject();
+
+        $connection = $this->fakeRemoteDatabaseConnection();
+        $connection->shouldReceive('select')->andReturn($partialRevokes);
+        $connection->shouldReceive('statement')->andReturnUsing(function (string $query) use ($statements) {
+            $statements[] = $query;
+
+            return true;
+        });
+
+        return $statements;
+    }
+
+    /**
+     * @param  \ArrayObject<int, string>  $statements
+     */
+    private function findGrant(\ArrayObject $statements): string
+    {
+        $grants = array_values(array_filter($statements->getArrayCopy(), fn (string $query) => str_starts_with($query, 'GRANT ')));
+        $this->assertCount(1, $grants);
+
+        return $grants[0];
     }
 
     public static function invalidDataDataProvider(): array
