@@ -7,6 +7,8 @@ use App\Models\UserSession;
 use App\Services\Users\UserSessionService;
 use App\Services\Users\UserUpdateService;
 use Filament\Facades\Filament;
+use Illuminate\Auth\SessionGuard;
+use Illuminate\Support\Facades\Auth;
 
 beforeEach(function () {
     Filament::setCurrentPanel('app');
@@ -91,6 +93,27 @@ it('signs out a revoked device on session-authenticated API requests', function 
         ->getJson(route('api:client.account'))
         ->assertUnauthorized();
     $this->assertGuest('web');
+});
+
+it('rejects a remember-me login from a revoked device on API requests', function () {
+    $this->user->forceFill(['remember_token' => 'remember-token'])->save();
+
+    /** @var SessionGuard $guard */
+    $guard = Auth::guard('web');
+    $recaller = $this->user->id . '|remember-token|' . $guard->hashPasswordForCookie($this->user->password);
+
+    // The device row and its Laravel session are gone; the browser still holds both cookies.
+    Auth::forgetGuards();
+
+    $this->withCredentials()
+        ->withCookie(config('session.cookie'), 'session')
+        ->withCookie($guard->getRecallerName(), $recaller)
+        ->withCookie(UserSessionService::cookieName(), 'revoked-device-token')
+        ->getJson(route('api:client.account'))
+        ->assertUnauthorized();
+
+    $this->assertGuest('web');
+    expect($this->user->sessions()->count())->toBe(0);
 });
 
 it('does not prune or hide a session whose last activity is within the touch interval of expiring', function () {
