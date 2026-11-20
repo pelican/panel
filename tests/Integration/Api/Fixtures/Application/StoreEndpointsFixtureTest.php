@@ -232,6 +232,7 @@ class StoreEndpointsFixtureTest extends FixtureTestCase
     {
         $connection = \Mockery::mock(Connection::class);
         $connection->shouldReceive('statement')->andReturn(true);
+        $connection->shouldReceive('select')->andReturn([]);
         $connection->shouldReceive('getPdo')->andReturn(\Mockery::mock(\PDO::class));
 
         // A proxy mock forwards everything except build() to the real manager.

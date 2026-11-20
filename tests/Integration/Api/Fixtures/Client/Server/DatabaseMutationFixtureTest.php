@@ -31,6 +31,7 @@ class DatabaseMutationFixtureTest extends FixtureTestCase
         // controller and services running unmodified against sqlite.
         $connection = \Mockery::mock(Connection::class);
         $connection->allows('statement')->andReturnTrue();
+        $connection->allows('select')->andReturns([]);
 
         $manager = \Mockery::mock(DB::getFacadeRoot());
         $manager->allows('build')->andReturns($connection);
