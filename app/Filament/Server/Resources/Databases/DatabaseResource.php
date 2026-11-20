@@ -74,6 +74,9 @@ class DatabaseResource extends Resource
         /** @var Server $server */
         $server = Filament::getTenant();
 
+        // Hidden fields are still hydrated, so secrets must only be put into the state when the user may see them.
+        $canViewPassword = fn () => (bool) user()?->can(SubuserPermission::DatabaseViewPassword, $server);
+
         return $schema
             ->components([
                 TextInput::make('host')
@@ -89,13 +92,13 @@ class DatabaseResource extends Resource
                 TextInput::make('password')
                     ->label(trans('server/database.password'))
                     ->password()->revealable()
-                    ->hidden(fn () => !user()?->can(SubuserPermission::DatabaseViewPassword, $server))
+                    ->hidden(fn () => !$canViewPassword())
                     ->hintAction(
                         RotateDatabasePasswordAction::make()
                             ->authorize(fn () => user()?->can(SubuserPermission::DatabaseUpdate, $server))
                     )
                     ->copyable()
-                    ->formatStateUsing(fn (Database $database) => $database->password),
+                    ->formatStateUsing(fn (Database $database) => $canViewPassword() ? $database->password : null),
                 TextInput::make('remote')
                     ->label(trans('server/database.remote')),
                 TextInput::make('max_connections')
@@ -104,10 +107,10 @@ class DatabaseResource extends Resource
                 TextInput::make('jdbc')
                     ->label(trans('server/database.jdbc'))
                     ->password()->revealable()
-                    ->hidden(!user()?->can(SubuserPermission::DatabaseViewPassword, $server))
+                    ->hidden(fn () => !$canViewPassword())
                     ->copyable()
                     ->columnSpanFull()
-                    ->formatStateUsing(fn (Database $database) => $database->jdbc),
+                    ->formatStateUsing(fn (Database $database) => $canViewPassword() ? $database->jdbc : null),
             ]);
     }
 

@@ -44,8 +44,11 @@ class RotateDatabasePasswordAction extends Action
                 $service->rotatePassword($database);
                 $database->refresh();
 
-                $set('password', $database->password);
-                $set('jdbc', $database->jdbc);
+                // Only push the new secret into the form state if the password field is visible to this user.
+                if ($this->getSchemaComponent()?->isHidden() === false) {
+                    $set('password', $database->password);
+                    $set('jdbc', $database->jdbc);
+                }
 
                 Activity::event('server:database.rotate-password')
                     ->subject($database)
