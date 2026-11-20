@@ -4,6 +4,7 @@ namespace App\Tests\Integration\Services\Databases;
 
 use App\Exceptions\Repository\DuplicateDatabaseNameException;
 use App\Exceptions\Service\Database\DatabaseClientFeatureNotEnabledException;
+use App\Exceptions\Service\Database\DatabaseNameTooLongException;
 use App\Exceptions\Service\Database\TooManyDatabasesException;
 use App\Models\Database;
 use App\Models\DatabaseHost;
@@ -201,6 +202,61 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
     }
 
     /**
+     * Escaping doubles every "_", so a valid name can exceed MySQL's 64 character grant limit.
+     * It must be rejected before anything is created remotely, never granted unescaped.
+     */
+    public function test_database_name_too_long_once_escaped_is_rejected_before_creation(): void
+    {
+        $server = $this->createServerModel();
+        $name = DatabaseManagementService::generateUniqueDatabaseName(str_repeat('_', 40), $server->id);
+        $host = DatabaseHost::factory()->recycle($server->node)->create();
+
+        $statements = $this->captureRemoteStatements();
+
+        try {
+            $this->getService()->create($server, [
+                'remote' => '%',
+                'database' => $name,
+                'database_host_id' => $host->id,
+            ]);
+            $this->fail('Expected the over-long grant pattern to be rejected.');
+        } catch (DatabaseNameTooLongException) {
+            // Expected.
+        }
+
+        $this->assertCount(0, $statements);
+        $this->assertDatabaseMissing('databases', ['server_id' => $server->id]);
+    }
+
+    /**
+     * Rotating the password drops the user first, so an over-long name must be rejected before
+     * that happens or the owner would be left without access.
+     */
+    public function test_rotate_password_rejects_name_too_long_once_escaped_before_dropping_user(): void
+    {
+        $server = $this->createServerModel();
+        $host = DatabaseHost::factory()->recycle($server->node)->create();
+        $database = Database::factory()->create([
+            'database' => "s{$server->id}_" . str_repeat('_', 40),
+            'database_host_id' => $host->id,
+            'server_id' => $server->id,
+        ]);
+        $password = $database->password;
+
+        $statements = $this->captureRemoteStatements();
+
+        try {
+            $this->getService()->rotatePassword($database);
+            $this->fail('Expected the over-long grant pattern to be rejected.');
+        } catch (DatabaseNameTooLongException) {
+            // Expected.
+        }
+
+        $this->assertCount(0, $statements);
+        $this->assertSame($password, $database->refresh()->password);
+    }
+
+    /**
      * Test that an exception encountered while creating the database on the remote host
      * rolls the panel-side record back.
      */
@@ -211,8 +267,9 @@ class DatabaseManagementServiceTest extends IntegrationTestCase
 
         $host = DatabaseHost::factory()->recycle($server->node)->create();
 
-        $this->fakeRemoteDatabaseConnection()
-            ->shouldReceive('statement')->andThrow(new \BadMethodCallException());
+        $connection = $this->fakeRemoteDatabaseConnection();
+        $connection->shouldReceive('select')->andReturn([]);
+        $connection->shouldReceive('statement')->andThrow(new \BadMethodCallException());
 
         try {
             $this->getService()->create($server, [
