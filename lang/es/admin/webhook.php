@@ -24,7 +24,6 @@ return [
     'help' => 'Ayuda',
     'help_text' => 'Debes encerrar el nombre de la variable entre {{ }}. Por ejemplo, si quieres obtener el nombre desde la API, puedes usar {{name}}.',
     'test_now' => 'Probar ahora',
-    'test_now_help' => 'Esto ejecutará el evento `Creado: Servidor`',
     'table' => [
         'description' => 'Descripción',
         'endpoint' => 'Endpoint',
