@@ -34,6 +34,9 @@ class PowerController extends ClientApiController
             $request->input('signal')
         );
 
+        // remove old value from cache so new value appears in API response
+        cache()->forget("resources:$server->uuid");
+
         return $this->returnNoContent();
     }
 }

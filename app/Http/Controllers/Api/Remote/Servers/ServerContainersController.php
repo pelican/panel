@@ -22,6 +22,9 @@ class ServerContainersController extends Controller
 
         cache()->put("servers.$server->uuid.status", $status, now()->addHour());
 
+        // remove old value from cache so new value appears in API response
+        cache()->forget("resources:$server->uuid");
+
         return new JsonResponse([]);
     }
 }
