@@ -15,7 +15,6 @@ use App\Services\Helpers\ThemeService;
 use BackedEnum;
 use Exception;
 use Filament\Actions\Action;
-use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -24,7 +23,9 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Support\Enums\Size;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Enums\RecordActionsPosition;
 use Filament\Tables\Table;
 use Illuminate\Http\UploadedFile;
 
@@ -66,6 +67,8 @@ class PluginResource extends Resource
             ->defaultSort('load_order')
             ->columns([
                 TextColumn::make('name')
+                    ->view('filament.admin.plugins.name-with-actions')
+                    ->disabledClick()
                     ->label(trans('admin/plugin.name'))
                     ->description(fn (Plugin $plugin) => (strlen($plugin->description) > 80) ? substr($plugin->description, 0, 80).'...' : $plugin->description)
                     ->icon(fn (Plugin $plugin) => $plugin->isUpdateAvailable() ? TablerIcon::VersionsOff : TablerIcon::Versions)
@@ -91,6 +94,10 @@ class PluginResource extends Resource
                     ->description(fn (Plugin $plugin) => is_null($plugin->api_version) ? trans('admin/plugin.api_version_missing') : null)
                     ->sortable(),
             ])
+            ->modifyUngroupedRecordActionsUsing(fn (Action $action) => $action
+                ->iconButton()
+                ->size(Size::Small)
+                ->tooltip(fn (Action $action) => $action->getLabel()))
             ->recordActions([
                 Action::make('exclude_view')
                     ->label(trans('filament-actions::view.single.label'))
@@ -122,160 +129,158 @@ class PluginResource extends Resource
                     ->fillForm(fn (Plugin $plugin) => $plugin->getSettingsFormData())
                     ->action(fn (array $data, Plugin $plugin) => $plugin->saveSettings($data))
                     ->slideOver(),
-                ActionGroup::make([
-                    Action::make('exclude_install')
-                        ->label(trans('admin/plugin.install'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
-                        ->icon(TablerIcon::Terminal)
-                        ->color('success')
-                        ->hidden(fn (Plugin $plugin) => $plugin->status !== PluginStatus::NotInstalled)
-                        ->action(function (Plugin $plugin) {
-                            try {
-                                InstallPlugin::dispatch(user(), $plugin->id);
-
-                                Notification::make()
-                                    ->success()
-                                    ->title(trans('admin/plugin.notifications.install_started'))
-                                    ->body(trans('admin/plugin.notifications.background_info'))
-                                    ->send();
-                            } catch (Exception $exception) {
-                                Notification::make()
-                                    ->danger()
-                                    ->title(trans('admin/plugin.notifications.install_error'))
-                                    ->body($exception->getMessage())
-                                    ->send();
-                            }
-                        }),
-                    Action::make('exclude_update')
-                        ->label(trans('admin/plugin.update'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
-                        ->icon(TablerIcon::Download)
-                        ->color('success')
-                        ->visible(fn (Plugin $plugin) => $plugin->isUpdateAvailable())
-                        ->action(function (Plugin $plugin) {
-                            try {
-                                UpdatePlugin::dispatch(user(), $plugin->id);
-
-                                Notification::make()
-                                    ->success()
-                                    ->title(trans('admin/plugin.notifications.update_started'))
-                                    ->body(trans('admin/plugin.notifications.background_info'))
-                                    ->send();
-                            } catch (Exception $exception) {
-                                Notification::make()
-                                    ->danger()
-                                    ->title(trans('admin/plugin.notifications.update_error'))
-                                    ->body($exception->getMessage())
-                                    ->send();
-                            }
-                        }),
-                    Action::make('exclude_enable')
-                        ->label(trans('admin/plugin.enable'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
-                        ->icon(TablerIcon::Check)
-                        ->color('success')
-                        ->visible(fn (Plugin $plugin) => $plugin->canEnable())
-                        ->requiresConfirmation(fn (Plugin $plugin, PluginService $pluginService) => $plugin->isTheme() && !$plugin->isSwitchableTheme() && $pluginService->hasAnyThemeEnabled())
-                        ->modalHidden(fn (Plugin $plugin, PluginService $pluginService) => $plugin->isSwitchableTheme() ? !user()?->can('update settings') : !($plugin->isTheme() && $pluginService->hasAnyThemeEnabled()))
-                        ->modalHeading(fn (Plugin $plugin) => $plugin->isSwitchableTheme() ? trans('admin/plugin.default_theme_modal.heading') : trans('admin/plugin.enable_theme_modal.heading'))
-                        ->modalDescription(fn (Plugin $plugin) => $plugin->isSwitchableTheme() ? trans('admin/plugin.default_theme_modal.description') : trans('admin/plugin.enable_theme_modal.description'))
-                        ->schema(fn (Plugin $plugin) => $plugin->isSwitchableTheme() && user()?->can('update settings') ? static::defaultThemeSchema() : null)
-                        ->action(function (Plugin $plugin, array $data, $livewire, PluginService $pluginService, ThemeService $themeService) {
-                            $pluginService->enablePlugin($plugin);
-
-                            if (($data['set_as_default'] ?? false) && user()?->can('update settings')) {
-                                $themeService->setDefaultTheme($plugin->id, (bool) ($data['force_theme'] ?? false));
-                            }
-
-                            redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
+                Action::make('exclude_install')
+                    ->label(trans('admin/plugin.install'))
+                    ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                    ->icon(TablerIcon::Terminal)
+                    ->color('success')
+                    ->hidden(fn (Plugin $plugin) => $plugin->status !== PluginStatus::NotInstalled)
+                    ->action(function (Plugin $plugin) {
+                        try {
+                            InstallPlugin::dispatch(user(), $plugin->id);
 
                             Notification::make()
                                 ->success()
-                                ->title(trans('admin/plugin.notifications.enabled'))
+                                ->title(trans('admin/plugin.notifications.install_started'))
+                                ->body(trans('admin/plugin.notifications.background_info'))
                                 ->send();
-                        }),
-                    Action::make('exclude_set_default_theme')
-                        ->label(trans('admin/plugin.set_default_theme'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin) && user()->can('update settings'))
-                        ->icon(TablerIcon::Palette)
-                        ->visible(fn (Plugin $plugin, ThemeService $themeService) => $plugin->isSwitchableTheme() && $plugin->status === PluginStatus::Enabled && $themeService->getDefaultThemeId() !== $plugin->id)
-                        ->modalHeading(trans('admin/plugin.default_theme_modal.heading'))
-                        ->schema([
-                            Toggle::make('force_theme')
-                                ->label(trans('admin/plugin.default_theme_modal.force_theme'))
-                                ->helperText(trans('admin/plugin.default_theme_modal.force_theme_help'))
-                                ->default(fn (ThemeService $themeService) => $themeService->isForced()),
-                        ])
-                        ->action(function (Plugin $plugin, array $data, $livewire, ThemeService $themeService) {
+                        } catch (Exception $exception) {
+                            Notification::make()
+                                ->danger()
+                                ->title(trans('admin/plugin.notifications.install_error'))
+                                ->body($exception->getMessage())
+                                ->send();
+                        }
+                    }),
+                Action::make('exclude_update')
+                    ->label(trans('admin/plugin.update'))
+                    ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                    ->icon(TablerIcon::Download)
+                    ->color('success')
+                    ->visible(fn (Plugin $plugin) => $plugin->isUpdateAvailable())
+                    ->action(function (Plugin $plugin) {
+                        try {
+                            UpdatePlugin::dispatch(user(), $plugin->id);
+
+                            Notification::make()
+                                ->success()
+                                ->title(trans('admin/plugin.notifications.update_started'))
+                                ->body(trans('admin/plugin.notifications.background_info'))
+                                ->send();
+                        } catch (Exception $exception) {
+                            Notification::make()
+                                ->danger()
+                                ->title(trans('admin/plugin.notifications.update_error'))
+                                ->body($exception->getMessage())
+                                ->send();
+                        }
+                    }),
+                Action::make('exclude_enable')
+                    ->label(trans('admin/plugin.enable'))
+                    ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                    ->icon(TablerIcon::Check)
+                    ->color('success')
+                    ->visible(fn (Plugin $plugin) => $plugin->canEnable())
+                    ->requiresConfirmation(fn (Plugin $plugin, PluginService $pluginService) => $plugin->isTheme() && !$plugin->isSwitchableTheme() && $pluginService->hasAnyThemeEnabled())
+                    ->modalHidden(fn (Plugin $plugin, PluginService $pluginService) => $plugin->isSwitchableTheme() ? !user()?->can('update settings') : !($plugin->isTheme() && $pluginService->hasAnyThemeEnabled()))
+                    ->modalHeading(fn (Plugin $plugin) => $plugin->isSwitchableTheme() ? trans('admin/plugin.default_theme_modal.heading') : trans('admin/plugin.enable_theme_modal.heading'))
+                    ->modalDescription(fn (Plugin $plugin) => $plugin->isSwitchableTheme() ? trans('admin/plugin.default_theme_modal.description') : trans('admin/plugin.enable_theme_modal.description'))
+                    ->schema(fn (Plugin $plugin) => $plugin->isSwitchableTheme() && user()?->can('update settings') ? static::defaultThemeSchema() : null)
+                    ->action(function (Plugin $plugin, array $data, $livewire, PluginService $pluginService, ThemeService $themeService) {
+                        $pluginService->enablePlugin($plugin);
+
+                        if (($data['set_as_default'] ?? false) && user()?->can('update settings')) {
                             $themeService->setDefaultTheme($plugin->id, (bool) ($data['force_theme'] ?? false));
+                        }
 
-                            redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
+                        redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
+
+                        Notification::make()
+                            ->success()
+                            ->title(trans('admin/plugin.notifications.enabled'))
+                            ->send();
+                    }),
+                Action::make('exclude_set_default_theme')
+                    ->label(trans('admin/plugin.set_default_theme'))
+                    ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin) && user()->can('update settings'))
+                    ->icon(TablerIcon::Palette)
+                    ->visible(fn (Plugin $plugin, ThemeService $themeService) => $plugin->isSwitchableTheme() && $plugin->status === PluginStatus::Enabled && $themeService->getDefaultThemeId() !== $plugin->id)
+                    ->modalHeading(trans('admin/plugin.default_theme_modal.heading'))
+                    ->schema([
+                        Toggle::make('force_theme')
+                            ->label(trans('admin/plugin.default_theme_modal.force_theme'))
+                            ->helperText(trans('admin/plugin.default_theme_modal.force_theme_help'))
+                            ->default(fn (ThemeService $themeService) => $themeService->isForced()),
+                    ])
+                    ->action(function (Plugin $plugin, array $data, $livewire, ThemeService $themeService) {
+                        $themeService->setDefaultTheme($plugin->id, (bool) ($data['force_theme'] ?? false));
+
+                        redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
+
+                        Notification::make()
+                            ->success()
+                            ->title(trans('admin/plugin.notifications.default_theme_set'))
+                            ->body($plugin->name)
+                            ->send();
+                    }),
+                Action::make('exclude_disable')
+                    ->label(trans('admin/plugin.disable'))
+                    ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                    ->icon(TablerIcon::X)
+                    ->color('warning')
+                    ->visible(fn (Plugin $plugin) => $plugin->canDisable())
+                    ->action(function (Plugin $plugin, $livewire, PluginService $pluginService) {
+                        $pluginService->disablePlugin($plugin);
+
+                        redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
+
+                        Notification::make()
+                            ->success()
+                            ->title(trans('admin/plugin.notifications.disabled'))
+                            ->send();
+                    }),
+                Action::make('exclude_delete')
+                    ->label(trans('filament-actions::delete.single.label'))
+                    ->authorize(fn (Plugin $plugin) => user()?->can('delete', $plugin))
+                    ->icon(TablerIcon::Trash)
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->visible(fn (Plugin $plugin) => $plugin->status === PluginStatus::NotInstalled || $plugin->status === PluginStatus::Errored)
+                    ->action(function (Plugin $plugin, $livewire, PluginService $pluginService) {
+                        $pluginService->deletePlugin($plugin);
+
+                        redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
+
+                        Notification::make()
+                            ->success()
+                            ->title(trans('admin/plugin.notifications.deleted'))
+                            ->send();
+                    }),
+                Action::make('exclude_uninstall')
+                    ->label(trans('admin/plugin.uninstall'))
+                    ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
+                    ->icon(TablerIcon::Terminal)
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->hidden(fn (Plugin $plugin) => $plugin->status === PluginStatus::NotInstalled || $plugin->status === PluginStatus::Errored)
+                    ->action(function (Plugin $plugin) {
+                        try {
+                            UninstallPlugin::dispatch(user(), $plugin->id);
 
                             Notification::make()
                                 ->success()
-                                ->title(trans('admin/plugin.notifications.default_theme_set'))
-                                ->body($plugin->name)
+                                ->title(trans('admin/plugin.notifications.uninstall_started'))
+                                ->body(trans('admin/plugin.notifications.background_info'))
                                 ->send();
-                        }),
-                    Action::make('exclude_disable')
-                        ->label(trans('admin/plugin.disable'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
-                        ->icon(TablerIcon::X)
-                        ->color('warning')
-                        ->visible(fn (Plugin $plugin) => $plugin->canDisable())
-                        ->action(function (Plugin $plugin, $livewire, PluginService $pluginService) {
-                            $pluginService->disablePlugin($plugin);
-
-                            redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
-
+                        } catch (Exception $exception) {
                             Notification::make()
-                                ->success()
-                                ->title(trans('admin/plugin.notifications.disabled'))
+                                ->danger()
+                                ->title(trans('admin/plugin.notifications.uninstall_error'))
+                                ->body($exception->getMessage())
                                 ->send();
-                        }),
-                    Action::make('exclude_delete')
-                        ->label(trans('filament-actions::delete.single.label'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('delete', $plugin))
-                        ->icon(TablerIcon::Trash)
-                        ->color('danger')
-                        ->requiresConfirmation()
-                        ->visible(fn (Plugin $plugin) => $plugin->status === PluginStatus::NotInstalled || $plugin->status === PluginStatus::Errored)
-                        ->action(function (Plugin $plugin, $livewire, PluginService $pluginService) {
-                            $pluginService->deletePlugin($plugin);
-
-                            redirect(ListPlugins::getUrl(['tab' => $livewire->activeTab]));
-
-                            Notification::make()
-                                ->success()
-                                ->title(trans('admin/plugin.notifications.deleted'))
-                                ->send();
-                        }),
-                    Action::make('exclude_uninstall')
-                        ->label(trans('admin/plugin.uninstall'))
-                        ->authorize(fn (Plugin $plugin) => user()?->can('update', $plugin))
-                        ->icon(TablerIcon::Terminal)
-                        ->color('danger')
-                        ->requiresConfirmation()
-                        ->hidden(fn (Plugin $plugin) => $plugin->status === PluginStatus::NotInstalled || $plugin->status === PluginStatus::Errored)
-                        ->action(function (Plugin $plugin) {
-                            try {
-                                UninstallPlugin::dispatch(user(), $plugin->id);
-
-                                Notification::make()
-                                    ->success()
-                                    ->title(trans('admin/plugin.notifications.uninstall_started'))
-                                    ->body(trans('admin/plugin.notifications.background_info'))
-                                    ->send();
-                            } catch (Exception $exception) {
-                                Notification::make()
-                                    ->danger()
-                                    ->title(trans('admin/plugin.notifications.uninstall_error'))
-                                    ->body($exception->getMessage())
-                                    ->send();
-                            }
-                        }),
-                ]),
-            ])
+                        }
+                    }),
+            ], position: RecordActionsPosition::AfterContent)
             ->headerActions([
                 Action::make('browse_hub')
                     ->label(trans('admin/plugin.hub.browse'))
