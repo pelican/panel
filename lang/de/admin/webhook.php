@@ -24,7 +24,6 @@ return [
     'help' => 'Hilfe',
     'help_text' => 'Du musst den Variablennamen zwischen {{ }} einschließen. Wenn Du z. B. den Namen aus der API abrufen möchten, kannst Du {{name}} verwenden.',
     'test_now' => 'Jetzt testen',
-    'test_now_help' => 'Dadurch wird ein `created: Server`-Ereignis ausgelöst',
     'table' => [
         'description' => 'Beschreibung',
         'endpoint' => 'Endpunkt',

@@ -24,7 +24,6 @@ return [
     'help' => 'Aide',
     'help_text' => 'Vous devez englober les noms de variables dans {{ }}. Par exemple, si vous voulez obtenir le nom depuis l\'api, vous pouvez utiliser {{name}}',
     'test_now' => 'Tester',
-    'test_now_help' => 'Cela va lancer l\'événement `created: Server`',
     'table' => [
         'description' => 'Description',
         'endpoint' => 'Point de terminaison',

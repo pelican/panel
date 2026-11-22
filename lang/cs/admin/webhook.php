@@ -24,7 +24,6 @@ return [
     'help' => 'Nápověda',
     'help_text' => 'Musíte zalomit název proměnné mezi {{ }} například pokud chcete získat jméno z api, můžete použít {{name}}.',
     'test_now' => 'Otestovat',
-    'test_now_help' => 'Odešle zkušební událost `created: Server`',
     'table' => [
         'description' => 'Popis',
         'endpoint' => 'Koncový bod',
