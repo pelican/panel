@@ -29,7 +29,7 @@ class OAuthController extends Controller
      */
     public function redirect(string $driver): SymfonyRedirectResponse|RedirectResponse
     {
-        if (!$this->oauthService->get($driver)->isEnabled()) {
+        if (!$this->oauthService->get($driver)?->isEnabled()) {
             return redirect()->route('auth.login');
         }
 
