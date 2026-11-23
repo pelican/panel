@@ -93,6 +93,10 @@ class DatabaseManagementService
         return $this->connection->transaction(function () use ($data) {
             $database = $this->createModel($data);
 
+            // Check the grant can be issued before touching the remote host, so a name that is too
+            // long once escaped does not leave an orphaned database and user behind.
+            $database->grantPattern();
+
             $database
                 ->createDatabase()
                 ->createUser()
@@ -143,6 +147,9 @@ class DatabaseManagementService
             $database->update([
                 'password' => $password,
             ]);
+
+            // Check the grant can be issued before dropping the user, or a failure would lock the owner out.
+            $database->grantPattern();
 
             $database
                 ->dropUser()

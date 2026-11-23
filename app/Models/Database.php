@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Contracts\Validatable;
+use App\Exceptions\Service\Database\DatabaseNameTooLongException;
 use App\Traits\HasValidation;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use PDOException;
 
@@ -51,6 +53,11 @@ class Database extends Model implements Validatable
      * API representation using fractal. Also used as name for api key permissions.
      */
     public const RESOURCE_NAME = 'server_database';
+
+    /**
+     * MySQL and MariaDB store grant database names in a 64 character column.
+     */
+    public const MAX_GRANT_PATTERN_LENGTH = 64;
 
     /**
      * The attributes excluded from the model's JSON form.
@@ -164,12 +171,62 @@ class Database extends Model implements Validatable
     {
         $this->run(sprintf(
             'GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, REFERENCES, INDEX, LOCK TABLES, CREATE ROUTINE, ALTER ROUTINE, EXECUTE, CREATE TEMPORARY TABLES, CREATE VIEW, SHOW VIEW, EVENT, TRIGGER ON `%s`.* TO `%s`@`%s`',
-            $this->database,
+            $this->grantPattern(),
             $this->username,
             $this->remote
         ));
 
         return $this;
+    }
+
+    /**
+     * @throws PDOException
+     *
+     * Remove a grant issued on the unescaped database name by older versions of the panel,
+     * which acted as a wildcard pattern. Missing grants are ignored. Issue the escaped grant first:
+     * REVOKE commits implicitly, so revoking first could leave the user without any access.
+     */
+    public function revokeLegacyGrant(): self
+    {
+        // The pattern is unchanged when partial_revokes is enabled, so the "legacy" grant is the current one.
+        if ($this->grantPattern() === $this->database) {
+            return $this;
+        }
+
+        try {
+            $this->run(sprintf('REVOKE ALL PRIVILEGES ON `%s`.* FROM `%s`@`%s`', $this->database, $this->username, $this->remote));
+        } catch (QueryException $exception) {
+            // 1141: there is no such grant defined for the user.
+            if ((int) ($exception->errorInfo[1] ?? 0) !== 1141) {
+                throw $exception;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * In a database-level GRANT, MySQL and MariaDB treat "_" and "%" in the database name as
+     * wildcards. Every server database name contains "_" (s{id}_{name}) and users may add more,
+     * so the raw name would also match other servers' databases on the same host. MySQL with
+     * partial_revokes enabled treats the name literally, so escaping would break the grant there.
+     *
+     * @throws DatabaseNameTooLongException when the escaped name exceeds MySQL's 64 character limit
+     */
+    public function grantPattern(): string
+    {
+        $variable = $this->host->buildConnection()->select("SHOW GLOBAL VARIABLES LIKE 'partial_revokes'")[0] ?? null;
+
+        if (strtoupper((string) ($variable->Value ?? '')) === 'ON') {
+            return $this->database;
+        }
+
+        $pattern = str_replace(['\\', '_', '%'], ['\\\\', '\\_', '\\%'], $this->database);
+
+        // Never fall back to the unescaped name here, it would reintroduce the wildcard match.
+        throw_if(mb_strlen($pattern) > self::MAX_GRANT_PATTERN_LENGTH, new DatabaseNameTooLongException());
+
+        return $pattern;
     }
 
     /**

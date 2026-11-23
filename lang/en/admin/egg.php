@@ -64,7 +64,7 @@ return [
     'force_ip_help' => 'Forces all outgoing network traffic to have its Source IP NATed to the IP of the server\'s primary allocation IP. Required for certain games to work properly when the Node has multiple public IP addresses. Enabling this option will disable internal networking for any servers using this Egg, causing them to be unable to internally access other servers on the same node.',
     'tags' => 'Tags',
     'update_url' => 'Update URL',
-    'update_url_help' => 'URLs must point directly to the raw .json file',
+    'update_url_help' => 'URL must point directly to the raw .json/.yaml file',
     'add_image' => 'Add Docker Image',
     'docker_images' => 'Docker Images',
     'docker_name' => 'Image Name',

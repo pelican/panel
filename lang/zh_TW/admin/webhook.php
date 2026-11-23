@@ -24,7 +24,6 @@ return [
     'help' => '帮助',
     'help_text' => '您必须将变量名称包裹在 {{ }} 之间，例如，如果您想从 API 获取名称，可以使用 {{name}}。',
     'test_now' => '立即测试',
-    'test_now_help' => '这将触发一个 `created: Server` 事件',
     'table' => [
         'description' => '描述',
         'endpoint' => '端点',
