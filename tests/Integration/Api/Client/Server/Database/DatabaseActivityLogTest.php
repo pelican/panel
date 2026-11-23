@@ -19,6 +19,7 @@ class DatabaseActivityLogTest extends ClientApiIntegrationTestCase
         // only that call and keep every other DB method real.
         $connection = \Mockery::mock(Connection::class);
         $connection->allows('statement')->andReturnTrue();
+        $connection->allows('select')->andReturns([]);
 
         $manager = \Mockery::mock(DB::getFacadeRoot());
         $manager->allows('build')->andReturns($connection);
