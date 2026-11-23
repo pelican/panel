@@ -94,6 +94,13 @@ class AllocationsRelationManager extends RelationManager
             ])
             ->emptyStateHeading(trans('admin/server.no_allocations'))
             ->recordActions([
+                Action::make('make-primary')
+                    ->authorize(fn (Allocation $allocation) => user()?->can('update', $allocation))
+                    ->hiddenLabel()
+                    ->tooltip(trans('admin/server.make_primary'))
+                    ->icon(TablerIcon::Star)
+                    ->action(fn (Allocation $allocation) => $this->getOwnerRecord()->update(['allocation_id' => $allocation->id]) && $this->deselectAllTableRecords())
+                    ->hidden(fn (Allocation $allocation) => $this->isReadOnly() || $allocation->id === $this->getOwnerRecord()->allocation_id),
                 Action::make('lock')
                     ->authorize(fn (Allocation $allocation) => user()?->can('update', $allocation))
                     ->hiddenLabel()
