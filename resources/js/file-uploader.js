@@ -1,6 +1,5 @@
 const MAX_CONCURRENT = 3;
 const LARGE_BATCH = 500;
-const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 
 // Queue rows are keyed on this, since the same file can legitimately be queued twice.
 let nextEntryId = 0;
@@ -15,16 +14,6 @@ const directoryFor = (entry) =>
         .flatMap((part) => String(part ?? '').split('/'))
         .filter((part) => part !== '' && part !== '.')
         .join('/');
-
-const formatBytes = (bytes) => {
-    if (!bytes) {
-        return '0.00 B';
-    }
-
-    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), UNITS.length - 1);
-
-    return `${(bytes / 1024 ** index).toFixed(2)} ${UNITS[index]}`;
-};
 
 /** Depth-first walk of a dropped folder, keeping the relative path of every file. */
 const walk = async (entry, path, files, directories) => {
@@ -182,7 +171,7 @@ document.addEventListener('alpine:init', () => {
                     status: tooLarge ? 'error' : 'pending',
                     tooLarge,
                     error: tooLarge
-                        ? config.tooLarge.replace(':name', item.file.name).replace(':limit', formatBytes(limit))
+                        ? config.tooLarge.replace(':name', item.file.name).replace(':limit', this.formatBytes(limit))
                         : null,
                     xhr: null,
                 });
@@ -494,10 +483,31 @@ document.addEventListener('alpine:init', () => {
             this.unloadGuard = null;
         },
 
-        formatBytes,
+        formatBytes(bytes) {
+            const decimals = 2;
+            const useBinary = config.useBinaryPrefix;
+            const unit = useBinary ? 1024 : 1000;
+            const suffixes = useBinary
+                ? ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
+                : ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+
+            const format = (num) =>
+                new Intl.NumberFormat(config.locale || 'en', {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals,
+                }).format(num);
+
+            if (!bytes) {
+                return `${format(0)} ${suffixes[0]}`;
+            }
+
+            const index = Math.min(Math.floor(Math.log(bytes) / Math.log(unit)), suffixes.length - 1);
+
+            return `${format(bytes / unit ** index)} ${suffixes[index]}`;
+        },
 
         formatSpeed(bytesPerSecond) {
-            return `${formatBytes(bytesPerSecond)}/s`;
+            return `${this.formatBytes(bytesPerSecond)}/s`;
         },
     }));
 
