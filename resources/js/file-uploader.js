@@ -491,11 +491,19 @@ document.addEventListener('alpine:init', () => {
                 ? ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
                 : ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
 
-            const format = (num) =>
-                new Intl.NumberFormat(config.locale || 'en', {
+            const format = (num) => {
+                const locale = (config.locale || 'en').replaceAll('_', '-');
+                const options = {
                     minimumFractionDigits: decimals,
                     maximumFractionDigits: decimals,
-                }).format(num);
+                };
+
+                try {
+                    return new Intl.NumberFormat(locale, options).format(num);
+                } catch {
+                    return new Intl.NumberFormat('en', options).format(num);
+                }
+            };
 
             if (!bytes) {
                 return `${format(0)} ${suffixes[0]}`;
