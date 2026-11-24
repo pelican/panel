@@ -18,7 +18,10 @@ it('checks wings compatibility against the configured minimum', function (string
     'equal to minimum' => ['1.0.0', true],
     'newer patch' => ['1.0.1', true],
     'newer major' => ['2.0.0', true],
-    'release candidate of minimum' => ['1.0.0-rc.1', false],
+    'release candidate of minimum' => ['1.0.0-rc.3', true],
+    'beta of minimum' => ['1.0.0-beta29', true],
+    'build metadata on minimum' => ['1.0.0+abc', true],
+    'prerelease of older' => ['0.9.0-rc.1', false],
     'older' => ['0.9.0', false],
 ]);
 
@@ -28,6 +31,16 @@ it('honours a config override of the minimum', function () {
     expect(app(SoftwareVersionService::class)->isCompatibleWings('1.1.9'))->toBeFalse()
         ->and(app(SoftwareVersionService::class)->isCompatibleWings('1.2.0'))->toBeTrue();
 });
+
+it('compares prereleases fully when the minimum is a prerelease', function (string $version, bool $expected) {
+    config()->set('panel.wings.min_version', '1.0.0-rc.3');
+
+    expect(app(SoftwareVersionService::class)->isCompatibleWings($version))->toBe($expected);
+})->with([
+    'older release candidate' => ['1.0.0-rc.1', false],
+    'equal release candidate' => ['1.0.0-rc.3', true],
+    'final release' => ['1.0.0', true],
+]);
 
 it('reports node versions by compatibility', function (array $versions, string $status) {
     $fakes = ['api.github.com/*' => Http::response(['tag_name' => 'v1.1.0'])];
@@ -48,5 +61,6 @@ it('reports node versions by compatibility', function (array $versions, string $
 })->with([
     'all latest' => [['1.1.0', '1.1.0'], 'ok'],
     'outdated but compatible' => [['1.1.0', '1.0.0'], 'warning'],
+    'release candidate of minimum' => [['1.1.0', '1.0.0-rc.3'], 'warning'],
     'incompatible' => [['1.1.0', '0.9.0'], 'failed'],
 ]);

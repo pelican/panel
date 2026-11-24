@@ -4,6 +4,7 @@ namespace App\Services\Helpers;
 
 use Exception;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class SoftwareVersionService
 {
@@ -90,7 +91,18 @@ class SoftwareVersionService
 
     public function isCompatibleWings(string $version): bool
     {
-        return $version === 'develop' || version_compare($version, config('panel.wings.min_version'), '>=');
+        if ($version === 'develop') {
+            return true;
+        }
+
+        $min = config('panel.wings.min_version');
+
+        // Prereleases of a bare minimum meet it, so 1.0.0-rc.3 satisfies 1.0.0
+        if (!Str::contains($min, '-')) {
+            $version = Str::before(Str::before($version, '+'), '-');
+        }
+
+        return version_compare($version, $min, '>=');
     }
 
     /**
