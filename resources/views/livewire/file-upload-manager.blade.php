@@ -13,6 +13,8 @@
         'tokenFailed' => trans('server/file.actions.upload.token_failed'),
         'sessionExpired' => trans('server/file.actions.upload.session_expired'),
         'cancelled' => trans('server/file.actions.upload.cancelled'),
+        'useBinaryPrefix' => config('panel.use_binary_prefix'),
+        'locale' => user()?->language ?? 'en',
     ]))"
     @server-file-upload.window="enqueue($event.detail)"
     @keydown.escape.window="open &amp;&amp; (busy ? (minimized = true) : close())"
