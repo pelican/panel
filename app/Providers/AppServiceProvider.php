@@ -120,6 +120,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Gate::before(fn (User $user, $ability) => $user->isRootAdmin() ? true : null);
+        Gate::before(fn (User $user, $ability) => $this->app->environment('demo') && !Str::startsWith($ability, 'view') ? false : null);
 
         AboutCommand::add('Pelican', fn () => [
             'Panel Version' => $versionService->currentPanelVersion(),
