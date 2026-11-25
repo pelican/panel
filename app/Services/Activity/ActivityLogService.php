@@ -11,6 +11,7 @@ use Filament\Facades\Filament;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Application;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
@@ -28,7 +29,8 @@ class ActivityLogService
     public function __construct(
         protected AuthFactory $manager,
         protected ActivityLogTargetableService $targetable,
-        protected ConnectionInterface $connection
+        protected ConnectionInterface $connection,
+        protected Application $app
     ) {}
 
     /**
@@ -124,7 +126,7 @@ class ActivityLogService
     public function withRequestMetadata(): self
     {
         return $this->property([
-            'ip' => Request::getClientIp(),
+            'ip' => $this->app->environment('demo') ? '132.132.132.132' : Request::getClientIp(),
             'useragent' => Request::userAgent(),
         ]);
     }
@@ -202,7 +204,7 @@ class ActivityLogService
         }
 
         $this->activity = new ActivityLog([
-            'ip' => Request::ip(),
+            'ip' => $this->app->environment('demo') ? '132.132.132.132' : Request::ip(),
             'properties' => Collection::make([]),
             'api_key_id' => $this->targetable->apiKeyId(),
         ]);
