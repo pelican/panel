@@ -4,6 +4,7 @@ namespace App\Providers\Filament;
 
 use App\Enums\TablerIcon;
 use App\Filament\Admin\Resources\Servers\Pages\EditServer;
+use App\Filament\Admin\Resources\Servers\Pages\ViewServer;
 use App\Filament\App\Resources\Servers\Pages\ListServers;
 use App\Http\Middleware\Activity\ServerSubject;
 use App\Models\Server;
@@ -36,8 +37,8 @@ class ServerPanelProvider extends PanelProvider
             ])
             ->navigationItems([
                 NavigationItem::make(trans('server/console.open_in_admin'))
-                    ->url(fn () => EditServer::getUrl(['record' => Filament::getTenant()], panel: 'admin'))
-                    ->visible(fn () => user()?->canAccessPanel(Filament::getPanel('admin')) && user()->can('view server', Filament::getTenant()))
+                    ->url(fn () => user()->can('update', Filament::getTenant()) ? EditServer::getUrl(['record' => Filament::getTenant()], panel: 'admin') : ViewServer::getUrl(['record' => Filament::getTenant()], panel: 'admin'))
+                    ->visible(fn () => user()?->canAccessPanel(Filament::getPanel('admin')) && user()->can('view', Filament::getTenant()))
                     ->icon(TablerIcon::ArrowBack)
                     ->sort(99),
             ])
