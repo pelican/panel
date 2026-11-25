@@ -44,7 +44,9 @@ use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Width;
+use Filament\Support\Exceptions\Halt;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -70,13 +72,16 @@ class EditProfile extends BaseEditProfile
 
     protected ThemeService $themeService;
 
+    protected Application $app;
+
     protected bool $themeChanged = false;
 
-    public function boot(OAuthService $oauthService, Request $request, ThemeService $themeService): void
+    public function boot(OAuthService $oauthService, Request $request, ThemeService $themeService, Application $app): void
     {
         $this->oauthService = $oauthService;
         $this->request = $request;
         $this->themeService = $themeService;
+        $this->app = $app;
     }
 
     public function getMaxWidth(): Width|string
@@ -106,7 +111,8 @@ class EditProfile extends BaseEditProfile
             ->operation('edit')
             ->model($this->getUser())
             ->statePath('data')
-            ->inlineLabel(!static::isSimple());
+            ->inlineLabel(!static::isSimple())
+            ->disabled(fn () => $this->app->environment('demo'));
     }
 
     /** @return Tab[] */
@@ -637,7 +643,7 @@ class EditProfile extends BaseEditProfile
                 ->hiddenLabel()
                 ->icon(TablerIcon::Trash)
                 ->color('danger')
-                ->hidden(fn () => $this->getUser()->is_managed_externally)
+                ->hidden(fn () => $this->getUser()->is_managed_externally || $this->app->environment('demo'))
                 ->disabled(fn () => $this->accountDeletionBlockedReason() !== null)
                 ->tooltip(fn () => $this->accountDeletionBlockedReason() ?? trans('profile.delete_account'))
                 ->requiresConfirmation()
@@ -692,6 +698,11 @@ class EditProfile extends BaseEditProfile
             $user->isLastRootAdmin() => trans('profile.delete_account_last_admin'),
             default => null,
         };
+    }
+
+    protected function beforeSave(): void
+    {
+        throw_if($this->app->environment('demo'), new Halt('Disabled on demo'));
     }
 
     protected function mutateFormDataBeforeSave(array $data): array
