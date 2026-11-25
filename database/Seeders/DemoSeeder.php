@@ -31,10 +31,10 @@ class DemoSeeder extends Seeder
         }
 
         $this->command->info('Deleting old data...');
-        User::delete();
-        Server::delete();
-        Node::delete();
-        Egg::delete();
+        User::query()->delete();
+        Server::query()->delete();
+        Node::query()->delete();
+        Egg::query()->delete();
 
         $this->command->info('Creating admin user...');
         $adminUser = User::create([
@@ -136,6 +136,8 @@ class DemoSeeder extends Seeder
                 'backup_limit' => 2,
             ]);
 
+            $minecraftAllocation->update(['server_id' => $minecraftServer->id]);
+
             try {
                 Http::daemon($minecraftServer->node)
                     ->setServer($minecraftServer)
@@ -171,6 +173,8 @@ class DemoSeeder extends Seeder
                 'database_limit' => 0,
                 'backup_limit' => 1,
             ]);
+
+            $gmodAllocation->update(['server_id' => $gmodServer->id]);
 
             try {
                 Http::daemon($gmodServer->node)
