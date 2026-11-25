@@ -8,12 +8,12 @@ use App\Models\Node;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\User;
+use App\Repositories\Daemon\DaemonServerRepository;
 use App\Services\Eggs\Sharing\EggImporterService;
 use Exception;
 use Illuminate\Database\Seeder;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Http;
 use Ramsey\Uuid\Uuid;
 use Throwable;
 
@@ -21,7 +21,8 @@ class DemoSeeder extends Seeder
 {
     public function __construct(
         private readonly EggImporterService $importerService,
-        private readonly Application $app
+        private readonly Application $app,
+        private readonly DaemonServerRepository $daemonServerRepository
     ) {}
 
     public function run(): void
@@ -31,8 +32,8 @@ class DemoSeeder extends Seeder
         }
 
         $this->command->info('Deleting old data...');
-        User::query()->delete();
         Server::query()->delete();
+        User::query()->delete();
         Node::query()->delete();
         Egg::query()->delete();
 
@@ -139,12 +140,7 @@ class DemoSeeder extends Seeder
             $minecraftAllocation->update(['server_id' => $minecraftServer->id]);
 
             try {
-                Http::daemon($minecraftServer->node)
-                    ->setServer($minecraftServer)
-                    ->post('/api/servers', [
-                        'uuid' => $minecraftServer->uuid,
-                        'start_on_completion' => false,
-                    ]);
+                $this->daemonServerRepository->setServer($minecraftServer)->create(false);
             } catch (Exception $exception) {
                 $this->command->error($exception->getMessage());
             }
@@ -177,12 +173,7 @@ class DemoSeeder extends Seeder
             $gmodAllocation->update(['server_id' => $gmodServer->id]);
 
             try {
-                Http::daemon($gmodServer->node)
-                    ->setServer($gmodServer)
-                    ->post('/api/servers', [
-                        'uuid' => $gmodServer->uuid,
-                        'start_on_completion' => false,
-                    ]);
+                $this->daemonServerRepository->setServer($gmodServer)->create(false);
             } catch (Exception $exception) {
                 $this->command->error($exception->getMessage());
             }
