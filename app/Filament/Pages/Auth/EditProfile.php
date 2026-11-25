@@ -258,7 +258,7 @@ class EditProfile extends BaseEditProfile
             Tab::make('2fa')
                 ->label(trans('profile.tabs.2fa'))
                 ->icon(TablerIcon::ShieldLock)
-                ->visible(fn () => Filament::hasMultiFactorAuthentication())
+                ->visible(fn () => Filament::hasMultiFactorAuthentication() && !$this->app->environment('demo'))
                 ->schema(collect(Filament::getMultiFactorAuthenticationProviders())
                     ->sort(fn (MultiFactorAuthenticationProvider $multiFactorAuthenticationProvider) => $multiFactorAuthenticationProvider->isEnabled(Filament::auth()->user()) ? 0 : 1)
                     ->map(fn (MultiFactorAuthenticationProvider $multiFactorAuthenticationProvider) => Group::make($multiFactorAuthenticationProvider->getManagementSchemaComponents())
@@ -267,7 +267,7 @@ class EditProfile extends BaseEditProfile
             Tab::make('passkeys')
                 ->label(trans('profile.tabs.passkeys'))
                 ->icon(TablerIcon::Fingerprint)
-                ->hidden(fn () => !$this->request->isSecure())
+                ->hidden(fn () => !$this->request->isSecure() || $this->app->environment('demo'))
                 ->schema([
                     Section::make(trans('profile.tabs.passkeys'))
                         ->description(trans('passkeys.description'))
