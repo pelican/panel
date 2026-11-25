@@ -4,6 +4,8 @@ return [
 
     'auth' => [
         '2fa_required' => env('APP_2FA_REQUIRED', 0),
+        // Signed-in devices that haven't been used for this many days are signed out. 0 disables it.
+        'session_inactivity_days' => env('APP_SESSION_INACTIVITY_DAYS', 14),
         '2fa' => [
             'bytes' => 32,
             'window' => env('APP_2FA_WINDOW', 4),
