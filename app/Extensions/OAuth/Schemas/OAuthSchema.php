@@ -136,4 +136,13 @@ abstract class OAuthSchema implements OAuthSchemaInterface
 
         return (bool) config("extensions.OAUTH_{$id}_SHOULD_LINK_MISSING_USERS", false);
     }
+
+    public function isEmailVerified(OAuthUser $oauthUser): bool
+    {
+        // Read from the raw provider response: Socialite users have no __isset, so isset() on a property is always false.
+        // Providers that send no flag (e.g. GitHub, GitLab, Bitbucket) only hand out confirmed emails.
+        $verified = data_get($oauthUser, 'email_verified');
+
+        return $verified === null || filter_var($verified, FILTER_VALIDATE_BOOLEAN);
+    }
 }

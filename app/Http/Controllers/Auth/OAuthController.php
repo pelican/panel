@@ -93,7 +93,7 @@ class OAuthController extends Controller
             return $this->errorRedirect('No email was linked to your account on the OAuth provider.');
         }
 
-        if (isset($oauthUser->email_verified) && !filter_var($oauthUser->email_verified, FILTER_VALIDATE_BOOLEAN)) {
+        if (!$driver->isEmailVerified($oauthUser)) {
             return $this->errorRedirect('Email not verified on OAuth provider.');
         }
 

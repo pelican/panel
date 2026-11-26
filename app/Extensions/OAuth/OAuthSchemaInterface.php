@@ -39,4 +39,10 @@ interface OAuthSchemaInterface
     public function shouldCreateMissingUser(OAuthUser $user): bool;
 
     public function shouldLinkMissingUser(User $user, OAuthUser $oauthUser): bool;
+
+    /**
+     * Whether the provider vouches for the email of the given user. An unverified email must never be used to
+     * link to or create a local account.
+     */
+    public function isEmailVerified(OAuthUser $oauthUser): bool;
 }
