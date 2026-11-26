@@ -9,6 +9,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Wizard\Step;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
+use Laravel\Socialite\Contracts\User as OAuthUser;
 use SocialiteProviders\Discord\Provider;
 
 final class DiscordSchema extends OAuthSchema
@@ -52,5 +53,11 @@ final class DiscordSchema extends OAuthSchema
     public function getHexColor(): string
     {
         return '#5865F2';
+    }
+
+    public function isEmailVerified(OAuthUser $oauthUser): bool
+    {
+        // Discord reports email verification as `verified` and can return an unverified email
+        return filter_var(data_get($oauthUser, 'verified'), FILTER_VALIDATE_BOOLEAN);
     }
 }
