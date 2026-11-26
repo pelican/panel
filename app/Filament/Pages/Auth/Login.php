@@ -16,6 +16,7 @@ use Filament\Schemas\Components\Component;
 use Filament\Schemas\Schema;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Alignment;
+use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -29,12 +30,15 @@ class Login extends BaseLogin
 
     protected Request $request;
 
-    public function boot(OAuthService $oauthService, CaptchaService $captchaService, IconFactory $iconFactory, Request $request): void
+    protected Application $app;
+
+    public function boot(OAuthService $oauthService, CaptchaService $captchaService, IconFactory $iconFactory, Request $request, Application $app): void
     {
         $this->oauthService = $oauthService;
         $this->captchaService = $captchaService;
         $this->iconFactory = $iconFactory;
         $this->request = $request;
+        $this->app = $app;
     }
 
     public function mount(): void
@@ -43,6 +47,14 @@ class Login extends BaseLogin
 
         if ($message = session()->pull('authenticatePasskey::message')) {
             Notification::make()->title($message)->danger()->send();
+        }
+
+        if ($this->app->environment('demo')) {
+            $this->form->fill([
+                'login' => 'admin',
+                'password' => 'admin',
+                'remember' => true,
+            ]);
         }
     }
 

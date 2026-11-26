@@ -48,6 +48,9 @@ abstract class ApplicationApiRequest extends FormRequest
     {
         throw_if(is_null($this->resource), new PanelException('An ACL resource must be defined on API requests.'));
 
+        // @phpstan-ignore myCustomRules.forbiddenGlobalFunctions
+        throw_if($this->permission === AdminAcl::WRITE && app()->environment('demo'), new PanelException('Disabled on demo'));
+
         return $this->canAccess($this->resource, $this->permission);
     }
 
