@@ -33,7 +33,7 @@ class CreateServerFromBackupAction extends Action
     {
         parent::setUp();
 
-        $this->label(trans('admin/backup.restore.action'));
+        $this->hiddenLabel();
 
         $this->tooltip(trans('admin/backup.restore.action'));
 

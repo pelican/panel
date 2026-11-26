@@ -2,6 +2,7 @@
 
 namespace App\Filament\Admin\Pages;
 
+use App\Enums\CustomizationKey;
 use App\Enums\TablerIcon;
 use App\Traits\ResolvesRecordDate;
 use Boquizo\FilamentLogViewer\Actions\BackAction;
@@ -18,14 +19,20 @@ class ViewLogs extends BaseViewLog
 
     public function getHeaderActions(): array
     {
+        $iconButton = user()?->getCustomization(CustomizationKey::ButtonStyle);
+
         return [
             BackAction::make()
                 ->tooltip(trans('filament-log-viewer::log.table.actions.close.label'))
-                ->icon(TablerIcon::ArrowLeft)->iconButton(),
+                ->icon(TablerIcon::ArrowLeft)
+                ->color('gray')
+                ->when($iconButton, fn ($action) => $action->iconButton()),
             DeleteAction::make(withTooltip: true)
-                ->icon(TablerIcon::Trash)->iconButton(),
+                ->icon(TablerIcon::Trash)
+                ->when($iconButton, fn ($action) => $action->iconButton()),
             DownloadAction::make(withTooltip: true)
-                ->icon(TablerIcon::FileDownload)->iconButton(),
+                ->icon(TablerIcon::FileDownload)
+                ->when($iconButton, fn ($action) => $action->iconButton()),
             Action::make('uploadLogs')
                 ->hiddenLabel()
                 ->icon(TablerIcon::WorldUpload)
