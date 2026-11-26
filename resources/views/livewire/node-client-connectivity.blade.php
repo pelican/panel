@@ -3,7 +3,11 @@
         status: 'loading',
         async check() {
             try {
-                await fetch('{{ $httpUrl }}', { mode: 'no-cors', signal: AbortSignal.timeout(5000) });
+                const response = await fetch('{{ $httpUrl }}', { mode: 'cors', signal: AbortSignal.timeout(5000) });
+                if (response.status >= 500) {
+                    this.status = 'offline';
+                    return;
+                }
             } catch (e) {
                 this.status = 'offline';
                 return;
