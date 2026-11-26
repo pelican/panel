@@ -15,6 +15,8 @@ enum PluginStatus: string implements HasColor, HasIcon, HasLabel
     case Errored = 'errored';
     case Incompatible = 'incompatible';
     case Crashed = 'crashed';
+    // A node that doesn't let the Panel see its Wings plugins (access level, or no plugin API)
+    case Unavailable = 'unavailable';
 
     public function getIcon(): BackedEnum
     {
@@ -25,6 +27,7 @@ enum PluginStatus: string implements HasColor, HasIcon, HasLabel
             self::Errored => TablerIcon::HeartBroken,
             self::Incompatible => TablerIcon::HeartCancel,
             self::Crashed => TablerIcon::HeartBolt,
+            self::Unavailable => TablerIcon::LockAccess,
         };
     }
 
@@ -37,6 +40,7 @@ enum PluginStatus: string implements HasColor, HasIcon, HasLabel
             self::Errored => 'danger',
             self::Incompatible => 'danger',
             self::Crashed => 'danger',
+            self::Unavailable => 'gray',
         };
     }
 

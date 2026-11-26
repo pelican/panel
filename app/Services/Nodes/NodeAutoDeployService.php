@@ -5,6 +5,7 @@ namespace App\Services\Nodes;
 use App\Exceptions\Model\DataValidationException;
 use App\Models\ApiKey;
 use App\Models\Node;
+use App\Repositories\Daemon\DaemonPluginRepository;
 use App\Services\Acl\Api\AdminAcl;
 use App\Services\Api\KeyCreationService;
 use Illuminate\Http\Request;
@@ -48,13 +49,17 @@ class NodeAutoDeployService
             return null;
         }
 
+        // How much the Panel may do with the node's Wings plugins, if the Panel sets a level for new nodes
+        $pluginAccess = config('panel.plugin.wings_access');
+
         return sprintf(
-            '%s wings configure --panel-url %s --token %s --node %d%s',
+            '%s wings configure --panel-url %s --token %s --node %d%s%s',
             $docker ? 'docker compose exec -it $(docker ps --filter "name=wings" --format "{{.Names}}")' : 'sudo',
             config('app.url'),
             $token,
             $node->id,
-            $request->isSecure() ? '' : ' --allow-insecure'
+            $request->isSecure() ? '' : ' --allow-insecure',
+            DaemonPluginRepository::isValidLevel($pluginAccess) ? " --plugin-access $pluginAccess" : ''
         );
     }
 }

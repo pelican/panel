@@ -105,6 +105,10 @@ return [
         // so the Hub can serve beta builds this panel was explicitly enrolled in.
         'hub_url' => env('PANEL_PLUGIN_HUB_URL', 'https://hub.pelican.dev'),
         'hub_api_key' => env('PANEL_PLUGIN_HUB_API_KEY'),
+        // Wings plugin access level (off, view, signed or full) the node auto-deploy command gives new nodes
+        // with `wings configure --plugin-access`. Unset keeps Wings' own default; the Panel never changes a
+        // node's level any other way.
+        'wings_access' => env('PANEL_WINGS_PLUGIN_ACCESS'),
     ],
 
     'update' => [
