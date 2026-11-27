@@ -4,6 +4,7 @@
         async check() {
             try {
                 const response = await fetch('{{ $httpUrl }}', { mode: 'cors', signal: AbortSignal.timeout(5000) });
+                // Wings may return 401 without credentials; that still proves reachability.
                 if (response.status >= 500) {
                     this.status = 'offline';
                     return;
